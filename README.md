@@ -1,5 +1,7 @@
 # ABM Engine
 
+[![CI](https://github.com/pims-service/ABM-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/pims-service/ABM-engine/actions/workflows/ci.yml)
+
 An internal web app that automates the manual research behind Account-Based Marketing (ABM). Working name: Growviah ABM Engine.
 
 The manual process today is: find a company, research it, decide whether it fits, look for a reason to reach out now, check the commercial team, find the right decision-maker, pick an angle, approve or reject, and prepare outreach. This project automates the research and analysis parts. A person keeps the final say.

@@ -1,0 +1,17 @@
+# Extends gitleaks' default rules. The allowlist is deliberately narrow: it only
+# covers the obvious YOUR_* placeholders the docs use (org rule: placeholders only)
+# and one throwaway value used by a test that checks passwords never reach logs.
+title = "ABM Engine gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders, one throwaway test value, and the detect-secrets baseline (hashes only)"
+paths = [
+  '''^.secrets.baseline$''',
+]
+regexes = [
+  '''^YOUR_[A-Z0-9_]+$''',
+  '''^Wr0ng-Passw0rd-Marker-9917$''',
+]

@@ -135,4 +135,4 @@ deploy. That design is made in the integrations issues, not here.
   `# pragma: allowlist secret` on that line.
 - In the test suite, `backend/tests/test_env_docs.py` checks that every `.env.example` contains
   placeholders only and matches this page.
-- A CI secret-scan step is planned with the CI pipeline issue; it is not wired up yet.
+- In CI, the `Pre-commit hooks` job runs detect-secrets and the `Secret scan (gitleaks)` job scans the full git history (see [ci.md](ci.md)). CI jobs need no repository secrets.
