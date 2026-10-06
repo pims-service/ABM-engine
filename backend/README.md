@@ -23,7 +23,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
 config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
-apps/{accounts,campaigns,companies,research,integrations,ai,core}   empty apps (AppConfigs registered)
+apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models; others are empty AppConfigs)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
 
@@ -175,6 +175,63 @@ database, not an untrusted network.
 
 Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
 AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
+
+## Domain model building blocks (`apps/core`)
+
+Design: [data-model.md](../docs/data-model.md) and [ADR 0009](../docs/adr/0009-data-model-conventions.md).
+New domain models (issues #40 to #44) compose these abstract bases from `apps/core/base.py`:
+
+| Base | Gives you |
+| --- | --- |
+| `UUIDModel` | `id` UUID primary key |
+| `TimestampedModel` | `created_at`, `updated_at` |
+| `BaseModel` | both of the above (use for mutable tables) |
+| `ArchivableModel` + `ArchivableQuerySet` | `archived_at`, `is_archived`, `archive()`, `restore()` (idempotent; keeps a `status` column in step via `archived_status` / `restored_status`), `.active()` / `.archived()`. Archiving never cascades. |
+| `TenantModel` + `TenantQuerySet` | direct `client` FK (PROTECT). Set `tenant_parent = "<fk name>"` and `save()` copies `client_id` from the parent and raises `TenantMismatchError` on a mismatch or a move to another client. Manager methods `for_user(user)` and `for_client(client_or_id)`. Root tables (like `Campaign`) pass `client` explicitly. A table that is the tenant itself (`Client`) sets `tenant_lookup = "id"` on its queryset. |
+| `AppendOnlyModel` + `AppendOnlyQuerySet` | history rows: `save()` on an existing row, `delete()`, and queryset `update` / `bulk_update` / `delete` raise `ImmutableRecordError`. Corrections are new rows. |
+| `StringListField` (`apps/core/fields.py`) | ordered list of strings: `text[]` on PostgreSQL, JSON text on SQLite. Defaults to `[]`, never NULL. |
+
+```python
+class ThingQuerySet(AppendOnlyQuerySet["Thing"], TenantQuerySet["Thing"]):  # type: ignore[override]
+    pass
+
+
+class Thing(AppendOnlyModel, TenantModel, UUIDModel):
+    tenant_parent = "company"  # the parent row's client_id is copied on create
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+    objects = ThingQuerySet.as_manager()
+```
+
+Rules: always use `PROTECT` (never `CASCADE`), name constraints `<app>_<model>_<what>`, and load
+tenant data through `Model.objects.for_user(user)` (views and services) or
+`.for_client(client)` (jobs that carry a client), never a bare `Model.objects.all()`.
+`for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
+superusers) see everything and everyone else sees nothing until memberships exist (issue #46
+fills in that one function).
+
+### Campaigns, versioned profiles (`apps/campaigns`)
+
+`Client` -> `Campaign` -> `CampaignProfile` (immutable versions of the ICP rules). Use the service
+functions in `apps/campaigns/services.py`, never raw writes:
+
+- `create_campaign(client, name, data, user=None)` creates a draft campaign and its version 1.
+- `create_profile_version(campaign, data, user=None)` is the **only** way to change rules. `data`
+  is any subset of the rule fields plus `change_note`; the rest carries over from the current
+  version. It locks the campaign row, numbers the version, inserts it and moves
+  `campaign.current_profile` in one transaction, leaves old versions untouched, and refuses an
+  archived campaign (`ValidationError`) or identical rules (`ProfileUnchangedError`).
+- `Campaign.current_profile` is NOT NULL with a deferred FK (campaign and v1 are inserted
+  together). On PostgreSQL a composite FK also guarantees the profile belongs to the campaign.
+- Lists (`countries` as ISO alpha-2 upper case, `outreach_languages` lower case, titles in
+  preference order) are trimmed and de-duplicated by the service; `business_model` is
+  `b2b` / `b2c` / `both`.
+- The admin shows profile versions read-only, has no delete buttons (archive actions instead) and
+  campaigns are created through the service, not the admin add form.
+
+Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
+`create_campaign`; override rules with `profile__offer="..."`), `make_client()` and
+`make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
+PostgreSQL.
 
 ## Authentication
 
