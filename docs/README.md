@@ -6,6 +6,8 @@ Project documentation lives here. If you are new, start with onboarding.
 
 - [Developer onboarding](onboarding.md): prerequisites, setup, running the
   stack, Windows notes and troubleshooting.
+- [Environment variables and secrets](environment.md): every variable, startup
+  validation and the secrets-handling policy.
 - [Smoke-test checklist](smoke-test.md): manual check that stack, API and
   frontend work. Notes which parts wait on later issues (worker #25, health
   endpoint #28).

@@ -292,23 +292,16 @@ headers wholesale.
 
 ## Environment variables
 
-See `.env.example`. Values are read via django-environ; a local `.env` is loaded if present and
-real environment variables take precedence.
+Every variable is listed in [docs/environment.md](../docs/environment.md), the single source of
+truth (name, service, required, default, placeholder, notes). `.env.example` has the placeholders.
+Values are read via django-environ; a local `.env` is loaded if present and real environment
+variables take precedence.
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `DJANGO_SETTINGS_MODULE` | no | `manage.py` defaults to `config.settings.dev`; wsgi/asgi default to `config.settings.prod` |
-| `SECRET_KEY` | yes (dev/prod) | no default, startup fails if missing |
-| `DATABASE_URL` | yes (dev/prod) | Postgres URL |
-| `DEV_SUPERUSER_USERNAME`, `DEV_SUPERUSER_EMAIL`, `DEV_SUPERUSER_PASSWORD` | no | read by `seed_dev_data` only; no password means no superuser is created |
-| `DEBUG` | no | dev defaults to true, prod forced false |
-| `ALLOWED_HOSTS` | prod: yes | comma-separated |
-| `LOG_LEVEL` | no | default `INFO` |
-| `LOG_JSON` | no | JSON log lines; default true, but false in dev settings |
-| `Q_WORKERS`, `Q_TASK_TIMEOUT`, `Q_TASK_RETRY` | no | Django-Q2 worker processes (2), per-task time limit in seconds (300), redelivery delay in seconds (360, must exceed the timeout) |
-| `API_PAGE_SIZE` | no | default 25 |
-| `API_THROTTLE_ANON`, `API_THROTTLE_USER` | no | DRF rates, default `100/hour`, `1000/hour` |
-| `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `CSRF_TRUSTED_ORIGINS` | no | prod hardening |
+On startup (every settings module except `config.settings.test`) `config/env_validation.py`
+checks the environment and refuses to start, naming every missing or invalid variable in one
+error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
+`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults
 
