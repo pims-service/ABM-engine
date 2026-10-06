@@ -54,7 +54,7 @@ PR checklist (also in the template):
 
 ## Review expectations
 
-- At least one approval from someone other than the author before merging.
+- All required CI checks (see [docs/ci.md](docs/ci.md)) must pass, and at least one approval from someone other than the author is needed before merging.
 - Reviewers: respond within a working day or two, be specific, and separate must-fix comments from suggestions.
 - Authors: reply to every comment, push fixes as new commits during review, and do not merge with unresolved discussions.
 - Check that AI-driven logic uses structured output and that evidence (source and date) is kept, not fabricated.
