@@ -1,0 +1,125 @@
+# Local development stack: db (Postgres), api (Django), web (Next.js).
+# Source code is bind-mounted so changes hot-reload inside the containers.
+# Configuration comes from the root .env file (copy .env.example to .env).
+# There is no Redis and no Celery: background jobs use Django-Q2 on Postgres.
+
+name: abm-engine
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+    # The image's default CMD is production gunicorn; dev overrides it with
+    # migrations followed by the auto-reloading Django dev server.
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Read by `manage.py seed_dev_data` only; no password means no superuser.
+      DEV_SUPERUSER_USERNAME: ${DEV_SUPERUSER_USERNAME:-admin}
+      DEV_SUPERUSER_EMAIL: ${DEV_SUPERUSER_EMAIL:-admin@example.com}
+      DEV_SUPERUSER_PASSWORD: ${DEV_SUPERUSER_PASSWORD:-}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      # Keep the image's virtualenv; the bind mount above would otherwise hide it.
+      - api_venv:/app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Liveness only (/healthz touches no dependency). /readyz also checks db, migrations and
+      # the worker, so it is for humans, CI and deployment gates rather than restart decisions.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  # Django-Q2 worker: same image as api, same Postgres (which is also the queue).
+  worker:
+    build:
+      context: ./backend
+    command: python manage.py qcluster
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      Q_WORKERS: ${Q_WORKERS:-2}
+      Q_TASK_TIMEOUT: ${Q_TASK_TIMEOUT:-300}
+      Q_TASK_RETRY: ${Q_TASK_RETRY:-360}
+    volumes:
+      - ./backend:/app
+      - api_venv:/app/.venv
+    healthcheck:
+      # Healthy while the cluster keeps publishing its heartbeat (same check as /readyz "worker").
+      test: ["CMD", "python", "manage.py", "worker_healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy   # api runs the migrations
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      # "deps" stage of the production Dockerfile: Node plus installed node_modules.
+      target: deps
+    command: npm run dev -- --hostname 0.0.0.0 --port 3000
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api}
+      NEXT_TELEMETRY_DISABLED: "1"
+      # File watching is unreliable on bind mounts from Windows/macOS hosts.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  api_venv:
+  web_node_modules:
+  web_next:

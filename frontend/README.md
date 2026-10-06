@@ -9,7 +9,7 @@ Next.js (App Router) + React + strict TypeScript. The backend is Django/DRF with
 ## Getting started
 
 ```bash
-cp .env.example .env.local   # then adjust values
+cp .env.example .env.local   # then adjust values (see docs/environment.md)
 npm install
 npm run dev                  # http://localhost:3000
 npm run typecheck            # strict tsc, no emit

@@ -7,7 +7,7 @@ Thanks for helping out. This guide keeps changes easy to review.
 - Work from an issue. If there is none, open one first.
 - Keep changes small and focused on one issue.
 - Check the README's out-of-scope list before adding features.
-- **Never commit secrets.** No API keys, tokens, passwords, usernames or database credentials, in code, config, docs, tests or commit history. Use placeholders such as `YOUR_API_KEY` or `********`, and document variables in `.env.example`. If a secret is committed by mistake, tell the team right away so it can be rotated; deleting it in a later commit is not enough.
+- **Never commit secrets.** No API keys, tokens, passwords, usernames or database credentials, in code, config, docs, tests or commit history. Use placeholders such as `YOUR_API_KEY` or `********`, and document variables in `.env.example` and [docs/environment.md](docs/environment.md). If a secret is committed by mistake, tell the team right away so it can be rotated; deleting it in a later commit is not enough.
 
 ## Branch naming
 

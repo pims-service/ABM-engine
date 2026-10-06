@@ -28,7 +28,7 @@ It is not another Clay, Sales Navigator, CRM or outreach platform. See the out-o
 
 ## Status
 
-This repo is at the very start (milestone M0, Foundation and Dev Setup). So far there is only the repo layout and contributor documentation. The backend, frontend and Docker Compose setup are being added through separate issues, so parts of this README describe the target, not what you can run today.
+This repo is at the start (milestone M0, Foundation and Dev Setup). The Django and Next.js skeletons and the Docker Compose dev environment exist; product features and the Django-Q2 worker are still being added through separate issues, so parts of this README describe the target.
 
 ## Architecture (planned)
 
@@ -64,18 +64,28 @@ Decisions already made:
 
 ## Quick start
 
-> The Docker Compose file arrives in issue #21. Until it is merged, the commands below will not work.
-
-Once it is in, the intended flow is:
+Requires Docker with Compose v2.
 
 ```bash
 git clone https://github.com/pims-service/ABM-engine.git
 cd ABM-engine
-cp .env.example .env     # .env.example arrives with the config issues; fill in placeholders
-docker compose up
+cp .env.example .env     # then replace the YOUR_* placeholders with local values
+docker compose up --build
 ```
 
-That should start the database, API, worker and web app. This README will be updated with ports and URLs when the compose file lands.
+This starts three services:
+
+| Service | URL / port | Notes |
+| --- | --- | --- |
+| `db` | `localhost:5432` | PostgreSQL 16, data in the `pgdata` named volume |
+| `api` | http://localhost:8000/api/v1/ | Django dev server; runs migrations on start |
+| `web` | http://localhost:3000 | Next.js dev server |
+
+Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data survives `docker compose down`; use `docker compose down -v` to wipe it. If a default host port is taken, set `DB_PORT`, `API_PORT` or `WEB_PORT` in `.env` (and update `NEXT_PUBLIC_API_BASE_URL` if you move the API). The `worker` service runs the Django-Q2 cluster (`python manage.py qcluster`) against the same Postgres.
+
+`make up`, `make down`, `make logs`, `make migrate`, `make test` and `make shell` wrap the common commands. See [infra/README.md](infra/README.md) for details.
+
+New to the project? Follow [docs/onboarding.md](docs/onboarding.md) (setup, Windows notes, troubleshooting) and then the [smoke-test checklist](docs/smoke-test.md). The reasoning behind the stack is in the [architecture decision records](docs/adr/README.md), and commit, branch and PR rules are in [docs/conventions.md](docs/conventions.md).
 
 ## Repository layout
 
