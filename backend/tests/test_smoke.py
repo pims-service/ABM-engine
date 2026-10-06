@@ -12,7 +12,7 @@ def test_settings_load():
 
 
 def test_local_apps_registered():
-    assert LOCAL_APP_LABELS <= {c.label for c in apps.get_app_configs()}
+    assert {c.label for c in apps.get_app_configs()} >= LOCAL_APP_LABELS
 
 
 def test_api_root():
