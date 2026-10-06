@@ -171,10 +171,10 @@ def test_admin_grant_change_and_revoke(client):
     changelist = reverse("admin:campaigns_clientmembership_changelist")
     client.post(changelist, {"action": "archive_selected", "_selected_action": [membership.pk]})
     membership.refresh_from_db()
-    assert membership.is_archived
+    assert ClientMembership.objects.get(pk=membership.pk).is_archived
     client.post(changelist, {"action": "restore_selected", "_selected_action": [membership.pk]})
     membership.refresh_from_db()
-    assert not membership.is_archived
+    assert ClientMembership.objects.filter(pk=membership.pk, archived_at=None).exists()
     assert ClientMembership.objects.get(pk=membership.pk).role == Role.MANAGER
     assert client.post(change.replace("change/", "delete/")).status_code == 403
 
