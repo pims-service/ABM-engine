@@ -14,6 +14,7 @@ decided, what else we considered and what it costs us. See
 | [0005](0005-postgres-backed-job-queue.md) | Background jobs on a Postgres-backed queue (Django-Q2) | Accepted |
 | [0006](0006-django-jwt-authentication.md) | Authentication with Django JWT (SimpleJWT) | Accepted |
 | [0007](0007-keep-history-and-separate-ai-from-human-decisions.md) | Keep history, and store AI recommendations apart from human decisions | Accepted |
+| [0008](0008-icp-fit-and-trigger-are-separate.md) | ICP Fit and Trigger are separate concepts | Accepted |
 
 ## Adding a new ADR
 
