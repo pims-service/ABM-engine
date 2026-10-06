@@ -36,6 +36,11 @@ services:
       DEBUG: ${DEBUG:-True}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Read by `manage.py seed_dev_data` only; no password means no superuser.
+      DEV_SUPERUSER_USERNAME: ${DEV_SUPERUSER_USERNAME:-admin}
+      DEV_SUPERUSER_EMAIL: ${DEV_SUPERUSER_EMAIL:-admin@example.com}
+      DEV_SUPERUSER_PASSWORD: ${DEV_SUPERUSER_PASSWORD:-}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -65,6 +70,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
       DEBUG: ${DEBUG:-True}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      Q_WORKERS: ${Q_WORKERS:-2}
+      Q_TASK_TIMEOUT: ${Q_TASK_TIMEOUT:-300}
+      Q_TASK_RETRY: ${Q_TASK_RETRY:-360}
     volumes:
       - ./backend:/app
       - api_venv:/app/.venv
