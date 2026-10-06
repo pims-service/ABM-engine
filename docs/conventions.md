@@ -97,3 +97,10 @@ docs/12-api-overview
   - [ ] Docs updated where behaviour changed
   - [ ] No secrets or real credentials in the diff
   - [ ] PR title is a valid Conventional Commit and links the issue
+
+## Secret scanning: baselines and allowlists
+
+Two scanners run (pre-commit and CI). Both are tuned so placeholders do not trip them, and neither is a way to hide a real secret.
+
+- **detect-secrets** uses `.secrets.baseline`. The baseline only lists reviewed false positives (`YOUR_*` placeholders in docs and examples, and throwaway test values). If a new line is flagged and it really is a placeholder, prefer an inline `# pragma: allowlist secret` on that line. If you must refresh the baseline, run `detect-secrets scan --baseline .secrets.baseline`, then read every new entry before committing. A real secret is never baselined: rotate it instead.
+- **gitleaks** uses `.gitleaks.toml`, which extends the default rules and allowlists only `YOUR_*` placeholder values and one throwaway test password. Do not widen it to whole folders.
