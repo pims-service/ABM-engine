@@ -106,6 +106,198 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List campaigns
+     * @description Campaigns of the clients the user is a member of (all for a global admin), paginated, each with its current profile. Archived campaigns are hidden unless `archived`/`status` ask for them. Filter by `client`, or use `/clients/{client_pk}/campaigns/`. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_list"];
+    put?: never;
+    /**
+     * Create a campaign
+     * @description Creates a draft campaign and its profile version 1 in one transaction. `client` is required. The name must be unique, ignoring case, among the client's non-archived campaigns. Field errors on rules are nested under `profile`. Unsupported fields (e.g. `structured_rules`) give 400. Needs the `EDIT` level: manager and admin, in the target client. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a campaign
+     * @description The campaign with its current profile. Archived campaigns can be retrieved by id. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_retrieve"];
+    /**
+     * Replace a campaign's name and rules
+     * @description `name` and `profile.offer` are required; other rule fields left out keep their current value (send `[]`, `null` or `""` to clear). Changing any rule creates a NEW immutable profile version (the response shows it in `profile_version`); if the rules equal the current version nothing is created and the response is still 200 (see the `X-Profile-Version-Created` header). `name` changes are audited separately. An archived campaign is read-only (400). Rule field errors are nested under `profile`; unsupported fields (e.g. `structured_rules`) give 400. Needs the `EDIT` level: manager and admin, so reviewers cannot edit rules. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    put: operations["campaigns_update"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Edit a campaign's name and/or rules
+     * @description Same as PUT, but every field is optional. Only the rule fields sent are changed; a new profile version is made only if the result differs from the current one. Needs the `EDIT` level: manager and admin, so reviewers cannot edit rules. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    patch: operations["campaigns_partial_update"];
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/activate/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Activate a draft campaign
+     * @description draft -> active. 400 for an archived campaign or a campaign under an archived client. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_activate"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/archive/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Archive a campaign
+     * @description Soft delete: the campaign leaves default lists, all its data and profile versions are kept. Idempotent. 409 `campaign_has_active_jobs` while it has queued or running jobs. Needs the `MANAGE` level: admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_archive"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/clone/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Clone a campaign
+     * @description Creates an independent draft campaign in the same client whose version 1 profile is a copy of the source's CURRENT rules. Nothing else is copied (no history, companies or jobs) and the two campaigns never share rows. The source may be archived. Audited with the source id. The name defaults to `<name> (copy)`; 400 if a given name is taken or the client is archived. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_clone"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/profile-versions/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Profile version history
+     * @description Every version of the campaign's rules, newest first, paginated. Old versions are immutable and stay retrievable. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_profile_versions_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/profile-versions/{version}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * One profile version
+     * @description The rules exactly as they were in version `version`. 404 if the campaign has no such version. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_profile_versions_retrieve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/restore/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restore an archived campaign
+     * @description Back to `draft`. 400 on `name` if another active campaign of the client now uses the name, and 400 while the client is archived. Needs the `MANAGE` level: admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/rules-summary/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Rules summary (the shape AI prompts consume)
+     * @description Read-only. The campaign's profile in the versioned, structured shape the qualification and message engines read: see the `RulesSummary` schema. Includes `profile_version`. `?version=N` summarises an older version; 404 if it does not exist. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_rules_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/clients/": {
     parameters: {
       query?: never;
@@ -124,6 +316,30 @@ export interface paths {
      * @description Creates an active client; the creator becomes its admin member. Needs the `MANAGE` level in at least one client (or global admin): there is no client to check yet, so this is the platform-level rule. Name must be unique, ignoring case, among non-archived clients.
      */
     post: operations["clients_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/clients/{client_pk}/campaigns/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List a client's campaigns
+     * @description Same as `GET /campaigns/?client={client_pk}`, but 404 if the client is not visible to the user. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["client_campaigns_list"];
+    put?: never;
+    /**
+     * Create a campaign under a client
+     * @description Same as `POST /campaigns/` with the client taken from the URL (`client` in the body is optional and must match). Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["client_campaigns_create"];
     delete?: never;
     options?: never;
     head?: never;
@@ -255,6 +471,112 @@ export interface components {
       version: string;
       links: components["schemas"]["ApiLinks"];
     };
+    /**
+     * @description * `b2b` - B2B
+     *     * `b2c` - B2C
+     *     * `both` - B2B and B2C
+     * @enum {string}
+     */
+    BusinessModelEnum: "b2b" | "b2c" | "both";
+    /** @description A campaign with its current profile. ``status`` changes only through the actions. */
+    Campaign: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly client: string;
+      readonly name: string;
+      readonly status: components["schemas"]["CampaignStatusEnum"];
+      /** Format: date-time */
+      readonly archived_at: string | null;
+      readonly profile_version: number;
+      readonly profile: components["schemas"]["CampaignProfile"];
+      /** Format: date-time */
+      readonly created_at: string;
+      /** Format: date-time */
+      readonly updated_at: string;
+    };
+    CampaignCloneRequest: {
+      /** @description Name of the copy. Default: "<name> (copy)", numbered if that is taken. */
+      name?: string;
+    };
+    /** @description One immutable profile version (the rules of Brief section 3). */
+    CampaignProfile: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly campaign: string;
+      readonly version: number;
+      readonly offer: string;
+      readonly countries: string[];
+      readonly industries: string[];
+      readonly company_size_min: number | null;
+      readonly company_size_max: number | null;
+      readonly business_model: components["schemas"]["BusinessModelEnum"];
+      readonly excluded_industries: string[];
+      readonly excluded_company_types: string[];
+      readonly target_departments: string[];
+      /** @description Ordered, most preferred first. */
+      readonly preferred_buyer_titles: string[];
+      readonly outreach_languages: string[];
+      /** @description Free-form qualification notes. */
+      readonly custom_rules: string;
+      /** @description Why this version was made. */
+      readonly change_note: string;
+      /** Format: uuid */
+      readonly created_by: string | null;
+      /** Format: date-time */
+      readonly created_at: string;
+    };
+    /**
+     * @description The rule fields of a campaign. Anything not listed is rejected, nothing is dropped.
+     *
+     *     On create ``offer`` is required and the rest defaults to empty. On PUT/PATCH a field left out
+     *     keeps its value from the current version; send ``[]`` / ``null`` / ``""`` to clear it.
+     */
+    CampaignProfileInputRequest: {
+      /** @description What the client sells, in plain words. */
+      offer: string;
+      /** @description ISO 3166-1 alpha-2 codes (case-insensitive input, stored upper case). */
+      countries?: string[];
+      industries?: string[];
+      company_size_min?: number | null;
+      /** @description Must be at least `company_size_min` when both are set. */
+      company_size_max?: number | null;
+      business_model?: components["schemas"]["BusinessModelEnum"];
+      excluded_industries?: string[];
+      excluded_company_types?: string[];
+      target_departments?: string[];
+      /** @description Ordered, most preferred first. Duplicates are removed keeping the first. */
+      preferred_buyer_titles?: string[];
+      /** @description Supported language codes (`settings.OUTREACH_LANGUAGES`, `en` and `ar`). */
+      outreach_languages?: string[];
+      /** @description Free-form notes. */
+      custom_rules?: string;
+      /** @description Why this version is made. */
+      change_note?: string;
+    };
+    /**
+     * @description * `draft` - Draft
+     *     * `active` - Active
+     *     * `archived` - Archived
+     * @enum {string}
+     */
+    CampaignStatusEnum: "draft" | "active" | "archived";
+    /**
+     * @description Body of create (POST) and edit (PUT/PATCH).
+     *
+     *     ``name`` goes through ``update_campaign``; ``profile`` (the rules) through
+     *     ``create_profile_version``, which makes a new version only when something changed.
+     */
+    CampaignWriteRequest: {
+      /**
+       * Format: uuid
+       * @description Required on `POST /campaigns/`; taken from the URL on the nested route; cannot be changed on edit.
+       */
+      client?: string;
+      name: string;
+      profile?: components["schemas"]["CampaignProfileInputRequest"];
+    };
     /** @description One readiness check; the extra fields depend on the check (documentation only). */
     Check: {
       status: components["schemas"]["CheckStatusEnum"];
@@ -338,6 +660,36 @@ export interface components {
      * @enum {string}
      */
     HealthStatusEnum: "ok";
+    PaginatedCampaignList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["Campaign"][];
+    };
+    PaginatedCampaignProfileList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["CampaignProfile"][];
+    };
     PaginatedClientList: {
       /** @example 123 */
       count: number;
@@ -352,6 +704,21 @@ export interface components {
        */
       previous?: string | null;
       results: components["schemas"]["Client"][];
+    };
+    /**
+     * @description Body of create (POST) and edit (PUT/PATCH).
+     *
+     *     ``name`` goes through ``update_campaign``; ``profile`` (the rules) through
+     *     ``create_profile_version``, which makes a new version only when something changed.
+     */
+    PatchedCampaignWriteRequest: {
+      /**
+       * Format: uuid
+       * @description Required on `POST /campaigns/`; taken from the URL on the nested route; cannot be changed on edit.
+       */
+      client?: string;
+      name?: string;
+      profile?: components["schemas"]["CampaignProfileInputRequest"];
     };
     /**
      * @description A client. ``status`` and the timestamps are read-only: use ``archive/`` and ``restore/``.
@@ -381,6 +748,56 @@ export interface components {
     RefreshTokenRequest: {
       /** @description Refresh token. May be omitted when the refresh cookie is enabled. */
       refresh?: string;
+    };
+    /**
+     * @description The profile in the structure the AI prompts consume. Versioned by `schema_version`.
+     *
+     *     Built by `apps.campaigns.rules_summary.build_rules_summary`; see that module for the
+     *     contract. A change to this shape must bump `schema_version`.
+     */
+    RulesSummary: {
+      /** @description Shape of this document; currently 1. */
+      schema_version: number;
+      campaign: components["schemas"]["RulesSummaryCampaign"];
+      /** @description The CampaignProfile version used. */
+      profile_version: number;
+      offer: string;
+      targeting: components["schemas"]["RulesSummaryTargeting"];
+      exclusions: components["schemas"]["RulesSummaryExclusions"];
+      buyers: components["schemas"]["RulesSummaryBuyers"];
+      outreach: components["schemas"]["RulesSummaryOutreach"];
+      custom_rules: string;
+      /** @description Reserved for a future machine-readable rule list; always empty in schema_version 1. */
+      structured_rules: {
+        [key: string]: unknown;
+      }[];
+    };
+    RulesSummaryBuyers: {
+      target_departments: string[];
+      /** @description Most preferred first. */
+      preferred_buyer_titles: string[];
+    };
+    RulesSummaryCampaign: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+    };
+    RulesSummaryCompanySize: {
+      min: number | null;
+      max: number | null;
+    };
+    RulesSummaryExclusions: {
+      industries: string[];
+      company_types: string[];
+    };
+    RulesSummaryOutreach: {
+      languages: string[];
+    };
+    RulesSummaryTargeting: {
+      countries: string[];
+      industries: string[];
+      company_size: components["schemas"]["RulesSummaryCompanySize"];
+      business_model: components["schemas"]["BusinessModelEnum"];
     };
     TokenObtainPairRequest: {
       email: string;
@@ -677,6 +1094,936 @@ export interface operations {
       };
     };
   };
+  campaigns_list: {
+    parameters: {
+      query?: {
+        /**
+         * @description `false` (default) hides archived campaigns, `true` shows only archived ones, `all` shows both.
+         *
+         *     * `false` - false
+         *     * `true` - true
+         *     * `all` - all
+         */
+        archived?: "false" | "true" | "all";
+        /** @description Only campaigns of this client (ignored on the nested route). */
+        client?: string;
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description A search term. */
+        search?: string;
+        /**
+         * @description Only campaigns with this status. `archived` implies `archived=true` unless `archived` is given.
+         *
+         *     * `draft` - Draft
+         *     * `active` - Active
+         *     * `archived` - Archived
+         */
+        status?: "draft" | "active" | "archived";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedCampaignList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CampaignWriteRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CampaignWriteRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          /** @description `true` when this request made a new profile version, `false` when the submitted rules equal the current version (nothing was created, status is still 200). */
+          "X-Profile-Version-Created"?: boolean;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_partial_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PatchedCampaignWriteRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          /** @description `true` when this request made a new profile version, `false` when the submitted rules equal the current version (nothing was created, status is still 200). */
+          "X-Profile-Version-Created"?: boolean;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_activate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_archive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_clone: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["CampaignCloneRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_profile_versions_list: {
+    parameters: {
+      query?: {
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description A search term. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedCampaignProfileList"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_profile_versions_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+        version: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CampaignProfile"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_restore: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_rules_summary: {
+    parameters: {
+      query?: {
+        /** @description Profile version to summarise. Default: the current version. */
+        version?: number;
+      };
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RulesSummary"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   clients_list: {
     parameters: {
       query?: {
@@ -806,6 +2153,187 @@ export interface operations {
       };
       /** @description Not allowed (`permission_denied`). */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  client_campaigns_list: {
+    parameters: {
+      query?: {
+        /**
+         * @description `false` (default) hides archived campaigns, `true` shows only archived ones, `all` shows both.
+         *
+         *     * `false` - false
+         *     * `true` - true
+         *     * `all` - all
+         */
+        archived?: "false" | "true" | "all";
+        /** @description Only campaigns of this client (ignored on the nested route). */
+        client?: string;
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description A search term. */
+        search?: string;
+        /**
+         * @description Only campaigns with this status. `archived` implies `archived=true` unless `archived` is given.
+         *
+         *     * `draft` - Draft
+         *     * `active` - Active
+         *     * `archived` - Archived
+         */
+        status?: "draft" | "active" | "archived";
+      };
+      header?: never;
+      path: {
+        client_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedCampaignList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  client_campaigns_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        client_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CampaignWriteRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Campaign"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };
