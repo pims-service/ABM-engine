@@ -1,5 +1,6 @@
 """Local development settings."""
-from .base import *  # noqa: F403
+
+from .base import *
 from .base import REST_FRAMEWORK, env
 
 DEBUG = env.bool("DEBUG", default=True)

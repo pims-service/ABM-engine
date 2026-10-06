@@ -1,4 +1,5 @@
 """Base settings shared by every environment. All config comes from environment variables."""
+
 from pathlib import Path
 
 import environ

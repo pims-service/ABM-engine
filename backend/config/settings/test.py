@@ -1,12 +1,13 @@
 """Test settings: no external services required. The SQLite fallback is for tests only."""
+
 import os
 
 # Throwaway test values (not real secrets) so tests run without a .env file.
 os.environ.setdefault("SECRET_KEY", "test-only-insecure-key-not-a-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite://:memory:")
 
-from .base import *  # noqa: E402,F403
-from .base import REST_FRAMEWORK  # noqa: E402
+from .base import *
+from .base import REST_FRAMEWORK
 
 DEBUG = False
 ALLOWED_HOSTS = ["testserver", "localhost"]

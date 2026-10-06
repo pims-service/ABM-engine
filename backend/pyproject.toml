@@ -15,12 +15,110 @@ dependencies = [
 dev = [
     "pytest>=8",
     "pytest-django>=4.9",
+    "pytest-cov>=6",
+    "factory-boy>=3.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs[compatible-mypy]>=3.15",
 ]
 
 [tool.uv]
 package = false
 
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["staticfiles"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "DJ",  # flake8-django
+    "S",   # flake8-bandit
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "PT",  # flake8-pytest-style
+    "RUF", # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Settings modules use star imports from base by design.
+"config/settings/*.py" = ["F403", "F405"]
+# Test settings must set env defaults before importing base.
+"config/settings/test.py" = ["E402"]
+# Asserts and throwaway credentials are normal in tests.
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+strict = true
+warn_unreachable = true
+exclude = ["^staticfiles/"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+# Test functions are self-describing; keep annotations optional there.
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+# factory_boy is untyped, so factory calls would otherwise all be flagged.
+disallow_untyped_calls = false
+# DRF stubs make Serializer generic, but it is not subscriptable at runtime.
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = "tests.factories"
+# factory_boy ships partial stubs that don't export its public API; nothing to check here.
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# These libraries ship no type information.
+module = ["factory.*", "environ.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["test_*.py"]
 testpaths = ["tests"]
+addopts = "--strict-markers --strict-config --cov --cov-report=term-missing:skip-covered --cov-report=xml"
+markers = [
+    "unit: fast tests with no I/O beyond the test database",
+    "api: tests that go through the DRF request/response cycle",
+]
+
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+branch = true
+source = ["apps", "config"]
+# Entrypoints and per-environment settings only run under their own DJANGO_SETTINGS_MODULE.
+omit = [
+    "*/migrations/*",
+    "config/asgi.py",
+    "config/wsgi.py",
+    "config/settings/dev.py",
+    "config/settings/prod.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 90
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.coverage.xml]
+output = "coverage.xml"

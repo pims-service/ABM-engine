@@ -1,4 +1,5 @@
 """WSGI entrypoint. Defaults to production settings; override with DJANGO_SETTINGS_MODULE."""
+
 import os
 
 from django.core.wsgi import get_wsgi_application
