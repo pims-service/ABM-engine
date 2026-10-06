@@ -1,0 +1,66 @@
+# Environment and secrets (keep .env.example)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Local data
+/data/
+*.sqlite3
+*.db
+pgdata/
+postgres-data/
+*.dump
+*.csv.local
+
+# Logs
+*.log
+logs/
+
+# Build output
+build/
+dist/
+out/
+.next/
+coverage/
+htmlcov/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+staticfiles/
+media/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+*.tsbuildinfo
+next-env.d.ts
+
+# Docker overrides
+docker-compose.override.yml
+compose.override.yml
+
+# IDE and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code local state
+.claude/worktrees/
+.claude/settings.local.json
