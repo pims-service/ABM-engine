@@ -352,3 +352,150 @@ class CompanyResearch(AppendOnlyModel, TenantModel, UUIDModel):
             raise TenantMismatchError(
                 "CompanyResearch.data_source belongs to a different client than its company."
             )
+
+
+# ------------------------------------------------------------------ Contact (issue #41)
+
+
+class EmailStatus(models.TextChoices):
+    UNKNOWN = "unknown", "Unknown"
+    NOT_FOUND = "not_found", "Not found"
+    UNVERIFIED = "unverified", "Unverified"
+    VERIFIED = "verified", "Verified"
+    INVALID = "invalid", "Invalid"
+
+
+class ContactRole(models.TextChoices):
+    PRIMARY = "primary", "Primary"
+    SECONDARY = "secondary", "Secondary"
+    NONE = "none", "None"
+
+
+ERASED_NAME = "Erased contact"
+
+
+class ContactQuerySet(ArchivableQuerySet["Contact"], TenantQuerySet["Contact"]):  # type: ignore[override]
+    def for_company(self, company: Company | Any) -> ContactQuerySet:
+        return self.filter(company=company)
+
+    def ranked(self) -> ContactQuerySet:
+        """Best first: rank 1 first, unranked last, then name."""
+        return self.order_by(models.F("rank").asc(nulls_last=True), Lower("name"), "id")
+
+    def primary_for(self, company: Company | Any) -> Contact | None:
+        """The company's non-archived primary contact, or ``None``."""
+        return self.active().filter(company=company, role=ContactRole.PRIMARY).first()
+
+
+class Contact(ArchivableModel, TenantModel, BaseModel):
+    """A person at a company who may be a buyer (Brief section 8).
+
+    The one mutable enrichment table (email and rank change after verification); changes are
+    to be logged as Activity later (issue #43). At most one non-archived ``primary`` and one
+    ``secondary`` per company (database constraint). Archived, never deleted. A privacy
+    request uses ``erase_personal_data`` (keeps the row id so references still resolve).
+    ``data_source`` must belong to the same client as the company.
+    """
+
+    tenant_parent = "company"
+
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="contacts")
+    data_source = models.ForeignKey(DataSource, on_delete=models.PROTECT, related_name="contacts")
+    name = models.CharField(max_length=300)
+    title = models.CharField(max_length=300, blank=True)
+    profile_url = models.URLField(max_length=2000, blank=True)
+    email = models.EmailField(max_length=320, blank=True)
+    email_status = models.CharField(
+        max_length=16, choices=EmailStatus.choices, default=EmailStatus.UNKNOWN
+    )
+    relevance_reason = models.TextField(blank=True, help_text="Why this person (Brief section 15).")
+    rank = models.PositiveIntegerField(null=True, blank=True, help_text="1 is best.")
+    role = models.CharField(max_length=16, choices=ContactRole.choices, default=ContactRole.NONE)
+    erased_at = models.DateTimeField(null=True, blank=True, editable=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+
+    objects = ContactQuerySet.as_manager()
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("rank", "name", "id")
+        indexes: ClassVar[list[models.Index]] = [
+            models.Index(fields=["client"], name="co_contact_client_idx"),
+            models.Index(fields=["company", "archived_at"], name="co_contact_company_arch_idx"),
+            models.Index(fields=["data_source"], name="co_contact_source_idx"),
+        ]
+        constraints: ClassVar[list[models.BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=["company", "role"],
+                condition=models.Q(
+                    role__in=[ContactRole.PRIMARY, ContactRole.SECONDARY],
+                    archived_at__isnull=True,
+                ),
+                name="companies_contact_one_primary_secondary",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "profile_url"],
+                condition=~models.Q(profile_url="") & models.Q(archived_at__isnull=True),
+                name="companies_contact_profile_url_unique",
+            ),
+            models.CheckConstraint(
+                condition=_in("role", ContactRole), name="companies_contact_role_valid"
+            ),
+            models.CheckConstraint(
+                condition=_in("email_status", EmailStatus),
+                name="companies_contact_email_status_valid",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(name=""), name="companies_contact_name_not_empty"
+            ),
+            models.CheckConstraint(
+                condition=models.Q(rank__isnull=True) | models.Q(rank__gte=1),
+                name="companies_contact_rank_positive",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(email="")
+                | models.Q(email_status__in=[EmailStatus.UNKNOWN, EmailStatus.NOT_FOUND]),
+                name="companies_contact_status_needs_email",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(email="") | ~models.Q(email_status=EmailStatus.NOT_FOUND),
+                name="companies_contact_not_found_no_email",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return self.name
+
+    def sync_client(self) -> None:
+        super().sync_client()
+        if self.data_source.client_id != self.client_id:
+            raise TenantMismatchError(
+                "Contact.data_source belongs to a different client than its company."
+            )
+
+    def erase_personal_data(self) -> None:
+        """Privacy erase: blank name, title, email, profile URL and reason, then archive.
+
+        The row and its id stay so Messages and Activities that reference it still resolve.
+        Idempotent. The caller writes the personal-data-free AuditLog entry (issue #44).
+        """
+        if self.erased_at is not None:
+            return
+        now = timezone.now()
+        self.name = ERASED_NAME
+        self.title = ""
+        self.email = ""
+        self.email_status = EmailStatus.UNKNOWN
+        self.profile_url = ""
+        self.relevance_reason = ""
+        self.role = ContactRole.NONE
+        self.rank = None
+        self.erased_at = now
+        if self.archived_at is None:
+            self.archived_at = now
+        self.save()
