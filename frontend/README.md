@@ -37,7 +37,55 @@ docker run --rm -p 3000:3000 abm-frontend
 - `src/app/{dashboard,campaigns,companies}` - placeholder routes (`/` redirects to `/dashboard`)
 - `src/app/error.tsx` - error boundary; `src/app/not-found.tsx` - 404
 - `src/lib/config.ts` - typed env config
+- `src/lib/api/` - typed API client generated from the OpenAPI schema (see below)
 - `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
+
+## Typed API client
+
+`src/lib/api/` holds a typed client for the backend, generated from the committed OpenAPI schema
+[`docs/api/openapi.yaml`](../docs/api/openapi.yaml) (see [docs/api](../docs/api/README.md)).
+
+| File        | What                                                                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schema.ts` | **Generated** by `npm run gen:api` (openapi-typescript): `paths`, `components`, `operations`. Committed; never edit by hand.                                   |
+| `client.ts` | `createApiClient({ baseUrl, getAccessToken?, fetch? })`: openapi-fetch plus bearer injection and error normalisation. No config import, so it is easy to test. |
+| `errors.ts` | `ApiError` and the `ErrorEnvelope` type.                                                                                                                       |
+| `index.ts`  | The app-wide client: `getApiClient()` and `setAccessTokenGetter()`.                                                                                            |
+
+```ts
+import { ApiError, getApiClient, setAccessTokenGetter } from "@/lib/api";
+
+setAccessTokenGetter(() => authState.accessToken); // once, by the login UI (issue #51)
+
+try {
+  const { data } = await getApiClient().GET("/healthz"); // data: { status: "ok" }
+  const me = await getApiClient().GET("/api/v1/auth/me/"); // me.data is typed as User
+} catch (error) {
+  if (error instanceof ApiError && error.code === "validation_error") {
+    console.log(error.fieldErrors); // { email: ["..."] }
+  }
+}
+```
+
+- **Paths are the real server URLs** (`/api/v1/auth/login/`, `/healthz`). The client base URL is
+  `NEXT_PUBLIC_API_BASE_URL` (through `src/lib/config.ts`) without its trailing `/api`
+  (`apiServerRoot`), because the health probes live at the server root. Keep the variable ending in
+  `/api`.
+- **Auth**: the getter (sync or async) is called before every request; a token becomes
+  `Authorization: Bearer <token>`. With no getter or no token nothing is sent. Token storage,
+  login and refresh-on-401 belong to the login UI (issue #51), not to this client.
+- **Errors**: 2xx calls resolve to `{ data, response }`. Every other outcome rejects with
+  `ApiError`: `status`, `code` (stable, e.g. `validation_error`, `not_authenticated`, `throttled`),
+  `message` (for people), `details`, `requestId`, plus helpers `fieldErrors`, `retryAfter` and
+  `isUnauthorized`. A response whose body is not the standard envelope (a proxy error page, or
+  `/readyz` 503) becomes `code: "http_error"` with the parsed body in `.body`. A failed fetch
+  (offline, CORS) is `code: "network_error"` with `status: 0`. Aborts still reject with `AbortError`.
+- **Regenerate** after any backend API change: `make api-client` from the repo root (schema and
+  types), or `npm run gen:api` here if only `docs/api/openapi.yaml` changed. It is offline and
+  deterministic (it never calls the server). `make api-check` fails when the committed schema or
+  `schema.ts` is stale; add it to the CI frontend job (workflows are issue #32).
+- **Tests**: Vitest with a mocked `fetch` passed to `createApiClient` (see `client.test.ts`); no
+  network, no backend.
 
 ## Tooling and testing
 
@@ -47,6 +95,7 @@ docker run --rm -p 3000:3000 abm-frontend
 | `npm run format`       | Prettier, write                                                                   |
 | `npm run format:check` | Prettier, check only (CI)                                                         |
 | `npm run typecheck`    | strict `tsc --noEmit`                                                             |
+| `npm run gen:api`      | Regenerate `src/lib/api/schema.ts` from `../docs/api/openapi.yaml` (offline)      |
 | `npm test`             | Vitest + React Testing Library (jsdom), single run                                |
 | `npm run test:watch`   | Vitest in watch mode                                                              |
 | `npm run test:e2e`     | Playwright (starts `npm run dev` itself unless `E2E_BASE_URL` is set)             |

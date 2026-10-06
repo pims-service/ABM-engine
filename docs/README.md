@@ -19,6 +19,11 @@ Project documentation lives here. If you are new, start with onboarding.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): ground rules, PR checklist, review
   expectations.
 
+## API
+
+- [API contract (OpenAPI)](api/README.md): the committed schema, how to
+  regenerate it and the TypeScript client, and what CI checks.
+
 ## Why things are the way they are
 
 - [Architecture decision records](adr/README.md): the index of ADRs, plus how
