@@ -11,6 +11,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
 from apps.campaigns.services import create_campaign
 from apps.companies.models import Company, CompanyResearch, DataSource, DataSourceType
+from apps.research.models import AIRecommendation, HumanDecision, ICPAssessment
 
 DEFAULT_PASSWORD = "test-password-123"
 
@@ -138,3 +139,57 @@ def make_data_source(**overrides: Any) -> DataSource:
 
 def make_research(**overrides: Any) -> CompanyResearch:
     return cast(CompanyResearch, CompanyResearchFactory(**overrides))
+
+
+# ------------------------------------------------------------------ assessments (issue #42)
+
+
+class ICPAssessmentFactory(factory.django.DjangoModelFactory):
+    """Straight through the model; the profile and research default to the company's own."""
+
+    class Meta:
+        model = ICPAssessment
+
+    company = factory.SubFactory(CompanyFactory)
+    campaign_profile = factory.LazyAttribute(lambda o: o.company.campaign.current_profile)
+    company_research = factory.LazyAttribute(lambda o: make_research(company=o.company))
+    fit = "strong"
+    reasons = factory.LazyFunction(lambda: ["Mid-size logistics company in KSA"])
+    concerns = factory.LazyFunction(list)
+    model_name = "test-model"
+    prompt_version = "icp-v1"
+    schema_version = "1"
+
+
+class AIRecommendationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = AIRecommendation
+
+    icp_assessment = factory.SubFactory(ICPAssessmentFactory)
+    company = factory.LazyAttribute(lambda o: o.icp_assessment.company)
+    status = "add"
+    explanation = "Strong fit, worth adding."
+    model_name = "test-model"
+    prompt_version = "rec-v1"
+    schema_version = "1"
+
+
+class HumanDecisionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = HumanDecision
+
+    company = factory.SubFactory(CompanyFactory)
+    decision = "add"
+    decided_by = factory.SubFactory(UserFactory)
+
+
+def make_icp_assessment(**overrides: Any) -> ICPAssessment:
+    return cast(ICPAssessment, ICPAssessmentFactory(**overrides))
+
+
+def make_ai_recommendation(**overrides: Any) -> AIRecommendation:
+    return cast(AIRecommendation, AIRecommendationFactory(**overrides))
+
+
+def make_human_decision(**overrides: Any) -> HumanDecision:
+    return cast(HumanDecision, HumanDecisionFactory(**overrides))
