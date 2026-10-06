@@ -7,8 +7,7 @@ When you are done, walk through the [smoke-test checklist](smoke-test.md) to
 confirm everything works.
 
 A note on honesty: the project is early (milestone M0). Some things you might
-expect are not built yet, such as the background worker and a dedicated health
-endpoint. Where that matters, this page says so and names the issue.
+expect are not built yet, such as the background worker. Where that matters, this page says so and names the issue.
 
 ## 1. Prerequisites
 

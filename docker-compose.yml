@@ -51,7 +51,9 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/', timeout=3)"]
+      # Liveness only (/healthz touches no dependency). /readyz also checks db, migrations and
+      # the worker, so it is for humans, CI and deployment gates rather than restart decisions.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -75,6 +77,13 @@ services:
     volumes:
       - ./backend:/app
       - api_venv:/app/.venv
+    healthcheck:
+      # Healthy while the cluster keeps publishing its heartbeat (same check as /readyz "worker").
+      test: ["CMD", "python", "manage.py", "worker_healthcheck"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy

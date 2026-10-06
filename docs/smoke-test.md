@@ -23,29 +23,38 @@ docker compose up --build -d
 - [ ] `docker compose logs api` shows migrations applying (`Applying ...`, or
       `No migrations to apply` on a later run) and then the Django dev server
       starting on `0.0.0.0:8000`, with no tracebacks.
-- [ ] **Pending (#25):** a `worker` service. It is commented out in
-      `docker-compose.yml` until Django-Q2 is added, so only three services are
-      expected today.
+- [ ] The `worker` service is listed too and becomes `healthy` (its healthcheck
+      is `python manage.py worker_healthcheck`, which needs a fresh Django-Q2
+      heartbeat).
 
 ## 2. API health
 
-There is no dedicated `/health` endpoint yet. Until one exists, the API root is
-what the Compose healthcheck uses, and it is the health signal for now.
+Two unauthenticated probe endpoints live at the root of the API (not under
+`/api/v1/`). The `api` Compose healthcheck uses `/healthz`.
 
-- [ ] `curl -i http://localhost:8000/api/v1/` returns `200 OK` with JSON like:
+- [ ] `curl -i http://localhost:8000/healthz` returns `200 OK` with
+      `{"status": "ok"}`. It touches no dependency, so it answers even when
+      the database is down.
+- [ ] `curl -i http://localhost:8000/readyz` returns `200 OK` with a per-check
+      breakdown:
 
   ```json
-  {"name": "ABM Engine API", "version": "v1", "links": {"self": "http://localhost:8000/api/v1/"}}
+  {"status": "ok", "checks": {"database": {"status": "ok"}, "migrations": {"status": "ok"},
+   "worker": {"status": "ok", "clusters": 1, "heartbeat_age_seconds": 0.5}}}
   ```
 
-  (the exact `version` value depends on the DRF versioning settings).
-- [ ] The database is reachable. This is implied by step 1, because `api` only
-      starts after `db` is healthy and migrations succeed. To check it
-      directly:
+- [ ] Stop the worker (`docker compose stop worker`), wait about 30 seconds and
+      repeat the `/readyz` call: it returns `503` with `"worker": {"status": "fail",
+      "detail": "no recent worker heartbeat"}` while `/healthz` stays `200`.
+      `docker compose start worker` brings `/readyz` back to `200`.
+- [ ] Stop the database (`docker compose stop db`): `/readyz` returns `503`
+      with `"database": {"status": "fail", ...}` (the other checks show
+      `skipped`), `/healthz` stays `200`. `docker compose start db` recovers it.
+- [ ] `curl -i http://localhost:8000/api/v1/` still returns `200 OK` with the API
+      name, version and a self link.
+- [ ] The database is reachable directly:
       `docker compose exec db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`
       prints `accepting connections`.
-- [ ] **Pending (#28):** a health endpoint that reports database and queue
-      status. When it lands, replace this section with a check of that endpoint.
 
 ## 3. Worker runs a task
 

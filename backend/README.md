@@ -22,7 +22,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
-config/urls.py                            /admin/ and /api/v1/
+config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
 apps/{accounts,campaigns,companies,research,integrations,ai,core}   empty apps (AppConfigs registered)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
@@ -175,6 +175,47 @@ database, not an untrusted network.
 
 Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
 AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
+
+## Health and readiness
+
+Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
+They need no authentication, are excluded from throttling, send `Cache-Control: no-store`, carry the
+usual `X-Request-ID`, and return fixed strings only (no exception text, SQL, hosts or settings; the
+details go to the log with the request ID).
+
+| Endpoint | Meaning | Touches |
+| --- | --- | --- |
+| `GET /healthz` | Liveness: the process serves requests. Always `200 {"status": "ok"}`. | nothing |
+| `GET /readyz` | Readiness: `200` when all checks pass, else `503` with the same JSON shape. | db, migrations, worker |
+
+```json
+{"status": "unavailable",
+ "checks": {"database": {"status": "ok"},
+            "migrations": {"status": "fail", "detail": "pending migrations",
+                           "pending": ["core.0004_x"], "pending_count": 1},
+            "worker": {"status": "fail", "detail": "no recent worker heartbeat"}}}
+```
+
+- `database`: `SELECT 1` with a 2 s statement timeout; connections time out after 3 s
+  (`connect_timeout` in `config/settings/base.py`). When it fails, `migrations` and `worker` are
+  reported as `skipped`.
+- `migrations`: every migration on disk is applied.
+- `worker`: a Django-Q2 cluster published a heartbeat (its cluster `Stat`) at most 30 s ago and is
+  not stopped. Override the window with the Django setting `HEALTH_WORKER_MAX_AGE_SECONDS`. A
+  running cluster refreshes the heartbeat about twice a second and it expires after 3 s, so a stopped
+  or crashed worker is detected within seconds. The heartbeat is stored in the `q_stats` cache, a
+  database cache (table `q_stats_cache`, created by migration `core.0003`) that the api and the
+  worker share; the default per-process cache could not carry it between processes.
+
+Use `/healthz` for liveness/restart decisions (a database outage should not restart the web
+process) and `/readyz` for CI, deployment gates and humans. Compose uses `/healthz` for `api` and
+`python manage.py worker_healthcheck` (same worker check, exits non-zero when stale) for `worker`.
+Behind a TLS-redirecting proxy in prod, both paths are exempt from `SECURE_SSL_REDIRECT`.
+
+```bash
+curl -i http://localhost:8000/healthz
+curl -i http://localhost:8000/readyz
+```
 
 ## Tests
 
