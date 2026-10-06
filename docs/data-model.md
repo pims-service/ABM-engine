@@ -308,7 +308,7 @@ an old assessment can show exactly which rules it used.
 | countries | text[] | ISO 3166-1 alpha-2, for example `SA` |
 | industries | text[] | |
 | company_size_min, company_size_max | int, null | employees, CHECK min <= max when both set |
-| business_models | text[] | allowed values `b2b`, `b2c` |
+| business_model | enum | `b2b`, `b2c`, `both` (as built in #39: one enum, as the issue and Brief §3 say, instead of an array) |
 | excluded_industries | text[] | |
 | excluded_company_types | text[] | for example `government` |
 | target_departments | text[] | |
@@ -804,7 +804,7 @@ Suggestions for the model issues. All names are examples.
 | Client | unique `lower(name)` where `archived_at IS NULL` |
 | Campaign | unique `(client_id, lower(name))` where `archived_at IS NULL` |
 | CampaignProfile | unique `(campaign_id, version)`; CHECK `company_size_min <= company_size_max` |
-| Campaign | `current_profile_id` must belong to the same campaign (service check plus test; FK is deferrable so campaign and v1 can be created together) |
+| Campaign | `current_profile_id` must belong to the same campaign (as built in #39: NOT NULL, deferred FK so campaign and v1 are inserted together with a pre-generated profile id; on PostgreSQL a deferred composite FK `(id, current_profile_id)` to `(campaign_id, id)` enforces the same-campaign rule in the database; SQLite relies on `create_profile_version`, `Campaign.clean` and tests) |
 | Company | unique `(campaign_id, domain)` where `domain IS NOT NULL` |
 | Company | non-unique index on `(campaign_id, lower(name))` to warn about likely duplicates with no domain |
 | Signal | `data_source_id` NOT NULL, `event_date` NOT NULL |
