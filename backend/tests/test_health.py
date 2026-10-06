@@ -167,15 +167,19 @@ def test_readyz_503_with_pending_migration(
 @pytest.mark.django_db
 def test_readyz_503_with_real_unapplied_migration(api_client: APIClient, worker_up: None) -> None:
     """Un-apply a real migration record so the genuine executor reports it pending."""
+    from django.db.migrations.loader import MigrationLoader
     from django.db.migrations.recorder import MigrationRecorder
 
-    MigrationRecorder(connection).record_unapplied("core", "0003_q_stats_cache_table")
+    # The newest core migration is the one a plan reports when un-applied (not an inner one).
+    leaf = MigrationLoader(connection).graph.leaf_nodes("core")[0][1]
+
+    MigrationRecorder(connection).record_unapplied("core", leaf)
     try:
         response = api_client.get("/readyz")
     finally:
-        MigrationRecorder(connection).record_applied("core", "0003_q_stats_cache_table")
+        MigrationRecorder(connection).record_applied("core", leaf)
     assert response.status_code == 503
-    assert response.json()["checks"]["migrations"]["pending"] == ["core.0003_q_stats_cache_table"]
+    assert response.json()["checks"]["migrations"]["pending"] == [f"core.{leaf}"]
 
 
 @pytest.mark.django_db

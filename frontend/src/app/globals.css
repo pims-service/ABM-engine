@@ -1,3 +1,226 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Design tokens. Components never use raw colours: they use the Tailwind
+ * utilities mapped to these variables in tailwind.config.ts.
+ *
+ * Themes: light is the default; dark applies via prefers-color-scheme unless
+ * <html data-theme="light"> forces light, and <html data-theme="dark"> forces
+ * dark. The two dark blocks below MUST stay identical (a unit test checks it,
+ * and also checks the contrast ratios documented in docs/ui-guidelines.md).
+ */
+:root {
+  color-scheme: light;
+
+  /* Surfaces, text, borders */
+  --surface: #f9fafb;
+  --surface-raised: #ffffff;
+  --surface-muted: #f3f4f6;
+  --line: #d1d5db;
+  --line-strong: #6b7280;
+  --fg: #111827;
+  --fg-muted: #4b5563;
+  --overlay: rgb(17 24 39 / 0.5);
+
+  /* Primary action and focus ring */
+  --accent: #111827;
+  --accent-hover: #374151;
+  --accent-fg: #ffffff;
+  --ring: #2563eb;
+
+  /* Status: success / warning / danger / info */
+  --success-bg: #dcfce7;
+  --success-fg: #166534;
+  --warning-bg: #fef3c7;
+  --warning-fg: #92400e;
+  --danger-bg: #fee2e2;
+  --danger-fg: #991b1b;
+  --danger-solid: #b91c1c;
+  --danger-solid-hover: #991b1b;
+  --danger-solid-fg: #ffffff;
+  --info-bg: #dbeafe;
+  --info-fg: #1e40af;
+
+  /* ICP fit */
+  --icp-strong-bg: #dcfce7;
+  --icp-strong-fg: #166534;
+  --icp-medium-bg: #fef3c7;
+  --icp-medium-fg: #92400e;
+  --icp-weak-bg: #e5e7eb;
+  --icp-weak-fg: #374151;
+
+  /* Trigger */
+  --trigger-yes-bg: #e0e7ff;
+  --trigger-yes-fg: #3730a3;
+  --trigger-no-bg: #ffffff;
+  --trigger-no-fg: #4b5563;
+
+  /* AI recommendation */
+  --ai-add-bg: #ccfbf1;
+  --ai-add-fg: #115e59;
+  --ai-hold-bg: #e0f2fe;
+  --ai-hold-fg: #075985;
+  --ai-skip-bg: #e5e7eb;
+  --ai-skip-fg: #374151;
+
+  /* Spacing (the Tailwind 4px scale is used for everything else) */
+  --space-gutter: 1rem;
+  --size-sidebar: 14rem;
+  --size-header: 3.5rem;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(17 24 39 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(17 24 39 / 0.12);
+
+  /* Typography */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.75rem;
+  --leading-xs: 1rem;
+  --text-sm: 0.875rem;
+  --leading-sm: 1.25rem;
+  --text-base: 1rem;
+  --leading-base: 1.5rem;
+  --text-lg: 1.125rem;
+  --leading-lg: 1.75rem;
+  --text-xl: 1.25rem;
+  --leading-xl: 1.75rem;
+  --text-2xl: 1.5rem;
+  --leading-2xl: 2rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --surface: #0b0f19;
+    --surface-raised: #111827;
+    --surface-muted: #1f2937;
+    --line: #374151;
+    --line-strong: #6b7280;
+    --fg: #f3f4f6;
+    --fg-muted: #9ca3af;
+    --overlay: rgb(0 0 0 / 0.6);
+
+    --accent: #f3f4f6;
+    --accent-hover: #d1d5db;
+    --accent-fg: #111827;
+    --ring: #60a5fa;
+
+    --success-bg: #052e16;
+    --success-fg: #86efac;
+    --warning-bg: #451a03;
+    --warning-fg: #fcd34d;
+    --danger-bg: #450a0a;
+    --danger-fg: #fca5a5;
+    --danger-solid: #dc2626;
+    --danger-solid-hover: #b91c1c;
+    --danger-solid-fg: #ffffff;
+    --info-bg: #172554;
+    --info-fg: #93c5fd;
+
+    --icp-strong-bg: #052e16;
+    --icp-strong-fg: #86efac;
+    --icp-medium-bg: #451a03;
+    --icp-medium-fg: #fcd34d;
+    --icp-weak-bg: #1f2937;
+    --icp-weak-fg: #d1d5db;
+
+    --trigger-yes-bg: #1e1b4b;
+    --trigger-yes-fg: #a5b4fc;
+    --trigger-no-bg: #111827;
+    --trigger-no-fg: #9ca3af;
+
+    --ai-add-bg: #042f2e;
+    --ai-add-fg: #5eead4;
+    --ai-hold-bg: #082f49;
+    --ai-hold-fg: #7dd3fc;
+    --ai-skip-bg: #1f2937;
+    --ai-skip-fg: #d1d5db;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #0b0f19;
+  --surface-raised: #111827;
+  --surface-muted: #1f2937;
+  --line: #374151;
+  --line-strong: #6b7280;
+  --fg: #f3f4f6;
+  --fg-muted: #9ca3af;
+  --overlay: rgb(0 0 0 / 0.6);
+
+  --accent: #f3f4f6;
+  --accent-hover: #d1d5db;
+  --accent-fg: #111827;
+  --ring: #60a5fa;
+
+  --success-bg: #052e16;
+  --success-fg: #86efac;
+  --warning-bg: #451a03;
+  --warning-fg: #fcd34d;
+  --danger-bg: #450a0a;
+  --danger-fg: #fca5a5;
+  --danger-solid: #dc2626;
+  --danger-solid-hover: #b91c1c;
+  --danger-solid-fg: #ffffff;
+  --info-bg: #172554;
+  --info-fg: #93c5fd;
+
+  --icp-strong-bg: #052e16;
+  --icp-strong-fg: #86efac;
+  --icp-medium-bg: #451a03;
+  --icp-medium-fg: #fcd34d;
+  --icp-weak-bg: #1f2937;
+  --icp-weak-fg: #d1d5db;
+
+  --trigger-yes-bg: #1e1b4b;
+  --trigger-yes-fg: #a5b4fc;
+  --trigger-no-bg: #111827;
+  --trigger-no-fg: #9ca3af;
+
+  --ai-add-bg: #042f2e;
+  --ai-add-fg: #5eead4;
+  --ai-hold-bg: #082f49;
+  --ai-hold-fg: #7dd3fc;
+  --ai-skip-bg: #1f2937;
+  --ai-skip-fg: #d1d5db;
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.5);
+}
+
+@layer base {
+  body {
+    @apply bg-surface font-sans text-base text-fg antialiased;
+  }
+
+  /* One visible, theme-aware focus style for every interactive element. */
+  :focus-visible {
+    @apply outline outline-2 outline-offset-2 outline-ring;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
