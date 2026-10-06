@@ -14,10 +14,14 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
 from apps.accounts.models import User
+from apps.core.audit import record_change, snapshot
+from apps.core.models import AuditAction
 from apps.core.roles import Level, Role
 from apps.core.tenancy import has_client_level
 
 from .models import Client, ClientMembership
+
+MEMBERSHIP_AUDIT_FIELDS = ("user", "role", "archived_at")
 
 
 def _check_actor(actor: User | None, client: Client) -> None:
@@ -33,9 +37,18 @@ def _check_role(role: str) -> str:
 
 @transaction.atomic
 def grant_membership(
-    client: Client, user: User, role: str, *, actor: User | None = None
+    client: Client,
+    user: User,
+    role: str,
+    *,
+    actor: User | None = None,
+    audit_actor: User | None = None,
 ) -> ClientMembership:
-    """Give ``user`` ``role`` in ``client``. Restores an archived row; updates an active one."""
+    """Give ``user`` ``role`` in ``client``. Restores an archived row; updates an active one.
+
+    The change is audited. ``audit_actor`` names who did it when no permission check applies
+    (the creator of a brand new client has no role in it yet); ``actor`` wins when given.
+    """
     _check_actor(actor, client)
     _check_role(role)
     if client.is_archived:
@@ -43,11 +56,22 @@ def grant_membership(
     membership = (
         ClientMembership.objects.select_for_update().filter(client=client, user=user).first()
     )
+    before = None if membership is None else snapshot(membership, MEMBERSHIP_AUDIT_FIELDS)
     if membership is None:
-        return ClientMembership.objects.create(client=client, user=user, role=role)
-    membership.role = role
-    membership.archived_at = None
-    membership.save(update_fields=["role", "archived_at", "updated_at"])
+        membership = ClientMembership.objects.create(client=client, user=user, role=role)
+    else:
+        membership.role = role
+        membership.archived_at = None
+        membership.save(update_fields=["role", "archived_at", "updated_at"])
+    record_change(
+        AuditAction.CREATE if before is None else AuditAction.UPDATE,
+        "client_membership",
+        membership.pk,
+        actor=actor or audit_actor,
+        client=client,
+        before=before,
+        after=snapshot(membership, MEMBERSHIP_AUDIT_FIELDS),
+    )
     return membership
 
 
