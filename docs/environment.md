@@ -45,7 +45,6 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `Q_TASK_TIMEOUT` | worker | no | `300` | `300` | root, backend | Hard per-task limit in seconds. Integer. |
 | `Q_TASK_RETRY` | worker | no | `360` | `360` | root, backend | Redelivery delay in seconds; must be greater than `Q_TASK_TIMEOUT`. |
 | `LOG_LEVEL` | api, worker | no | `INFO` | `INFO` | root, backend | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
-| `LOG_REDACT_FIELDS` | api, worker | no | empty | `YOUR_FIELD_NAME` | root, backend | Extra comma-separated field names to redact from logs, on top of the built-in password/token/key list. |
 | `DEV_SUPERUSER_USERNAME` | api | no | `admin` | `admin` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_EMAIL` | api | no | `admin@example.com` | `YOUR_EMAIL` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_PASSWORD` | api | no | none (no superuser is created) | `YOUR_DEV_ADMIN_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. |
@@ -91,7 +90,7 @@ logs. Compose has its own check for the three `POSTGRES_*` variables and `SECRET
    in an `.env.example` that looks like a real key.
 3. Secret values are read only from the environment. Do not hard-code them or add defaults for them.
 4. Never log secrets. Console logging scrubs the values of fields named like `password`, `token`,
-   `api_key`, `secret`, `authorization` and URL passwords (`backend/config/logging_filters.py`).
+   `api_key`, `secret`, `authorization` and URL passwords (`backend/apps/core/logging.py`).
    Scrubbing is a safety net; do not log credentials in the first place.
 5. Anything in a `NEXT_PUBLIC_*` variable is public. Keep secrets on the backend.
 6. Local development secrets protect only your own machine; use throwaway values and never reuse a

@@ -148,6 +148,7 @@ uv run python manage.py enqueue_smoke_task fail --wait 90     # retried, then en
    ```python
    from apps.core.jobs import tracked_job, update_progress
 
+
    @tracked_job(max_attempts=3, base_delay=5)
    def import_companies(job, campaign_id: int) -> dict[str, int]:
        update_progress(job, 50)
@@ -232,6 +233,63 @@ docker run --rm -p 8000:8000 \
 
 The image runs gunicorn with `config.settings.prod`. Compose wiring is handled in another issue.
 
+## Logging, request IDs and API errors
+
+Code lives in `apps/core/{logging,middleware,exceptions}.py`; the wiring is the `LOGGING`
+setting, `RequestIDMiddleware` (first in `MIDDLEWARE`) and DRF's `EXCEPTION_HANDLER`.
+
+**Structured logs.** Prod/base settings write one JSON object per line to stdout:
+`timestamp`, `level`, `logger`, `message`, `request_id` (null outside a request), `job_id` when
+set, any `extra={...}` fields, and `exception` for tracebacks. Dev uses a readable line,
+`... INFO [request-id] logger: message`. Set `LOG_JSON=true` in dev to preview the JSON format and
+`LOG_LEVEL` (default `INFO`) to change verbosity. Add context with `extra=`:
+`logger.info("scored", extra={"company_id": 7})`. Background jobs can tag their lines with
+`apps.core.logging.set_job_id(...)` / `reset_job_id(token)`.
+
+**Request IDs.** Every request gets an ID: a well-formed inbound `X-Request-ID` (1-128 chars of
+`A-Za-z0-9._-`) is reused, anything else is replaced by a generated UUID hex. It is returned in the
+`X-Request-ID` response header, stamped on every log record emitted during the request (through a
+contextvar, so no plumbing), included in error bodies, and available as `request.request_id`.
+One access line (`apps.core.access`: method, path, `status_code`, `duration_ms`) is logged per
+request, at WARNING for 4xx and ERROR for 5xx.
+
+**Error format.** Every API error has the same body:
+
+```json
+{"error": {"code": "validation_error", "message": "Request validation failed.",
+           "details": {"name": ["This field is required."]}, "request_id": "5f0c..."}}
+```
+
+| `code` | HTTP | `details` |
+| --- | --- | --- |
+| `validation_error` | 400 | field errors (`{"field": ["msg"]}`) or a list |
+| `parse_error` | 400 | null |
+| `not_authenticated` / `authentication_failed` | 401, or 403 for session auth | null |
+| `permission_denied` | 403 | null |
+| `not_found` | 404 (also unknown `/api/` routes) | null |
+| `method_not_allowed` | 405 | null |
+| `not_acceptable` / `unsupported_media_type` | 406 / 415 | null |
+| `throttled` | 429 | `{"retry_after": seconds}` (also the `Retry-After` header) |
+| `internal_error` | 500 | null |
+| any other `APIException` | its status | null (`code` is the exception's `default_code`) |
+
+`code` is stable and meant for client logic; `message` is for humans and may change. Raise normal
+DRF exceptions (`ValidationError`, `NotFound`, custom `APIException` subclasses with a
+`default_code`) and the handler does the rest. Unhandled exceptions return a generic message with
+`internal_error` and no traceback or exception text; the full traceback is logged (as
+`apps.core.exceptions`, with the request ID) so support can look it up from the ID the client
+quotes. With `DEBUG=True` the 500 `details` additionally names the exception class, never its
+message. Errors raised outside DRF views under `/api/` (unknown route, middleware failures) use
+the same envelope through `handler404`/`handler500`; other paths such as `/admin/` keep Django's
+pages.
+
+**Secrets are never logged.** A redaction filter runs on the log handler before formatting. It
+masks values of `password`, `token`, `secret`, `api_key`, `authorization`, `cookie`,
+`session`/`csrf` style keys (in `extra` fields and in `key=value` / `"key": "value"` text),
+`Bearer`/`Basic` credentials, JWTs and the password part of URLs such as `postgres://user:pw@host`,
+including inside tracebacks. It is a safety net, not a licence: do not log request bodies or
+headers wholesale.
+
 ## Environment variables
 
 Every variable is listed in [docs/environment.md](../docs/environment.md), the single source of
@@ -242,8 +300,8 @@ variables take precedence.
 On startup (every settings module except `config.settings.test`) `config/env_validation.py`
 checks the environment and refuses to start, naming every missing or invalid variable in one
 error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
-`ALLOWED_HOSTS` is required in production. Console logs pass through a filter that redacts
-password, token and API-key values (`config/logging_filters.py`).
+`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults
 
