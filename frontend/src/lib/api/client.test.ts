@@ -14,6 +14,9 @@ function envelope(code: string, message: string, details: unknown = null) {
   return { error: { code, message, details, request_id: "req-123" } };
 }
 
+// Obvious placeholder, not a credential.
+const PLACEHOLDER_PASSWORD = "YOUR_PASSWORD"; // pragma: allowlist secret
+
 function setup(respond: (request: Request) => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (request: Request) => respond(request));
   const getAccessToken = vi.fn<() => string | null>(() => "token-1");
@@ -65,7 +68,7 @@ describe("createApiClient", () => {
     getAccessToken.mockReturnValue(null);
 
     const { data } = await api.POST("/api/v1/auth/login/", {
-      body: { email: "user@example.com", password: "YOUR_PASSWORD" },
+      body: { email: "user@example.com", password: PLACEHOLDER_PASSWORD },
     });
 
     expect(data?.access).toBe("a");
@@ -74,7 +77,7 @@ describe("createApiClient", () => {
     expect(request.headers.get("Authorization")).toBeNull();
     expect(await request.json()).toEqual({
       email: "user@example.com",
-      password: "YOUR_PASSWORD",
+      password: PLACEHOLDER_PASSWORD,
     });
   });
 
