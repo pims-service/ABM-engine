@@ -45,6 +45,83 @@ A reachable PostgreSQL is needed for dev (`DATABASE_URL=postgres://USER:PASSWORD
 Generate a secret key with:
 `python -c "from django.core.management.utils import get_random_secret_key as g; print(g())"`.
 
+## Database, migrations and seed data
+
+PostgreSQL is the real database for dev and prod, configured only through `DATABASE_URL`
+(`postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@localhost:5432/YOUR_DB_NAME`). A fresh database
+needs one command: `uv run python manage.py migrate`. The `pgcrypto` and `pg_trgm` extensions
+are installed by `apps/core/migrations/0001_postgres_extensions.py`, never by hand (the
+database role needs permission to `CREATE EXTENSION`; both are "trusted" extensions on
+PostgreSQL 13+, so the database owner is enough). The migration is a no-op on SQLite.
+
+### Migration workflow
+
+1. **Change the model**, then generate: `uv run python manage.py makemigrations <app> -n <short_name>`.
+   Name migrations after what they do (`add_company_domain_index`), not `auto_2026...`.
+   Always pass the app label so unrelated drift is not swept in.
+2. **Review the generated file** before committing: check the operations, indexes and defaults,
+   and that data-heavy changes (adding a NOT NULL column, rewriting a column) will not lock a big
+   table. Split schema and data changes into separate migrations (`RunPython` needs a reverse
+   function, or `migrations.RunPython.noop` when reversal is safe to skip).
+3. **Apply locally**: `uv run python manage.py migrate`. Inspect SQL with
+   `uv run python manage.py sqlmigrate <app> <number>`.
+4. **Commit the migration with the model change** in the same PR.
+
+Rules:
+
+- **Never edit or delete a migration that has been merged/applied** anywhere (shared dev, staging,
+  prod, a teammate's machine). Fix mistakes with a new migration. Editing is only fine for a
+  migration that exists solely on your unmerged branch; in that case reset your local database
+  (below) rather than hand-patching it.
+- Migrations are immutable history, in line with the keep-history rule in ADR 0007: do not drop
+  or rewrite data columns casually; deprecate first, remove in a later release.
+- A test (`tests/test_migrations.py`) runs `makemigrations --check`, so CI fails if a model
+  change has no migration.
+- **Conflicts**: two branches adding a migration to the same app produce two leaf nodes and
+  Django refuses to migrate (`Conflicting migrations detected`). After rebasing on main, if
+  yours is the later one, re-generate it so it depends on main's latest (delete your unmerged
+  migration and run `makemigrations` again), or run `makemigrations --merge` when both are
+  independent and already merged. Then re-run the tests.
+
+### Seed data
+
+```bash
+export DEV_SUPERUSER_USERNAME=admin DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
+uv run python manage.py seed_dev_data
+```
+
+`seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
+to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
+from the `DEV_SUPERUSER_*` variables (username defaults to `admin`; without a password the
+step is skipped, so no account with a known password is ever created; an existing user is left
+untouched, including its password). There are no domain models yet, so there is no sample
+company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
+`apps/core/seeding.py` that is safe to run repeatedly (use `get_or_create` / `update_or_create`).
+
+### Reset the local database
+
+```bash
+uv run python manage.py reset_local_db        # asks you to type the database name
+uv run python manage.py reset_local_db --yes  # no prompt; add --no-migrate to skip migrating
+```
+
+Drops and recreates the database named in `DATABASE_URL`, then migrates. It destroys all data,
+so it only runs with `DEBUG` on, against PostgreSQL on a local host (`localhost`, `127.0.0.1`,
+`::1`). Follow with `seed_dev_data` to get back a usable dev environment.
+
+### Backup and restore (local dev)
+
+```bash
+pg_dump -Fc -h localhost -U YOUR_DB_USER -f abm_dev.dump YOUR_DB_NAME     # backup
+createdb -h localhost -U YOUR_DB_USER YOUR_DB_NAME_RESTORED
+pg_restore --no-owner -h localhost -U YOUR_DB_USER -d YOUR_DB_NAME_RESTORED abm_dev.dump
+```
+
+If PostgreSQL runs in Docker, prefix with `docker exec CONTAINER` (and write the dump to a path
+inside the container, then `docker cp` it out). Restore into an empty database; to restore over
+the dev database, run `reset_local_db --no-migrate` first. Dumps contain real data, so keep them
+out of git.
+
 ## Tests
 
 ```bash
@@ -82,6 +159,15 @@ Tests use `config.settings.test`, which needs no `.env` or database server: it s
 values and uses in-memory SQLite. SQLite is a fallback for the test settings only; dev and prod
 require a Postgres `DATABASE_URL`.
 
+To run the suite against real PostgreSQL (this also runs the extension tests, which are skipped
+on SQLite), point `DATABASE_URL` at a server whose role can create databases; pytest-django
+creates and drops a separate `test_<name>` database:
+
+```bash
+docker run -d --name abm-pg -e POSTGRES_PASSWORD=YOUR_DB_PASSWORD -p 55432:5432 postgres:16
+DATABASE_URL=postgres://postgres:YOUR_DB_PASSWORD@localhost:55432/abm_dev uv run pytest
+```
+
 ## Docker
 
 ```bash
@@ -103,6 +189,7 @@ real environment variables take precedence.
 | `DJANGO_SETTINGS_MODULE` | no | `manage.py` defaults to `config.settings.dev`; wsgi/asgi default to `config.settings.prod` |
 | `SECRET_KEY` | yes (dev/prod) | no default, startup fails if missing |
 | `DATABASE_URL` | yes (dev/prod) | Postgres URL |
+| `DEV_SUPERUSER_USERNAME`, `DEV_SUPERUSER_EMAIL`, `DEV_SUPERUSER_PASSWORD` | no | read by `seed_dev_data` only; no password means no superuser is created |
 | `DEBUG` | no | dev defaults to true, prod forced false |
 | `ALLOWED_HOSTS` | prod: yes | comma-separated |
 | `API_PAGE_SIZE` | no | default 25 |
