@@ -376,7 +376,7 @@ uv run mypy .                      # types: strict, django-stubs + djangorestfra
 
 Run all gates in one go: `uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.
 
-Makefile targets, container test runs, pre-commit hooks and CI are tracked in other issues.
+Makefile targets and container test runs are tracked in other issues. CI runs all of the above; see [docs/ci.md](../docs/ci.md).
 
 ## Test settings
 
