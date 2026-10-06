@@ -72,6 +72,21 @@ TEMPLATES = [
 
 # PostgreSQL via DATABASE_URL, e.g. postgres://USER:PASSWORD@HOST:5432/DBNAME
 DATABASES = {"default": env.db("DATABASE_URL")}
+if DATABASES["default"]["ENGINE"].endswith("postgresql"):
+    # Fail fast instead of hanging when the database host is unreachable (health checks, workers).
+    DATABASES["default"].setdefault("OPTIONS", {}).setdefault("connect_timeout", 3)
+
+# Django-Q2 publishes worker heartbeats (cluster stats) to a cache, and /readyz reads them from
+# the web process. The default cache is per-process, so use a database cache shared by api and
+# worker. Its table is created by apps/core/migrations/0003_q_stats_cache_table.py.
+Q_STATS_CACHE_TABLE = "q_stats_cache"
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "q_stats": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": Q_STATS_CACHE_TABLE,
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -125,6 +140,7 @@ LOGGING = build_logging_config(json_logs=env.bool("LOG_JSON", default=True), lev
 Q_CLUSTER = {
     "name": "abm",
     "orm": "default",
+    "cache": "q_stats",  # cluster heartbeats, read by /readyz (apps/core/health.py)
     "workers": env.int("Q_WORKERS", default=2),
     "timeout": env.int("Q_TASK_TIMEOUT", default=300),  # hard limit per task, seconds
     "retry": env.int("Q_TASK_RETRY", default=360),  # must exceed timeout
