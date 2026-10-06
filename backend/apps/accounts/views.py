@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from django.conf import settings
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
@@ -16,9 +17,16 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from apps.core.schema import error_responses
+
 from .cookies import clear_refresh_cookie, cookie_enabled, deliver_tokens
 from .models import User
-from .serializers import RefreshSerializer, UserSerializer
+from .serializers import (
+    RefreshSerializer,
+    RefreshTokenSerializer,
+    TokenResponseSerializer,
+    UserSerializer,
+)
 from .throttles import LoginEmailThrottle, LoginIPThrottle
 
 
@@ -30,6 +38,13 @@ class LoginView(TokenObtainPairView):
 
     throttle_classes = (LoginIPThrottle, LoginEmailThrottle)
 
+    @extend_schema(
+        tags=["auth"],
+        operation_id="auth_login",
+        summary="Log in",
+        auth=[{}],  # type: ignore[list-item]  # public: `security: [{}]`, the body is the credential
+        responses={200: TokenResponseSerializer, **error_responses(400, 401, 429, 500)},
+    )
     def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return deliver_tokens(super().post(request, *args, **kwargs))
 
@@ -56,6 +71,13 @@ class _RefreshTokenView(APIView):
 class RefreshView(_RefreshTokenView):
     """Rotate: returns a new access token and a new refresh token, blacklisting the old one."""
 
+    @extend_schema(
+        tags=["auth"],
+        operation_id="auth_refresh",
+        summary="Refresh the token pair",
+        request=RefreshTokenSerializer,
+        responses={200: TokenResponseSerializer, **error_responses(400, 401, 429, 500)},
+    )
     def post(self, request: Request) -> Response:
         serializer = RefreshSerializer(data={"refresh": self.get_refresh_token(request)})
         try:
@@ -74,6 +96,13 @@ class RefreshView(_RefreshTokenView):
 class LogoutView(_RefreshTokenView):
     """Blacklist the refresh token (and clear the cookie). Access tokens expire on their own."""
 
+    @extend_schema(
+        tags=["auth"],
+        operation_id="auth_logout",
+        summary="Log out (blacklist the refresh token)",
+        request=RefreshTokenSerializer,
+        responses={204: None, **error_responses(400, 401, 429, 500)},
+    )
     def post(self, request: Request) -> Response:
         token = self.get_refresh_token(request)
         if not token:
@@ -94,5 +123,11 @@ class LogoutView(_RefreshTokenView):
 class MeView(APIView):
     """The authenticated user."""
 
+    @extend_schema(
+        tags=["auth"],
+        operation_id="auth_me",
+        summary="Current user",
+        responses={200: UserSerializer, **error_responses(401, 429, 500)},
+    )
     def get(self, request: Request) -> Response:
         return Response(UserSerializer(cast(User, request.user)).data)

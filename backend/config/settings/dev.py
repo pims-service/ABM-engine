@@ -17,4 +17,5 @@ REST_FRAMEWORK = {
 }
 # Human-readable logs locally; set LOG_JSON=true to preview the production format.
 LOGGING = build_logging_config(json_logs=env.bool("LOG_JSON", default=False), level=LOG_LEVEL)
+API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=True)  # Swagger UI / ReDoc / schema
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

@@ -257,10 +257,12 @@ audited.
 | --- | --- | --- |
 | user_id | FK User | |
 | client_id | FK Client | |
-| role | enum | `manager`, `reviewer`, `viewer` (and `admin` if per-client admin is wanted, see open question 1) |
-| created_at | timestamptz | |
+| role | enum | `admin`, `manager`, `reviewer`, `viewer` (decided in #46) |
+| archived_at | timestamptz, null | revoking archives the row, granting again restores it |
+| created_at, updated_at | timestamptz | |
 
-Unique on (user_id, client_id).
+Unique on (user_id, client_id). The global admin flag is `User.is_superuser`, the client
+role lives only here. See [permissions.md](permissions.md).
 
 ### Client (issue #39)
 

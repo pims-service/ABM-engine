@@ -1,0 +1,473 @@
+openapi: 3.0.3
+info:
+  title: ABM Engine API
+  version: 0.1.0
+  description: 'Backend API of the ABM Engine. Authenticate with `POST /api/v1/auth/login/`
+    and send `Authorization: Bearer <access>`. Every error uses the `ErrorEnvelope`
+    body.'
+paths:
+  /api/v1/:
+    get:
+      operationId: api_root
+      description: Public entry point of the v1 API.
+      summary: API name, version and self link
+      tags:
+      - meta
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiRoot'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/auth/login/:
+    post:
+      operationId: auth_login
+      description: |-
+        Exchange email and password for an access and refresh token.
+
+        Every failure (unknown email, wrong password, inactive user) returns the same generic 401.
+      summary: Log in
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPairRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/auth/logout/:
+    post:
+      operationId: auth_logout
+      description: Blacklist the refresh token (and clear the cookie). Access tokens
+        expire on their own.
+      summary: Log out (blacklist the refresh token)
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      security:
+      - {}
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/auth/me/:
+    get:
+      operationId: auth_me
+      description: The authenticated user.
+      summary: Current user
+      tags:
+      - auth
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/auth/refresh/:
+    post:
+      operationId: auth_refresh
+      description: 'Rotate: returns a new access token and a new refresh token, blacklisting
+        the old one.'
+      summary: Refresh the token pair
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /healthz:
+    get:
+      operationId: health_live
+      description: 'Liveness: the process is serving requests. Touches no dependency.'
+      summary: Liveness probe
+      tags:
+      - health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+          description: ''
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /readyz:
+    get:
+      operationId: health_ready
+      description: 'Readiness: 200 when every check passes, otherwise 503 with the
+        same JSON body.'
+      summary: Readiness probe
+      tags:
+      - health
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+          description: At least one check failed.
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+components:
+  schemas:
+    ApiLinks:
+      type: object
+      properties:
+        self:
+          type: string
+          format: uri
+          description: Absolute URL of this endpoint.
+      required:
+      - self
+    ApiRoot:
+      type: object
+      description: Body of `GET /api/v1/` (documentation only).
+      properties:
+        name:
+          type: string
+        version:
+          type: string
+        links:
+          $ref: '#/components/schemas/ApiLinks'
+      required:
+      - links
+      - name
+      - version
+    Check:
+      type: object
+      description: One readiness check; the extra fields depend on the check (documentation
+        only).
+      properties:
+        status:
+          $ref: '#/components/schemas/CheckStatusEnum'
+        detail:
+          type: string
+          description: Fixed explanation of a failure.
+        pending:
+          type: array
+          items:
+            type: string
+          description: 'migrations: up to 10 unapplied migrations.'
+        pending_count:
+          type: integer
+          description: 'migrations: total pending.'
+        clusters:
+          type: integer
+          description: 'worker: live clusters.'
+        heartbeat_age_seconds:
+          type: number
+          format: double
+          description: 'worker: age of the newest heartbeat.'
+      required:
+      - status
+    CheckStatusEnum:
+      enum:
+      - ok
+      - fail
+      - skipped
+      type: string
+      description: |-
+        * `ok` - ok
+        * `fail` - fail
+        * `skipped` - skipped
+    ErrorBody:
+      type: object
+      description: The `error` object of the standard envelope (apps/core/exceptions.py).
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code, e.g. `validation_error`.
+        message:
+          type: string
+          description: Human-readable summary; may change, do not parse.
+        details:
+          nullable: true
+          description: Field errors for `validation_error`, `{retry_after}` for `throttled`,
+            else null.
+        request_id:
+          type: string
+          nullable: true
+          description: Value of the `X-Request-ID` response header.
+      required:
+      - code
+      - details
+      - message
+      - request_id
+    ErrorEnvelope:
+      type: object
+      description: Every error response of the API has this body.
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+      required:
+      - error
+    Health:
+      type: object
+      description: Body of `/healthz` (documentation only).
+      properties:
+        status:
+          $ref: '#/components/schemas/HealthStatusEnum'
+      required:
+      - status
+    HealthStatusEnum:
+      enum:
+      - ok
+      type: string
+      description: '* `ok` - ok'
+    Readiness:
+      type: object
+      description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
+      properties:
+        status:
+          $ref: '#/components/schemas/ReadinessStatusEnum'
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Check'
+          description: 'Keyed by check: database, migrations, worker.'
+      required:
+      - checks
+      - status
+    ReadinessStatusEnum:
+      enum:
+      - ok
+      - unavailable
+      type: string
+      description: |-
+        * `ok` - ok
+        * `unavailable` - unavailable
+    RefreshTokenRequest:
+      type: object
+      description: Body of `refresh/` and `logout/` (documentation only; the views
+        read the raw body).
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+          description: Refresh token. May be omitted when the refresh cookie is enabled.
+    TokenObtainPairRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - password
+    TokenResponse:
+      type: object
+      description: Tokens returned by `login/` and `refresh/` (documentation only).
+      properties:
+        access:
+          type: string
+          description: Short-lived JWT access token (Bearer).
+        refresh:
+          type: string
+          description: Refresh token. Omitted when the refresh cookie is enabled (it
+            is then delivered as an httpOnly cookie).
+      required:
+      - access
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          title: Email address
+        name:
+          type: string
+          readOnly: true
+        is_staff:
+          type: boolean
+          readOnly: true
+          description: Can sign in to the Django admin.
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - email
+      - id
+      - is_staff
+      - last_login
+      - name
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: auth
+  description: JWT login, refresh, logout and the current user.
+- name: health
+  description: Liveness and readiness probes (no auth).
+- name: meta
+  description: API metadata.

@@ -19,6 +19,11 @@ Project documentation lives here. If you are new, start with onboarding.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): ground rules, PR checklist, review
   expectations.
 
+## API
+
+- [API contract (OpenAPI)](api/README.md): the committed schema, how to
+  regenerate it and the TypeScript client, and what CI checks.
+
 ## Why things are the way they are
 
 - [Architecture decision records](adr/README.md): the index of ADRs, plus how
@@ -28,6 +33,9 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Data model and entity relationships](data-model.md): every core object with
   fields and enums, the ER diagram, tenancy and history rules, indexes and
   open questions.
+- [Roles and permissions](permissions.md): the role matrix (viewer, reviewer,
+  manager, admin, global admin), per-client isolation (404, not 403) and the
+  guide every new endpoint must follow.
 
 ## Reference for each part of the repo
 
