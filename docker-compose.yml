@@ -38,7 +38,6 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Read by `manage.py seed_dev_data` only; no password means no superuser.
-      DEV_SUPERUSER_USERNAME: ${DEV_SUPERUSER_USERNAME:-admin}
       DEV_SUPERUSER_EMAIL: ${DEV_SUPERUSER_EMAIL:-admin@example.com}
       DEV_SUPERUSER_PASSWORD: ${DEV_SUPERUSER_PASSWORD:-}
     ports:

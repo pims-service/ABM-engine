@@ -1,6 +1,7 @@
 """Base settings shared by every environment. All config comes from environment variables."""
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -35,6 +36,7 @@ DJANGO_APPS = [
 ]
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
     "django_q",
 ]
 LOCAL_APPS = [
@@ -97,9 +99,14 @@ CACHES = {
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+AUTH_USER_MODEL = "accounts.User"  # must be set before the first migration of any dependent app
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 12},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
@@ -119,8 +126,8 @@ REST_FRAMEWORK = {
     "ALLOWED_VERSIONS": ["v1"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
-    # JWT auth is added in a separate issue; session auth is a placeholder.
-    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    # JWT only (no session auth: the admin uses Django's own session login, not DRF).
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
     "PAGE_SIZE": env.int("API_PAGE_SIZE", default=25),
@@ -132,6 +139,9 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": env("API_THROTTLE_ANON", default="100/hour"),
         "user": env("API_THROTTLE_USER", default="1000/hour"),
+        # Login attempts (see apps/accounts/throttles.py): per client IP and per email.
+        "login": env("API_THROTTLE_LOGIN", default="20/min"),
+        "login_email": env("API_THROTTLE_LOGIN_EMAIL", default="5/min"),
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
 }
@@ -158,3 +168,21 @@ Q_CLUSTER = {
     "save_limit": 500,  # finished task rows kept for the admin; older ones are pruned
     "catch_up": False,  # do not replay missed schedules after downtime
 }
+
+# Authentication (ADR 0006): SimpleJWT. Short-lived access token; refresh token rotates on every
+# use and the old one is blacklisted, so a reused (stolen) refresh token is rejected.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_LIFETIME_MINUTES", default=15)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_LIFETIME_DAYS", default=7)),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+# Optional: deliver the refresh token as an httpOnly cookie instead of in the JSON body, for the
+# Next.js BFF (apps/accounts/cookies.py). The body-based flow keeps working for API clients.
+AUTH_REFRESH_COOKIE_ENABLED = env.bool("AUTH_REFRESH_COOKIE_ENABLED", default=False)
+AUTH_REFRESH_COOKIE_NAME = env("AUTH_REFRESH_COOKIE_NAME", default="abm_refresh")
+AUTH_REFRESH_COOKIE_PATH = "/api/v1/auth/"  # only sent to the auth endpoints
+AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=True)
+AUTH_REFRESH_COOKIE_SAMESITE = env("AUTH_REFRESH_COOKIE_SAMESITE", default="Lax")

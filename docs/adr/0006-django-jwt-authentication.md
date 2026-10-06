@@ -30,6 +30,25 @@ We will authenticate with Django and `djangorestframework-simplejwt`.
 Exact lifetimes, cookie flags and endpoints will be set during implementation
 and documented with that work.
 
+## Implementation note (issue #45)
+
+Implemented in `apps/accounts` with `djangorestframework-simplejwt` 5.5; settings in
+`config/settings/base.py`, usage in `backend/README.md`.
+
+- Custom user model `accounts.User`: email login (stored lower-case), UUID primary key, `name`,
+  `is_active`, timestamps. Admins create users; there is no self-signup.
+- Access token 15 minutes; refresh token 7 days. Refresh tokens rotate on every use and the old
+  one is blacklisted (`ROTATE_REFRESH_TOKENS`, `BLACKLIST_AFTER_ROTATION`), using the
+  `token_blacklist` tables; HS256 signed with `SECRET_KEY`.
+- Endpoints under `/api/v1/auth/`: `login/`, `refresh/`, `logout/` (blacklists the refresh token),
+  `me/`. Change password and password reset are not part of this first cut.
+- Login is throttled per client IP (20/min) and per email (5/min); failures return one generic 401.
+  Passwords need 12+ characters and pass Django's common/numeric/similarity validators.
+- The API authenticates with JWT only; session auth stays for the Django admin.
+- The httpOnly refresh cookie is an opt-in setting (`AUTH_REFRESH_COOKIE_ENABLED`, `Secure`,
+  `SameSite=Lax`, path `/api/v1/auth/`) for the Next.js BFF. By default (and always as an
+  alternative) the refresh token travels in the JSON body for API clients.
+
 ## Alternatives considered
 
 - **Supabase Auth**: less code to write at first, with social login and
