@@ -35,7 +35,9 @@ check is not installed.
 Never commit real API keys, tokens, usernames, passwords or database
 credentials. Use placeholders such as `YOUR_API_KEY` in code, docs and
 examples, and keep real values in untracked `.env` files. If a false positive
-is flagged, add an inline `# pragma: allowlist secret` comment.
+is flagged, add an inline `# pragma: allowlist secret` comment. The full policy
+(where real values live, rotation, CI) and the list of every variable are in
+[environment.md](environment.md).
 
 ## Commit messages (Conventional Commits)
 

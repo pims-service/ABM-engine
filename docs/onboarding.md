@@ -50,7 +50,9 @@ The other values in `.env.example` have working defaults. Leave them unless a
 port clashes (see [Troubleshooting](#ports-already-in-use)).
 
 `.env` is git-ignored. Never commit real credentials; see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.md](../CONTRIBUTING.md). Every variable, and the secrets policy, is in
+[environment.md](environment.md). The API refuses to start while `SECRET_KEY` is still the
+`YOUR_SECRET_KEY` placeholder, and its error names each missing variable.
 
 ## 3. Start the stack
 
