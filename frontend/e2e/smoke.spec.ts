@@ -23,8 +23,12 @@ test("skip link moves focus to the main content", async ({ page }) => {
   const skip = page.getByRole("link", { name: "Skip to main content" });
   await expect(skip).toBeFocused();
   await expect(skip).toBeVisible();
-  await page.keyboard.press("Enter");
-  await expect(page.locator("#main-content")).toBeFocused();
+  // Retry: the click handler only exists once React has hydrated.
+  await expect(async () => {
+    await skip.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#main-content")).toBeFocused({ timeout: 1000 });
+  }).toPass();
 });
 
 test("theme toggle switches to dark and survives a reload", async ({

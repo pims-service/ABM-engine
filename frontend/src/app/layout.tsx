@@ -3,7 +3,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { AppShell, MAIN_CONTENT_ID } from "@/components/AppShell";
+import { AppShell } from "@/components/AppShell";
+import { SkipLink } from "@/components/SkipLink";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -19,12 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
-        <a
-          href={`#${MAIN_CONTENT_ID}`}
-          className="sr-only z-50 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg focus:not-sr-only focus:fixed focus:left-2 focus:top-2"
-        >
-          Skip to main content
-        </a>
+        <SkipLink />
         <AppShell>{children}</AppShell>
       </body>
     </html>

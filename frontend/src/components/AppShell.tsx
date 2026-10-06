@@ -4,8 +4,7 @@ import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
 
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
-
-export const MAIN_CONTENT_ID = "main-content";
+import { MAIN_CONTENT_ID } from "@/lib/ids";
 
 /** Sidebar + header + content. Owns the small-screen drawer state. */
 export function AppShell({ children }: { children: ReactNode }) {
