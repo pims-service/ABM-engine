@@ -135,3 +135,29 @@ Q_CLUSTER = {
     "save_limit": 500,  # finished task rows kept for the admin; older ones are pruned
     "catch_up": False,  # do not replay missed schedules after downtime
 }
+
+# Logging: console only; every record passes through the secret scrubber
+# (config.logging_filters). LOG_LEVEL sets the root level (default INFO);
+# LOG_REDACT_FIELDS adds comma-separated field names to redact.
+LOG_LEVEL = env("LOG_LEVEL", default="INFO").upper()
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "scrub_secrets": {
+            "()": "config.logging_filters.SecretScrubbingFilter",
+            "extra_fields": env.list("LOG_REDACT_FIELDS", default=[]),
+        },
+    },
+    "formatters": {
+        "plain": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "plain",
+            "filters": ["scrub_secrets"],
+        },
+    },
+    "root": {"handlers": ["console"], "level": LOG_LEVEL},
+}
