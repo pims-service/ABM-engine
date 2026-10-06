@@ -1,0 +1,72 @@
+# Pre-commit configuration (issue #33).
+# Install:  pre-commit install --hook-type pre-commit --hook-type commit-msg
+# Run all:  pre-commit run --all-files
+# See docs/conventions.md for details.
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  # ---- Generic hygiene -------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-yaml
+      - id: check-json
+      - id: mixed-line-ending
+
+  # ---- Secret scanning (placeholders like YOUR_API_KEY only) ------------
+  # detect-secrets is pure Python, so it needs no Go toolchain (gitleaks'
+  # pre-commit hook builds from source and requires Go).
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+
+  # ---- Backend (Python): activates for files under backend/ -------------
+  # Ruff reads its settings from backend/pyproject.toml once issue #30 adds it.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ---- Frontend (JS/TS): local hooks, no-ops until issue #31 lands ------
+  # These run frontend/node_modules/.bin/<tool> and succeed with a message if
+  # it does not exist yet (before #31 / `npm install`). A python wrapper is
+  # used instead of bash so it behaves the same on Windows, macOS and Linux.
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (frontend)
+        language: python
+        files: ^frontend/.*\.(js|jsx|ts|tsx|json|css|md|ya?ml)$
+        entry: >-
+          python -c "import os,subprocess,sys;t=sys.argv[1];p=os.path.join('frontend','node_modules','.bin',t+('.cmd' if os.name=='nt' else ''));os.path.exists(p) or (print(t+' not installed in frontend/ (see #31): skipped'),sys.exit(0));sys.exit(subprocess.call([p]+sys.argv[2:]))"
+          prettier --write --ignore-unknown
+      - id: eslint
+        name: eslint (frontend)
+        language: python
+        files: ^frontend/.*\.(js|jsx|ts|tsx|mjs|cjs)$
+        entry: >-
+          python -c "import os,subprocess,sys;t=sys.argv[1];p=os.path.join('frontend','node_modules','.bin',t+('.cmd' if os.name=='nt' else ''));os.path.exists(p) or (print(t+' not installed in frontend/ (see #31): skipped'),sys.exit(0));sys.exit(subprocess.call([p]+sys.argv[2:]))"
+          eslint --fix
+
+  # ---- Conventional Commits (commit-msg stage) ---------------------------
+  - repo: local
+    hooks:
+      - id: conventional-commit
+        name: conventional commit message
+        language: pygrep
+        stages: [commit-msg]
+        args: [--multiline, --negate]
+        # Fails unless the message starts with an allowed type, optional
+        # (scope), optional "!", then ": " and a description. Merge, revert,
+        # fixup! and squash! commits are allowed through.
+        entry: '\A(?:(?:feat|fix|docs|chore|test|refactor|ci)(?:\([a-z0-9][a-z0-9._/-]*\))?!?: \S|Merge |Revert |fixup! |squash! )'
