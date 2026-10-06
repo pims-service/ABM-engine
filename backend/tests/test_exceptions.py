@@ -65,8 +65,9 @@ def test_not_authenticated_basic(api_client: APIClient):
 
 
 def test_not_authenticated_with_project_defaults(api_client: APIClient):
-    response = api_client.get("/api/v1/session-auth/")
-    assert_envelope(response, 403, "not_authenticated")
+    response = api_client.get("/api/v1/default-auth/")
+    assert_envelope(response, 401, "not_authenticated")
+    assert response["WWW-Authenticate"].startswith("Bearer")
 
 
 def test_permission_denied(api_client: APIClient):

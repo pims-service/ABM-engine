@@ -2,11 +2,23 @@
 
 from __future__ import annotations
 
-import pytest
-from django.contrib.auth.models import User
-from rest_framework.test import APIClient
+from collections.abc import Iterator
 
+import pytest
+from django.core.cache import cache
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from apps.accounts.models import User
 from tests.factories import make_user
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> Iterator[None]:
+    """Throttle counters live in the cache; never let them leak between tests."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -17,16 +29,12 @@ def api_client() -> APIClient:
 
 @pytest.fixture
 def user(db: None) -> User:
-    """A persisted user. Placeholder until the custom user model lands in `accounts`."""
+    """A persisted, active user (password: `tests.factories.DEFAULT_PASSWORD`)."""
     return make_user()
 
 
 @pytest.fixture
 def auth_client(api_client: APIClient, user: User) -> APIClient:
-    """API client authenticated as `user`.
-
-    Uses `force_authenticate`, which bypasses the authentication classes. Swap this for a
-    real JWT header once SimpleJWT is wired up; tests depending on this fixture won't change.
-    """
-    api_client.force_authenticate(user=user)
+    """API client sending a real JWT access token for `user`."""
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
     return api_client

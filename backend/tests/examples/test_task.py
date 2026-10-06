@@ -15,8 +15,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from django.contrib.auth.models import User
 
+from apps.accounts.models import User
 from apps.core.jobs import enqueue, tracked_job
 from apps.core.models import BackgroundJob, JobStatus
 from tests.factories import make_user
@@ -24,22 +24,22 @@ from tests.factories import make_user
 pytestmark = pytest.mark.django_db
 
 
-def deactivate_stale_users(usernames: list[str]) -> int:
-    """Plain business function: deactivate users by username, return how many changed."""
-    return User.objects.filter(username__in=usernames, is_active=True).update(is_active=False)
+def deactivate_stale_users(emails: list[str]) -> int:
+    """Plain business function: deactivate users by email, return how many changed."""
+    return User.objects.filter(email__in=emails, is_active=True).update(is_active=False)
 
 
 @tracked_job(max_attempts=1)
-def deactivate_users_task(job: BackgroundJob, usernames: list[str]) -> dict[str, Any]:
+def deactivate_users_task(job: BackgroundJob, emails: list[str]) -> dict[str, Any]:
     """Thin task wrapper: idempotent, JSON in, JSON out."""
-    return {"deactivated": deactivate_stale_users(usernames)}
+    return {"deactivated": deactivate_stale_users(emails)}
 
 
 def test_function_updates_only_requested_rows():
-    stale = make_user(username="stale")
-    keep = make_user(username="keep")
+    stale = make_user(email="stale@example.com")
+    keep = make_user(email="keep@example.com")
 
-    assert deactivate_stale_users(["stale"]) == 1
+    assert deactivate_stale_users(["stale@example.com"]) == 1
 
     stale.refresh_from_db()
     keep.refresh_from_db()
@@ -48,16 +48,16 @@ def test_function_updates_only_requested_rows():
 
 
 def test_function_is_idempotent():
-    make_user(username="stale")
-    assert deactivate_stale_users(["stale"]) == 1
-    assert deactivate_stale_users(["stale"]) == 0
+    make_user(email="stale@example.com")
+    assert deactivate_stale_users(["stale@example.com"]) == 1
+    assert deactivate_stale_users(["stale@example.com"]) == 0
 
 
 def test_enqueued_task_runs_and_records_success():
-    make_user(username="stale")
+    make_user(email="stale@example.com")
 
-    job = enqueue(deactivate_users_task, usernames=["stale"])
+    job = enqueue(deactivate_users_task, emails=["stale@example.com"])
 
     job.refresh_from_db()
     assert job.status == JobStatus.SUCCEEDED
-    assert User.objects.get(username="stale").is_active is False
+    assert User.objects.get(email="stale@example.com").is_active is False
