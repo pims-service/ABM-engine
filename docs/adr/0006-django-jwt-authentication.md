@@ -49,6 +49,15 @@ Implemented in `apps/accounts` with `djangorestframework-simplejwt` 5.5; setting
   `SameSite=Lax`, path `/api/v1/auth/`) for the Next.js BFF. By default (and always as an
   alternative) the refresh token travels in the JSON body for API clients.
 
+## Implementation note (issue #51, frontend)
+
+The Next.js app implements the BFF as route handlers under `/api/auth/*` (`frontend/README.md`,
+"Authentication"). They call the API server side with the refresh token in the JSON body, so the
+backend runs with its default `AUTH_REFRESH_COOKIE_ENABLED=false`; the BFF itself stores the refresh
+token in its own httpOnly, `SameSite=Lax` cookie (`Secure` in production) and returns only the access
+token to the browser, which keeps it in memory. `AUTH_REFRESH_COOKIE_ENABLED=true` remains the option
+for a browser calling the API directly; the BFF reports `bff_misconfigured` if it meets that mode.
+
 ## Alternatives considered
 
 - **Supabase Auth**: less code to write at first, with social login and
