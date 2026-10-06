@@ -560,7 +560,8 @@ paths:
     post:
       operationId: clients_archive
       description: 'Soft delete: the client leaves default lists, all its data is
-        kept. Idempotent. Campaigns are not changed. Needs the `MANAGE` level: admin.
+        kept. Idempotent. Campaigns are not changed. 409 `client_has_active_jobs`
+        while the client has queued or running jobs. Needs the `MANAGE` level: admin.
         Others get 403; clients you are not a member of give 404.'
       summary: Archive a client
       parameters:
@@ -601,6 +602,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not found (`not_found`).
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Conflict with the current state (e.g. `client_has_active_jobs`).
         '429':
           content:
             application/json:

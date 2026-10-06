@@ -1,27 +1,44 @@
-"""Write path for campaigns and their ICP rules.
+"""Write path for clients, campaigns and their ICP rules.
 
-``create_campaign`` and ``create_profile_version`` are the only supported ways to create a
-campaign or change its rules. Profiles are immutable, so "editing" always means a new version.
+These functions are the only supported way to create, change, archive or restore a client or
+campaign, and each one writes an audit entry (``apps.core.audit``, issue #44) in the same
+transaction, naming the acting user. Audit is an explicit service call, not a signal: signals
+cannot know the actor, miss bulk ``update()``s and fire for fixtures and migrations too.
+Profiles are immutable, so "editing" rules always means a new version.
 Permission checks belong to the API layer (issue #46); these functions only enforce data rules.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Max
 from django.db.models.functions import Lower
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.core.audit import record_change, snapshot
+from apps.core.models import AuditAction, Job
 from apps.core.roles import Role
 
 from .memberships import grant_membership
 from .models import Campaign, CampaignProfile, Client
+
+CLIENT_AUDIT_FIELDS = ("name", "notes", "status", "archived_at")
+CAMPAIGN_AUDIT_FIELDS = ("name", "status", "archived_at", "current_profile")
+CLIENT_EDITABLE_FIELDS = ("name", "notes")
+CAMPAIGN_EDITABLE_FIELDS = ("name",)
+
+CLIENT_NAME_TAKEN = "An active client with that name already exists."
+
+
+class ClientHasActiveJobsError(ValidationError):
+    """A client with queued or running jobs cannot be archived (the API answers 409)."""
+
 
 LIST_FIELDS = (
     "countries",
@@ -128,6 +145,14 @@ def create_campaign(
     profile = _build_profile(campaign, 1, normalize_profile_data(data), user, pk=profile_id)
     campaign.save()  # the FK to the profile is deferred until commit
     profile.save()
+    record_change(
+        AuditAction.CREATE,
+        "campaign",
+        campaign.pk,
+        actor=user,
+        client=client,
+        after={**snapshot(campaign, CAMPAIGN_AUDIT_FIELDS), "profile_version": 1},
+    )
     return campaign
 
 
@@ -160,120 +185,207 @@ def create_profile_version(
 
     latest = CampaignProfile.objects.filter(campaign=locked).aggregate(top=Max("version"))["top"]
     profile = _build_profile(locked, (latest or 0) + 1, values, user)
+    previous_version = current.version
+    changed_fields = [name for name, value in _rules(current).items() if values[name] != value]
     profile.save()
 
     locked.current_profile = profile
     locked.save(update_fields=["current_profile", "updated_at"])
+    # A reference to the new version (the old and new rules are both kept as rows), not a copy.
+    record_change(
+        AuditAction.CREATE,
+        "campaign_profile",
+        profile.pk,
+        actor=user,
+        client=locked.client_id,
+        after={
+            "campaign_id": str(locked.pk),
+            "version": profile.version,
+            "previous_version": previous_version,
+            "changed_fields": changed_fields,
+            "change_note": profile.change_note,
+        },
+    )
     campaign.current_profile = profile
     campaign.updated_at = locked.updated_at or timezone.now()
     return profile
 
 
-# ------------------------------------------------------------------ clients (issue #47)
-
-CLIENT_EDITABLE_FIELDS = ("name", "notes")
-CLIENT_NAME_TAKEN = "An active client with this name already exists."
-_CLIENT_NAME_CONSTRAINT = "campaigns_client_name_unique_active"
+# ------------------------------------------------------------------ clients
 
 
-def _clean_client_name(name: Any) -> str:
-    if not isinstance(name, str) or not name.strip():
-        raise ValidationError({"name": "A client needs a name."})
-    cleaned = name.strip()
-    if len(cleaned) > 200:
-        raise ValidationError({"name": "Ensure this value has at most 200 characters."})
-    return cleaned
+def audit_client_created(client: Client, user: User | None = None) -> None:
+    """Audit entry for a client saved elsewhere (the admin add form); ``create_client`` calls it."""
+    record_change(
+        AuditAction.CREATE,
+        "client",
+        client.pk,
+        actor=user,
+        client=client,
+        after=snapshot(client, CLIENT_AUDIT_FIELDS),
+    )
 
 
-def _ensure_client_name_free(name: str, exclude_pk: uuid.UUID | None = None) -> None:
-    """Names are unique, ignoring case, among clients that are not archived."""
-    others = Client.objects.active().annotate(lowered=Lower("name")).filter(lowered=name.lower())
+def _name_taken(model: Any, name: str, exclude_pk: Any = None, **scope: Any) -> bool:
+    qs = model.objects.active().filter(**scope).annotate(lowered=Lower("name"))
     if exclude_pk is not None:
-        others = others.exclude(pk=exclude_pk)
-    if others.exists():
-        raise ValidationError({"name": CLIENT_NAME_TAKEN})
-
-
-def _name_race(exc: IntegrityError) -> ValidationError | None:
-    """A lost race on the unique-name constraint, as the same field error as the pre-check."""
-    if _CLIENT_NAME_CONSTRAINT in str(exc):
-        return ValidationError({"name": CLIENT_NAME_TAKEN})
-    return None
+        qs = qs.exclude(pk=exclude_pk)
+    return bool(qs.filter(lowered=name.lower()).exists())
 
 
 @transaction.atomic
 def create_client(name: str, notes: str = "", user: User | None = None) -> Client:
-    """Create an active client. The creating user (if any) becomes its admin member.
-
-    Without that membership a non-global-admin creator could not see the client they just made.
-    Pass ``user=None`` for system callers (seed, tests).
-    """
-    name = _clean_client_name(name)
-    _ensure_client_name_free(name)
-    client = Client(name=name, notes=(notes or "").strip(), created_by=user)
-    client.full_clean(validate_unique=False, validate_constraints=False)
-    try:
-        with transaction.atomic():
-            client.save()
-    except IntegrityError as exc:
-        raise _name_race(exc) or exc from exc
-    if user is not None:
-        grant_membership(client, user, Role.ADMIN)
+    client = Client(name=name.strip(), notes=notes, created_by=user)
+    client.full_clean(validate_constraints=False)
+    if _name_taken(Client, client.name):
+        raise ValidationError({"name": "An active client with that name already exists."})
+    client.save()
+    audit_client_created(client, user)
     return client
 
 
 @transaction.atomic
-def update_client(client: Client, data: Mapping[str, Any]) -> Client:
-    """Change ``name`` and/or ``notes``. Status only changes through archive/restore."""
-    unknown = sorted(set(data) - set(CLIENT_EDITABLE_FIELDS))
+def update_client(client: Client, user: User | None = None, **changes: Any) -> Client:
+    """Change ``name`` and/or ``notes`` and audit the diff. No entry if nothing changed."""
+    unknown = sorted(set(changes) - set(CLIENT_EDITABLE_FIELDS))
     if unknown:
-        raise ValidationError(dict.fromkeys(unknown, "Unknown or read-only field."))
+        raise ValidationError(dict.fromkeys(unknown, "Unknown field."))
     locked = Client.objects.select_for_update().get(pk=client.pk)
     if locked.is_archived:
         raise ValidationError("Archived clients are read-only; restore the client first.")
-    fields: list[str] = []
-    if "name" in data:
-        name = _clean_client_name(data["name"])
-        if name != locked.name:
-            _ensure_client_name_free(name, exclude_pk=locked.pk)
-            locked.name = name
-            fields.append("name")
-    if "notes" in data:
-        notes = (data["notes"] or "").strip()
-        if notes != locked.notes:
-            locked.notes = notes
-            fields.append("notes")
-    if fields:
-        try:
-            with transaction.atomic():
-                locked.save(update_fields=[*fields, "updated_at"])
-        except IntegrityError as exc:
-            raise _name_race(exc) or exc from exc
-    client.name, client.notes, client.updated_at = locked.name, locked.notes, locked.updated_at
+    before = snapshot(locked, CLIENT_AUDIT_FIELDS)
+    for key, value in changes.items():
+        setattr(locked, key, value.strip() if key == "name" else value)
+    locked.full_clean(validate_constraints=False)
+    if _name_taken(Client, locked.name, exclude_pk=locked.pk):
+        raise ValidationError({"name": "An active client with that name already exists."})
+    locked.save(update_fields=[*changes, "updated_at"])
+    record_change(
+        AuditAction.UPDATE,
+        "client",
+        locked.pk,
+        actor=user,
+        client=locked,
+        before=before,
+        after=snapshot(locked, CLIENT_AUDIT_FIELDS),
+    )
+    client.refresh_from_db()
     return client
+
+
+def _change_client(
+    client: Client, action: str, user: User | None, mutate: Callable[[Client], None]
+) -> Client:
+    with transaction.atomic():
+        locked = Client.objects.select_for_update().get(pk=client.pk)
+        before = snapshot(locked, CLIENT_AUDIT_FIELDS)
+        mutate(locked)
+        record_change(
+            action,
+            "client",
+            locked.pk,
+            actor=user,
+            client=locked,
+            before=before,
+            after=snapshot(locked, CLIENT_AUDIT_FIELDS),
+        )
+    client.refresh_from_db()
+    return client
+
+
+def archive_client(client: Client, user: User | None = None) -> Client:
+    """Archive a client (idempotent). Refused while it has queued or running jobs."""
+
+    def mutate(locked: Client) -> None:
+        if not locked.is_archived and Job.objects.for_client(locked).active().exists():
+            raise ClientHasActiveJobsError("Cannot archive a client with queued or running jobs.")
+        locked.archive()
+
+    return _change_client(client, AuditAction.ARCHIVE, user, mutate)
+
+
+def restore_client(client: Client, user: User | None = None) -> Client:
+    """Restore a client (idempotent). Refused if an active client now uses its name."""
+
+    def mutate(locked: Client) -> None:
+        if locked.is_archived and _name_taken(Client, locked.name, exclude_pk=locked.pk):
+            raise ValidationError({"name": "An active client with that name already exists."})
+        locked.restore()
+
+    return _change_client(client, AuditAction.RESTORE, user, mutate)
 
 
 @transaction.atomic
-def archive_client(client: Client) -> Client:
-    """Hide a client from default lists; keeps every row. Idempotent. Does not cascade."""
-    locked = Client.objects.select_for_update().get(pk=client.pk)
-    locked.archive()
-    client.archived_at, client.status = locked.archived_at, locked.status
-    client.updated_at = locked.updated_at
+def create_client_with_admin(name: str, notes: str, user: User) -> Client:
+    """``create_client`` plus an admin membership for the creator (audited), in one transaction.
+
+    Without the membership a non-global-admin creator could not see the client they just made.
+    """
+    client = create_client(name, notes, user)
+    grant_membership(client, user, Role.ADMIN, audit_actor=user)
     return client
 
 
-@transaction.atomic
-def restore_client(client: Client) -> Client:
-    """Bring an archived client back. Fails if an active client took its name meanwhile."""
-    locked = Client.objects.select_for_update().get(pk=client.pk)
-    if locked.is_archived:
-        _ensure_client_name_free(locked.name, exclude_pk=locked.pk)
-        try:
-            with transaction.atomic():
-                locked.restore()
-        except IntegrityError as exc:
-            raise _name_race(exc) or exc from exc
-    client.archived_at, client.status = locked.archived_at, locked.status
-    client.updated_at = locked.updated_at
-    return client
+# ------------------------------------------------------------------ campaigns
+
+
+def _change_campaign(
+    campaign: Campaign, action: str, user: User | None, mutate: Callable[[Campaign], None]
+) -> Campaign:
+    """Lock the campaign, run ``mutate(locked)``, audit the field diff, sync ``campaign``."""
+    with transaction.atomic():
+        locked = Campaign.objects.select_for_update().get(pk=campaign.pk)
+        before = snapshot(locked, CAMPAIGN_AUDIT_FIELDS)
+        mutate(locked)
+        record_change(
+            action,
+            "campaign",
+            locked.pk,
+            actor=user,
+            client=locked.client_id,
+            before=before,
+            after=snapshot(locked, CAMPAIGN_AUDIT_FIELDS),
+        )
+    campaign.refresh_from_db()
+    return campaign
+
+
+def update_campaign(campaign: Campaign, user: User | None = None, **changes: Any) -> Campaign:
+    """Rename a campaign (rules change through ``create_profile_version``) and audit the diff."""
+    unknown = sorted(set(changes) - set(CAMPAIGN_EDITABLE_FIELDS))
+    if unknown:
+        raise ValidationError(dict.fromkeys(unknown, "Unknown field."))
+
+    def mutate(locked: Campaign) -> None:
+        if locked.is_archived:
+            raise ValidationError("Archived campaigns are read-only.")
+        if "name" in changes:
+            locked.name = str(changes["name"]).strip()
+        locked.clean_fields(exclude=["current_profile"])
+        if _name_taken(Campaign, locked.name, exclude_pk=locked.pk, client_id=locked.client_id):
+            raise ValidationError(
+                {"name": "This client already has an active campaign with that name."}
+            )
+        locked.save(update_fields=["name", "updated_at"])
+
+    return _change_campaign(campaign, AuditAction.UPDATE, user, mutate)
+
+
+def activate_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
+    """draft -> active, audited."""
+    return _change_campaign(campaign, AuditAction.UPDATE, user, lambda locked: locked.activate())
+
+
+def archive_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
+    """Archive a campaign (idempotent). Refused while it has queued or running jobs."""
+
+    def mutate(locked: Campaign) -> None:
+        if not locked.is_archived and Job.objects.filter(campaign=locked).active().exists():
+            raise ValidationError("Cannot archive a campaign with queued or running jobs.")
+        locked.archive()
+
+    return _change_campaign(campaign, AuditAction.ARCHIVE, user, mutate)
+
+
+def restore_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
+    return _change_campaign(campaign, AuditAction.RESTORE, user, lambda locked: locked.restore())

@@ -599,6 +599,12 @@ Mutable like Job.
 
 Unique on (job_id, company_id).
 
+As built (issue #44): until the Company model exists the item points at its subject with
+`subject_type` + `subject_id` (`company` and the company id), unique on
+`(job_id, subject_type, subject_id)`, and has an optional JSON `result`. A Job also keeps
+`attempts`, and a retry waiting for its backoff is `queued` again (there is no `retrying`
+status). The `AuditLog` also stores `request_id`.
+
 ### AuditLog (issue #44), append-only
 
 Who changed Client, Campaign, ClientMembership and similar configuration, and

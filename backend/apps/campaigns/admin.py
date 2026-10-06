@@ -13,6 +13,7 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
+from . import services
 from .memberships import change_role, grant_membership, revoke_membership
 from .models import Campaign, CampaignProfile, Client, ClientMembership
 
@@ -40,15 +41,28 @@ class ClientAdmin(NoDeleteAdmin):
     )
     actions = ("archive_selected", "restore_selected")
 
+    def save_model(self, request: HttpRequest, obj: Client, form: Any, change: bool) -> None:
+        # Writes go through the services so they are audited with the acting user.
+        if change:
+            services.update_client(
+                obj,
+                request.user,  # type: ignore[arg-type]
+                **{k: getattr(obj, k) for k in services.CLIENT_EDITABLE_FIELDS},
+            )
+        else:
+            obj.created_by = request.user  # type: ignore[assignment]
+            obj.save()
+            services.audit_client_created(obj, request.user)  # type: ignore[arg-type]
+
     @admin.action(description="Archive selected clients")
     def archive_selected(self, request: HttpRequest, queryset: QuerySet[Client]) -> None:
         for client in queryset:
-            client.archive()
+            services.archive_client(client, request.user)  # type: ignore[arg-type]
 
     @admin.action(description="Restore selected clients")
     def restore_selected(self, request: HttpRequest, queryset: QuerySet[Client]) -> None:
         for client in queryset:
-            client.restore()
+            services.restore_client(client, request.user)  # type: ignore[arg-type]
 
 
 class ProfileInline(admin.TabularInline):  # type: ignore[type-arg]
@@ -88,15 +102,18 @@ class CampaignAdmin(NoDeleteAdmin):
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
+    def save_model(self, request: HttpRequest, obj: Campaign, form: Any, change: bool) -> None:
+        services.update_campaign(obj, request.user, name=obj.name)  # type: ignore[arg-type]
+
     @admin.action(description="Archive selected campaigns")
     def archive_selected(self, request: HttpRequest, queryset: QuerySet[Campaign]) -> None:
         for campaign in queryset:
-            campaign.archive()
+            services.archive_campaign(campaign, request.user)  # type: ignore[arg-type]
 
     @admin.action(description="Restore selected campaigns")
     def restore_selected(self, request: HttpRequest, queryset: QuerySet[Campaign]) -> None:
         for campaign in queryset:
-            campaign.restore()
+            services.restore_campaign(campaign, request.user)  # type: ignore[arg-type]
 
 
 @admin.register(ClientMembership)

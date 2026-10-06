@@ -24,8 +24,11 @@ from .domain import normalize_domain
 from .models import (
     Company,
     CompanyResearch,
+    Contact,
+    ContactRole,
     DataSource,
     DataSourceType,
+    EmailStatus,
     InputSource,
 )
 
@@ -33,8 +36,12 @@ __all__ = [
     "CompanyResult",
     "add_research_snapshot",
     "create_company",
+    "create_contact",
     "create_data_source",
     "normalize_domain",
+    "restore_contact",
+    "set_contact_role",
+    "update_contact",
 ]
 
 RESEARCH_FIELDS = (
@@ -225,3 +232,146 @@ def add_research_snapshot(
     )
     snapshot.save()
     return snapshot
+
+
+# ------------------------------------------------------------------ contacts (issue #41)
+
+CONTACT_FIELDS = (
+    "name",
+    "title",
+    "profile_url",
+    "email",
+    "email_status",
+    "relevance_reason",
+    "rank",
+)
+
+
+def _validate_contact(contact: Contact) -> None:
+    contact.full_clean(
+        exclude=["client", "company", "data_source"],
+        validate_unique=False,
+        validate_constraints=False,
+    )
+
+
+def _free_slot(company: Company, role: str, *, except_pk: Any = None) -> None:
+    """Demote the non-archived holder of a primary/secondary slot to ``none``."""
+    if role not in (ContactRole.PRIMARY, ContactRole.SECONDARY):
+        return
+    holders = Contact.objects.active().filter(company=company, role=role)
+    if except_pk is not None:
+        holders = holders.exclude(pk=except_pk)
+    for holder in holders:
+        holder.role = ContactRole.NONE
+        holder.save(update_fields=["role", "updated_at"])
+
+
+@transaction.atomic
+def create_contact(
+    company: Company,
+    data_source: DataSource,
+    name: str,
+    *,
+    title: str = "",
+    profile_url: str = "",
+    email: str = "",
+    email_status: str | None = None,
+    relevance_reason: str = "",
+    rank: int | None = None,
+    role: str = ContactRole.NONE,
+    user: User | None = None,
+) -> Contact:
+    """Add a contact. Taking the primary or secondary slot demotes the previous holder to none."""
+    if company.is_archived:
+        raise ValidationError("Archived companies are read-only.")
+    if data_source.client_id != company.client_id:
+        raise ValidationError({"data_source": "The data source belongs to a different client."})
+    email = email.strip()
+    if email_status is None:
+        email_status = EmailStatus.UNVERIFIED if email else EmailStatus.UNKNOWN
+    contact = Contact(
+        company=company,
+        data_source=data_source,
+        name=name.strip(),
+        title=title.strip(),
+        profile_url=profile_url.strip(),
+        email=email,
+        email_status=email_status,
+        relevance_reason=relevance_reason.strip(),
+        rank=rank,
+        role=role,
+        created_by=user,
+    )
+    _validate_contact(contact)
+    _check_contact_rules(contact)
+    _free_slot(company, role)
+    contact.save()
+    return contact
+
+
+def _check_contact_rules(contact: Contact) -> None:
+    """Friendly errors for rules the database also enforces."""
+    if contact.email_status == EmailStatus.NOT_FOUND and contact.email:
+        raise ValidationError({"email_status": "'not found' cannot have an email."})
+    if not contact.email and contact.email_status not in (
+        EmailStatus.UNKNOWN,
+        EmailStatus.NOT_FOUND,
+    ):
+        raise ValidationError({"email_status": "This status needs an email address."})
+    if contact.profile_url and contact.archived_at is None:
+        clash = Contact.objects.active().filter(
+            company=contact.company, profile_url=contact.profile_url
+        )
+        if contact.pk:
+            clash = clash.exclude(pk=contact.pk)
+        if clash.exists():
+            raise ValidationError({"profile_url": "This person is already a contact."})
+
+
+@transaction.atomic
+def update_contact(contact: Contact, **changes: Any) -> Contact:
+    """Edit enrichment fields (``CONTACT_FIELDS``). Use ``set_contact_role`` for the role."""
+    unknown = sorted(set(changes) - set(CONTACT_FIELDS))
+    if unknown:
+        raise ValidationError(dict.fromkeys(unknown, "Unknown or read-only field."))
+    if contact.is_archived:
+        raise ValidationError("Archived contacts are read-only.")
+    for key, value in changes.items():
+        setattr(contact, key, value.strip() if isinstance(value, str) else value)
+    _validate_contact(contact)
+    _check_contact_rules(contact)
+    contact.save()
+    return contact
+
+
+@transaction.atomic
+def set_contact_role(contact: Contact, role: str) -> Contact:
+    """Give a contact a role. Taking a taken slot demotes the old holder to none."""
+    if role not in ContactRole.values:
+        raise ValidationError({"role": "Role must be primary, secondary or none."})
+    if contact.is_archived:
+        raise ValidationError("Archived contacts are read-only.")
+    _free_slot(contact.company, role, except_pk=contact.pk)
+    contact.role = role
+    contact.save(update_fields=["role", "updated_at"])
+    return contact
+
+
+@transaction.atomic
+def restore_contact(contact: Contact) -> Contact:
+    """Un-archive. If its primary/secondary slot was taken meanwhile it returns as ``none``."""
+    if contact.erased_at is not None:
+        raise ValidationError("An erased contact cannot be restored.")
+    if contact.is_archived and contact.role != ContactRole.NONE:
+        taken = (
+            Contact.objects.active()
+            .filter(company=contact.company, role=contact.role)
+            .exclude(pk=contact.pk)
+            .exists()
+        )
+        if taken:
+            contact.role = ContactRole.NONE
+            contact.save(update_fields=["role", "updated_at"])
+    contact.restore()
+    return contact

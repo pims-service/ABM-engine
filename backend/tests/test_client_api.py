@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -15,6 +16,7 @@ from apps.accounts.models import User
 from apps.campaigns import services
 from apps.campaigns.memberships import grant_membership
 from apps.campaigns.models import Client, ClientMembership
+from apps.core.models import AuditAction, AuditLog, Job, JobStatus
 from tests.factories import make_campaign, make_client, make_user
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -433,7 +435,84 @@ def test_service_update_client_rejects_unknown_fields() -> None:
 
     client = services.create_client("Svc2")
     with pytest.raises(ValidationError):
-        services.update_client(client, {"status": "archived"})
-    services.update_client(client, {"notes": "n"})
+        services.update_client(client, None, status="archived")
+    services.update_client(client, None, notes="n")
     client.refresh_from_db()
     assert client.notes == "n"
+
+
+# ------------------------------------------------------------------ jobs and audit log
+
+
+def test_archive_with_active_jobs_is_a_409_envelope() -> None:
+    client = make_client()
+    Job.objects.create(client=client, type="demo", status=JobStatus.RUNNING)
+    api = as_user(member("admin", client))
+    response = api.post(f"{URL}{client.pk}/archive/")
+    assert response.status_code == 409
+    error = response.json()["error"]
+    assert error["code"] == "client_has_active_jobs"
+    assert "jobs" in error["message"]
+    client.refresh_from_db()
+    assert not client.is_archived
+
+    Job.objects.filter(client=client).update(status=JobStatus.SUCCEEDED, finished_at=timezone.now())
+    assert api.post(f"{URL}{client.pk}/archive/").status_code == 200
+
+
+def after(row: AuditLog) -> dict[str, Any]:
+    assert row.after is not None
+    return dict(row.after)
+
+
+def before(row: AuditLog) -> dict[str, Any]:
+    assert row.before is not None
+    return dict(row.before)
+
+
+def entries(client_id: Any, action: str, object_type: str = "client") -> list[AuditLog]:
+    return list(
+        AuditLog.objects.filter(client_id=client_id, action=action, object_type=object_type)
+    )
+
+
+def test_api_writes_audit_rows_with_actor_and_diff() -> None:
+    root = make_user(is_superuser=True)
+    api = as_user(root)
+    cid = api.post(URL, {"name": "Audited", "notes": "first"}, format="json").json()["id"]
+
+    (create,) = entries(cid, AuditAction.CREATE)
+    assert create.actor_id == root.pk
+    assert create.before is None
+    assert after(create)["name"] == "Audited"
+    assert after(create)["notes"] == "first"
+    (membership,) = entries(cid, AuditAction.CREATE, "client_membership")
+    assert membership.actor_id == root.pk
+    assert after(membership)["role"] == "admin"
+
+    api.patch(f"{URL}{cid}/", {"notes": "second"}, format="json")
+    (update,) = entries(cid, AuditAction.UPDATE)
+    assert update.actor_id == root.pk
+    assert update.before == {"notes": "first"}
+    assert update.after == {"notes": "second"}
+
+    admin = admin_of(Client.objects.get(pk=cid))
+    api = as_user(admin)
+    api.post(f"{URL}{cid}/archive/")
+    (archive,) = entries(cid, AuditAction.ARCHIVE)
+    assert archive.actor_id == admin.pk
+    assert before(archive)["status"] == "active"
+    assert after(archive)["status"] == "archived"
+    api.post(f"{URL}{cid}/restore/")
+    (restore,) = entries(cid, AuditAction.RESTORE)
+    assert restore.actor_id == admin.pk
+    assert after(restore)["status"] == "active"
+
+
+def test_failed_requests_write_no_audit_row() -> None:
+    client = make_client(name="Quiet")
+    other = make_client(name="Other")
+    api = as_user(member("manager", client))
+    api.patch(f"{URL}{client.pk}/", {"name": "other"}, format="json")  # duplicate: 400
+    api.patch(f"{URL}{other.pk}/", {"notes": "x"}, format="json")  # not theirs: 404
+    assert not AuditLog.objects.filter(object_type="client", action="update").exists()

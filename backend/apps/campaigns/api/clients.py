@@ -12,10 +12,11 @@ from contextlib import contextmanager
 from typing import Any, ClassVar, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, mixins, serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -31,11 +32,25 @@ from .client_serializers import ClientListQuerySerializer, ClientSerializer
 TAGS = ["clients"]
 
 
+class ClientHasActiveJobs(APIException):
+    """409: the client still has queued or running jobs, so it cannot be archived."""
+
+    status_code = 409
+    default_code = "client_has_active_jobs"
+    default_detail = "Cannot archive a client with queued or running jobs."
+
+
 @contextmanager
 def api_validation() -> Iterator[None]:
-    """Turn a service ``ValidationError`` into a DRF one (400 with field details)."""
+    """Turn service errors into API errors: validation -> 400 with details, active jobs -> 409."""
     try:
         yield
+    except services.ClientHasActiveJobsError as exc:
+        raise ClientHasActiveJobs from exc
+    except IntegrityError as exc:  # lost a race on the unique-name constraint
+        if "campaigns_client_name_unique_active" not in str(exc):
+            raise
+        raise ValidationError({"name": [services.CLIENT_NAME_TAKEN]}) from exc
     except DjangoValidationError as exc:
         if hasattr(exc, "error_dict"):
             raise ValidationError(exc.message_dict) from exc
@@ -139,31 +154,37 @@ class ClientViewSet(
             queryset = queryset.filter(status=status)
         return queryset
 
+    def _user(self) -> User:
+        return cast(User, self.request.user)
+
     def perform_create(self, serializer: serializers.BaseSerializer[Client]) -> None:
         data = serializer.validated_data
         with api_validation():
-            serializer.instance = services.create_client(
-                data["name"], data.get("notes", ""), cast(User, self.request.user)
+            serializer.instance = services.create_client_with_admin(
+                data["name"], data.get("notes", ""), self._user()
             )
 
     def perform_update(self, serializer: serializers.BaseSerializer[Client]) -> None:
         with api_validation():
-            services.update_client(cast(Client, serializer.instance), serializer.validated_data)
+            services.update_client(
+                cast(Client, serializer.instance), self._user(), **serializer.validated_data
+            )
 
     @extend_schema(
         tags=TAGS,
         operation_id="clients_archive",
         summary="Archive a client",
         description="Soft delete: the client leaves default lists, all its data is kept. "
-        "Idempotent. Campaigns are not changed. " + _levels("MANAGE", "admin"),
+        "Idempotent. Campaigns are not changed. 409 `client_has_active_jobs` while the client "
+        "has queued or running jobs. " + _levels("MANAGE", "admin"),
         request=None,
-        responses={200: ClientSerializer, **error_responses(401, 403, 404, 429, 500)},
+        responses={200: ClientSerializer, **error_responses(401, 403, 404, 409, 429, 500)},
     )
     @action(detail=True, methods=["post"])
     def archive(self, request: Request, pk: str | None = None) -> Response:
         client = self.get_object()
         with api_validation():
-            services.archive_client(client)
+            services.archive_client(client, self._user())
         return Response(ClientSerializer(client).data)
 
     @extend_schema(
@@ -179,5 +200,5 @@ class ClientViewSet(
     def restore(self, request: Request, pk: str | None = None) -> Response:
         client = self.get_object()
         with api_validation():
-            services.restore_client(client)
+            services.restore_client(client, self._user())
         return Response(ClientSerializer(client).data)
