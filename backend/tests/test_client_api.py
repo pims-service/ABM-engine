@@ -244,8 +244,9 @@ def test_search_ordering_pagination() -> None:
     assert len(names(root.get(URL))) == 4
     assert set(names(root.get(URL, {"search": "bravo"}))) == {"Bravo Ltd", "Charlie Bravo"}
     assert names(root.get(URL, {"search": "zzz"})) == []
+    asc = names(root.get(URL, {"ordering": "name"}))
     desc = names(root.get(URL, {"ordering": "-name"}))
-    assert desc == sorted(desc, reverse=True)
+    assert desc == asc[::-1]  # database collation decides the order, not Python
     page = root.get(URL, {"page_size": "2", "ordering": "name"}).json()
     assert page["count"] == 4
     assert len(page["results"]) == 2
