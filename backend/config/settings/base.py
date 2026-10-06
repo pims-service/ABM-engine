@@ -1,8 +1,11 @@
 """Base settings shared by every environment. All config comes from environment variables."""
 
+import os
 from pathlib import Path
 
 import environ
+
+from config.env_validation import check_environment
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -10,7 +13,13 @@ env = environ.Env()
 # Optional local .env file (never committed). Real environment variables win.
 environ.Env.read_env(BASE_DIR / ".env", overwrite=False)
 
-# Required: no default, so a missing value fails loudly at startup.
+# Fail fast, naming every missing or invalid variable (never its value). Test settings supply
+# throwaway values and skip this check.
+_SETTINGS_MODULE = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+if not _SETTINGS_MODULE.endswith(".test"):
+    check_environment(os.environ, settings_module=_SETTINGS_MODULE)
+
+# Required and validated above.
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
