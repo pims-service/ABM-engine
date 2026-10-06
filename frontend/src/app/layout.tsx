@@ -1,8 +1,10 @@
+import "./globals.css";
+
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
-import "./globals.css";
 
 export const metadata: Metadata = {
   title: "ABM Engine",
