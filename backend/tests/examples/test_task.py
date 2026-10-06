@@ -1,6 +1,6 @@
 """Example: task layer (Django-Q2).
 
-A task is a `@tracked_job` function that takes the `BackgroundJob` plus JSON arguments and
+A task is a `@tracked_job` function that takes the `Job` plus JSON arguments and
 returns a JSON dict. Test it two ways:
 
 * call `enqueue(...)` and assert on the job record: test settings set `Q_CLUSTER["sync"] = True`,
@@ -18,8 +18,8 @@ import pytest
 
 from apps.accounts.models import User
 from apps.core.jobs import enqueue, tracked_job
-from apps.core.models import BackgroundJob, JobStatus
-from tests.factories import make_user
+from apps.core.models import Job, JobStatus
+from tests.factories import make_client, make_user
 
 pytestmark = pytest.mark.django_db
 
@@ -30,7 +30,7 @@ def deactivate_stale_users(emails: list[str]) -> int:
 
 
 @tracked_job(max_attempts=1)
-def deactivate_users_task(job: BackgroundJob, emails: list[str]) -> dict[str, Any]:
+def deactivate_users_task(job: Job, emails: list[str]) -> dict[str, Any]:
     """Thin task wrapper: idempotent, JSON in, JSON out."""
     return {"deactivated": deactivate_stale_users(emails)}
 
@@ -56,7 +56,7 @@ def test_function_is_idempotent():
 def test_enqueued_task_runs_and_records_success():
     make_user(email="stale@example.com")
 
-    job = enqueue(deactivate_users_task, emails=["stale@example.com"])
+    job = enqueue(deactivate_users_task, client=make_client(), emails=["stale@example.com"])
 
     job.refresh_from_db()
     assert job.status == JobStatus.SUCCEEDED

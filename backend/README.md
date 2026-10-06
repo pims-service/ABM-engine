@@ -143,28 +143,39 @@ uv run python manage.py enqueue_smoke_task fail --wait 90     # retried, then en
 ### Adding a task
 
 1. In the owning app's `tasks.py`, write a function decorated with `@tracked_job` that takes the
-   `BackgroundJob` first, then JSON-only arguments, and returns a JSON dict (or `None`):
+   `Job` first, then JSON-only arguments, and returns a JSON dict (or `None`). Its `job_type`
+   (default: the function name) is registered in code, so a job's `type` is never free input:
 
    ```python
-   from apps.core.jobs import tracked_job, update_progress
+   from apps.core.jobs import add_items, complete_item, fail_item, start_item, tracked_job
+   from apps.core.models import ITEM_TERMINAL
 
 
-   @tracked_job(max_attempts=3, base_delay=5)
-   def import_companies(job, campaign_id: int) -> dict[str, int]:
-       update_progress(job, 50)
-       return {"imported": 120}
+   @tracked_job(job_type="analyze_companies", max_attempts=3, base_delay=5)
+   def analyze_companies(job, company_ids: list[str]) -> dict[str, int]:
+       add_items(job, [("company", cid) for cid in company_ids])  # one JobItem each, sets the total
+       for item in job.items.exclude(status__in=ITEM_TERMINAL):  # a retry skips finished items
+           start_item(item)
+           try:
+               complete_item(item, analyze(item.subject_id))  # done_count += 1
+           except Exception as exc:  # one bad company...
+               fail_item(item, f"{type(exc).__name__}: {exc}")  # ...failed_count += 1, job goes on
+       return {"analyzed": job.done_count}
    ```
 
-2. Enqueue it from a view, service or command: `job = enqueue(import_companies, campaign_id=7)`.
-   `job` is the status record (`queued`, `running`, `retrying`, `succeeded`, `failed`, plus
-   `progress`, `attempts`, `error`) to show or poll.
+2. Enqueue it from a view, service or command:
+   `job = enqueue(analyze_companies, client=client, campaign=campaign, created_by=user, company_ids=ids)`.
+   `client` is required (every job carries its tenant; `campaign` and `created_by` are optional);
+   every other argument goes to the task. `job` is the status record to show or poll.
 3. Make it idempotent: it can run twice (crash redelivery) or be retried.
 4. Test it with the default test settings: `Q_CLUSTER["sync"] = True` runs the task inline, no
    worker needed (`tests/examples/test_task.py`, `tests/test_jobs.py`).
 
 Retries: on an exception the task is rescheduled with exponential backoff (`base_delay`,
-2x, 4x, ...) through the Django-Q2 scheduler, status `retrying`; after `max_attempts` runs the job
-is `failed` with the error text, and the failure is also visible in the Django admin (Failed tasks).
+2x, 4x, ...) through the Django-Q2 scheduler and the job goes back to `queued` with the error in
+`error_summary` (`attempts` counts runs); after `max_attempts` runs the job is `failed` with the
+error text, and the failure is also visible in the Django admin (Failed tasks). A task delivered
+again for a job that already finished is skipped.
 The scheduler polls roughly every 30 seconds, so backoff delays are rounded up to that granularity.
 Django-Q2's own retry is not used for failures (`ack_failures` is on), so attempts are counted once.
 
@@ -173,8 +184,66 @@ values (so ids, not model instances). Django-Q2 itself has no serializer setting
 signed envelope internally; the JSON rule is enforced at our boundary, and the broker is our own
 database, not an untrusted network.
 
-Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
-AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
+### Job, JobItem and the status rules (`apps/core/models.py`, `apps/core/jobs.py`, issue #44)
+
+`Job` replaces the minimal `BackgroundJob` of issue #25 (removed by migration `core.0004`: it had
+no client and the dev database holds no production data, so there is no data migration). The
+helper API stays: `create_job`, `enqueue`, `tracked_job`, `start_job` (was `mark_running`),
+`fail_job` (`mark_failed`), `requeue_job` (`mark_retrying`); `update_progress(percent)` became real
+counts (`set_total`, `record_progress`, or items).
+
+- **Fields**: `type`, `client` (required), `campaign` (optional, must be the same client; an
+  archived client or campaign takes no new jobs), `status`, `total_count` / `done_count` /
+  `failed_count` (`done + failed <= total`, a DB check), `attempts`, `error_summary`,
+  `queue_task_id`, `created_by`, `started_at`, `finished_at`, and `progress_percent`.
+- **Status machine** (`JOB_TRANSITIONS`): `queued -> running | failed`;
+  `running -> succeeded | partial | failed | queued` (back to `queued` = retry waiting);
+  `succeeded`, `partial` and `failed` are final. `Job.save` raises `InvalidTransitionError` for
+  any other move, so it holds even outside the service functions (a bulk `QuerySet.update` is
+  the one way around it; do not use it for `status`). `finished_at` is set exactly when the
+  status is final (DB check).
+- **JobItem**: one row per subject, so one failed company does not fail the job. It points at
+  its subject with `subject_type` + `subject_id` (`"company"` and its UUID) until the Company
+  model lands (issue #40), unique per job. Statuses `queued -> running -> succeeded | failed`,
+  final once finished (retry a failed subject in a new job). `complete_job` decides the job
+  status from the counts: no failures `succeeded`, some `partial`, only failures `failed`; it
+  refuses while items are unprocessed, and writes an `error_summary` listing the first errors.
+- **Locking**: every count change locks the job row (`SELECT ... FOR UPDATE`) first, then the
+  item, in one transaction, so concurrent workers never lose an update (tested on PostgreSQL
+  with threads). Stored errors are clipped to 2000 characters and scrubbed of secrets.
+- **Worker context**: while a task runs, `get_job_id()` (`apps/core/logging.py`) returns the job
+  id, so every log line carries it.
+- `enqueue_smoke_task` needs a client: `--client NAME`, or it creates and uses "Smoke test
+  (system)". `worker_healthcheck` and `/readyz` do not touch the Job table.
+- Archiving a client or campaign (`services.archive_client` / `archive_campaign`) is refused
+  while it has `queued` or `running` jobs.
+
+### Audit log (`apps/core/audit.py`, `AuditLog`, issue #44)
+
+`AuditLog` is append-only (the `AppendOnlyModel` guards): `actor` (null = system), `client`
+(null for global objects, used for scoping), `action` (`create`, `update`, `archive`, `restore`,
+`delete`), `object_type` + `object_id`, `before` / `after` JSON, `request_id` (from the
+request-id contextvar), `created_at`.
+
+- **Explicit service calls, not signals.** Every write path in `apps/campaigns/services.py`
+  (`create_client`, `update_client`, `archive_client`, `restore_client`, `create_campaign`,
+  `update_campaign`, `activate_campaign`, `archive_campaign`, `restore_campaign`,
+  `create_profile_version`) writes its audit entry in the same transaction. Signals were rejected:
+  they do not know the actor, do not fire for bulk `update()`, and fire for fixtures and
+  migrations. The admin actions and edit forms call the services too. A new audited object type
+  calls `record_change(action, "object_type", id, actor=..., client=..., before=snapshot(...),
+  after=snapshot(...))`.
+- **Diffs**: `update`, `archive` and `restore` store only the fields that changed (`before` and
+  `after` hold the same keys); no change writes nothing. `create` stores the whole `after`.
+  A new CampaignProfile version is audited as a reference (`campaign_id`, `version`,
+  `previous_version`, `changed_fields`, `change_note`), not a copy of the rules.
+- **Secrets never get in**: keys that look like a password, token, API key, secret, cookie,
+  credential, hash, salt or key (`apps.core.audit.is_secret_field`, built on the log redactor)
+  become `[REDACTED]` at any depth in both `before` and `after`, and strings are scrubbed for
+  `key=value` secrets. The diff is computed first, so a changed secret still shows as changed.
+  ClientMembership changes (issue #46) should use the same `record_change` calls.
+- The admin shows Job, JobItem and AuditLog read-only. Test factories: `tests/factories_core.py`
+  (`make_job`, `make_job_item`, `make_audit_log`).
 
 ## Domain model building blocks (`apps/core`)
 
