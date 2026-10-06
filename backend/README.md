@@ -148,6 +148,7 @@ uv run python manage.py enqueue_smoke_task fail --wait 90     # retried, then en
    ```python
    from apps.core.jobs import tracked_job, update_progress
 
+
    @tracked_job(max_attempts=3, base_delay=5)
    def import_companies(job, campaign_id: int) -> dict[str, int]:
        update_progress(job, 50)
@@ -304,7 +305,6 @@ real environment variables take precedence.
 | `ALLOWED_HOSTS` | prod: yes | comma-separated |
 | `LOG_LEVEL` | no | default `INFO` |
 | `LOG_JSON` | no | JSON log lines; default true, but false in dev settings |
-
 | `Q_WORKERS`, `Q_TASK_TIMEOUT`, `Q_TASK_RETRY` | no | Django-Q2 worker processes (2), per-task time limit in seconds (300), redelivery delay in seconds (360, must exceed the timeout) |
 | `API_PAGE_SIZE` | no | default 25 |
 | `API_THROTTLE_ANON`, `API_THROTTLE_USER` | no | DRF rates, default `100/hour`, `1000/hour` |
