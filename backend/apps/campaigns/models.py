@@ -27,6 +27,7 @@ from apps.core.base import (
     UUIDModel,
 )
 from apps.core.fields import StringListField
+from apps.core.roles import Role
 
 
 class ClientStatus(models.TextChoices):
@@ -305,3 +306,43 @@ class CampaignProfile(AppendOnlyModel, TenantModel, UUIDModel):
 
 def _is_country_code(value: str) -> bool:
     return len(value) == 2 and value.isascii() and value.isalpha() and value.isupper()
+
+
+# ------------------------------------------------------------------ ClientMembership (issue #46)
+
+
+class ClientMembershipQuerySet(  # type: ignore[override]
+    ArchivableQuerySet["ClientMembership"], TenantQuerySet["ClientMembership"]
+):
+    pass
+
+
+class ClientMembership(ArchivableModel, TenantModel, BaseModel):
+    """Which user may work on which client, and as what (``apps.core.roles.Role``).
+
+    One row per (user, client), ever: revoking archives the row and granting again restores it
+    with the new role, so the history of "was a member" is kept. Only non-archived rows grant
+    access (``apps.core.tenancy``). Change memberships through ``apps.campaigns.memberships``,
+    not by hand. The global admin flag is ``User.is_superuser``, not a membership.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="client_memberships"
+    )
+    role = models.CharField(max_length=16, choices=Role.choices)
+
+    objects = ClientMembershipQuerySet.as_manager()
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("client_id", "user_id")
+        constraints: ClassVar[list[models.BaseConstraint]] = [
+            models.UniqueConstraint(
+                fields=["user", "client"], name="campaigns_membership_user_client_unique"
+            ),
+            models.CheckConstraint(
+                condition=_in("role", Role), name="campaigns_membership_role_valid"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} is {self.role} in {self.client_id}"

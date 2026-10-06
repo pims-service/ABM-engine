@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, cast
 
 import factory
@@ -193,3 +194,42 @@ def make_ai_recommendation(**overrides: Any) -> AIRecommendation:
 
 def make_human_decision(**overrides: Any) -> HumanDecision:
     return cast(HumanDecision, HumanDecisionFactory(**overrides))
+
+
+# ------------------------------------------------------------------ signals, contacts (#41)
+
+
+class SignalFactory(factory.django.DjangoModelFactory):
+    """A funding signal with a manual source of the company's client (no expiry rule yet)."""
+
+    class Meta:
+        model = "research.Signal"
+
+    company = factory.SubFactory(CompanyFactory)
+    data_source = factory.LazyAttribute(
+        lambda o: DataSourceFactory(client=o.company.campaign.client)
+    )
+    type = "funding"
+    evidence = "Raised a Series B round."
+    event_date = factory.LazyFunction(lambda: date(2026, 3, 1))
+
+
+class ContactFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "companies.Contact"
+
+    company = factory.SubFactory(CompanyFactory)
+    data_source = factory.LazyAttribute(
+        lambda o: DataSourceFactory(client=o.company.campaign.client)
+    )
+    name = factory.Sequence(lambda n: f"Contact {n}")
+    title = "Head of IT"
+    relevance_reason = "Owns the IT budget."
+
+
+def make_signal(**overrides: Any) -> Any:
+    return SignalFactory(**overrides)
+
+
+def make_contact(**overrides: Any) -> Any:
+    return ContactFactory(**overrides)

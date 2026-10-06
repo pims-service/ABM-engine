@@ -12,7 +12,8 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
-from .models import Company, CompanyResearch, DataSource
+from .models import Company, CompanyResearch, Contact, DataSource
+from .services import restore_contact
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
@@ -60,6 +61,33 @@ class CompanyResearchAdmin(ReadOnlyAdmin):
     list_filter = ("client",)
     search_fields = ("company__name", "company__domain")
     ordering = ("-researched_at", "-created_at")
+
+
+@admin.register(Contact)
+class ContactAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
+    """Contacts carry personal data: no add (use the service) and no delete (archive/erase)."""
+
+    list_display = ("name", "title", "company", "role", "email_status", "rank", "archived_at")
+    list_filter = ("role", "email_status", "client")
+    search_fields = ("name", "email", "company__name")
+    readonly_fields = tuple(f.name for f in Contact._meta.fields if f.name != "relevance_reason")
+    actions = ("archive_selected", "restore_selected")
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
+        return False
+
+    @admin.action(description="Archive selected contacts")
+    def archive_selected(self, request: HttpRequest, queryset: QuerySet[Contact]) -> None:
+        for contact in queryset:
+            contact.archive()
+
+    @admin.action(description="Restore selected contacts")
+    def restore_selected(self, request: HttpRequest, queryset: QuerySet[Contact]) -> None:
+        for contact in queryset:
+            restore_contact(contact)
 
 
 @admin.register(DataSource)

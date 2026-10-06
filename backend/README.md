@@ -206,8 +206,20 @@ Rules: always use `PROTECT` (never `CASCADE`), name constraints `<app>_<model>_<
 tenant data through `Model.objects.for_user(user)` (views and services) or
 `.for_client(client)` (jobs that carry a client), never a bare `Model.objects.all()`.
 `for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
-superusers) see everything and everyone else sees nothing until memberships exist (issue #46
-fills in that one function).
+superusers) see everything, everyone else sees the clients where they have an active
+`ClientMembership`, and anonymous or inactive users see nothing.
+
+### Roles and permissions (issue #46)
+
+`ClientMembership` (`apps/campaigns`) gives a user a role (`admin`, `manager`, `reviewer`,
+`viewer`) in one client; `User.is_superuser` is the global admin flag. **Every endpoint serving
+client data must subclass `ClientScopedModelViewSet` / `ClientScopedReadOnlyModelViewSet` /
+`ClientScopedViewSet` from `apps/core/permissions.py`** and declare `action_levels`
+(`Level.READ`, `DECIDE`, `EDIT`, `MANAGE`). That scopes the queryset with `for_user` (404 for
+other clients' ids, never 403) and checks the role. Change memberships only with
+`apps/campaigns/memberships.py` (`grant_membership`, `change_role`, `revoke_membership`) or the
+admin. Matrix and step-by-step guide: [docs/permissions.md](../docs/permissions.md). Worked
+example: `tests/permissions_demo.py`.
 
 ### Campaigns, versioned profiles (`apps/campaigns`)
 
@@ -285,6 +297,36 @@ PostgreSQL.
   each company's latest decision, or `.for_client(client)`. Also `.overrides()`, `.agreeing()`,
   `.with_ai_status()`.
 - Factories: `make_icp_assessment()`, `make_ai_recommendation()`, `make_human_decision()`.
+
+### Signals (`apps/research`) and contacts (`apps/companies`)
+
+Placement: `Signal` lives in `apps/research` (timing evidence, used by M4/M5); `Contact` lives in
+`apps/companies` (a person at the company). `DataSource` is not redefined: import it from
+`apps.companies.models`.
+
+- **Signal** (append-only, tenant): `company`, `data_source` (NOT NULL), `type` (the 13
+  `SignalType` values of Brief section 7), `evidence`, `event_date` (NOT NULL), `detected_at`,
+  `expires_at` (null = no rule yet, counts as fresh until M5), `supersedes` (one-to-one,
+  reverse name `superseded_by`), optional AI provenance fields. No `active` flag, no stored
+  Yes/No. An AI inference is never a source (there is no AI source type).
+- `Signal.objects.current()` (not superseded), `.fresh(as_of=None)` (current and
+  `expires_at` null or `> as_of`; stale at the exact expiry instant), `.for_company(c)`,
+  `.latest_first()`.
+- `services.create_signal(company, data_source, type, evidence, event_date, *, detected_at,
+  expires_at, supersedes, user, ...)`, `supersede_signal(old, data_source, evidence,
+  event_date, type=None)`, `retire_signal(old, data_source, reason)` (an `other` row that
+  expires at once) and `company_trigger_state(company, as_of=None)` returning a `TriggerState`
+  (`.triggered`, `.label` "Yes"/"No", `.signals`). Zero signals is a normal "No".
+- **Contact** (mutable, archivable, tenant): `company`, `data_source`, `name`, `title`,
+  `profile_url`, `email`, `email_status` (`unknown`/`not_found`/`unverified`/`verified`/
+  `invalid`), `relevance_reason`, `rank`, `role` (`primary`/`secondary`/`none`), `erased_at`.
+  Database: at most one non-archived primary and one secondary per company, unique profile URL
+  among non-archived. Changes are to be logged as Activity later (#43).
+- `apps.companies.services`: `create_contact`, `update_contact`, `set_contact_role` (taking a
+  taken slot demotes the old holder to none), `restore_contact`; `Contact.objects.primary_for(
+  company)`, `.for_company()`, `.ranked()`, `.active()`; `contact.erase_personal_data()` blanks
+  personal fields, archives and keeps the id.
+- Factories: `SignalFactory`, `ContactFactory`, `make_signal()`, `make_contact()`.
 
 ## Authentication
 

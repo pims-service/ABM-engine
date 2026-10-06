@@ -7,21 +7,19 @@ import django.utils.timezone
 from django.conf import settings
 from django.db import migrations, models
 
-import apps.core.fields
-
 
 class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
         ("campaigns", "0002_postgres_current_profile_integrity"),
-        ("companies", "0001_company_research_data_source"),
+        ("companies", "0002_contact"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name="ICPAssessment",
+            name="Signal",
             fields=[
                 (
                     "id",
@@ -30,261 +28,134 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "fit",
+                    "type",
                     models.CharField(
-                        choices=[("strong", "Strong"), ("medium", "Medium"), ("weak", "Weak")],
-                        max_length=8,
+                        choices=[
+                            ("sales_hiring", "Sales hiring"),
+                            ("bd_hiring", "Business development hiring"),
+                            ("commercial_hiring", "Commercial hiring"),
+                            ("partnerships_hiring", "Partnerships hiring"),
+                            ("headcount_growth", "Headcount growth"),
+                            ("commercial_team_growth", "Commercial team growth"),
+                            ("funding", "Funding"),
+                            ("market_expansion", "Market expansion"),
+                            ("new_leadership", "New leadership"),
+                            ("new_office", "New office"),
+                            ("new_product", "New product"),
+                            ("major_partnership", "Major partnership"),
+                            ("other", "Other"),
+                        ],
+                        max_length=32,
+                    ),
+                ),
+                ("evidence", models.TextField(help_text="Quoted or summarized from the source.")),
+                (
+                    "event_date",
+                    models.DateField(help_text="When the event happened, as the source states it."),
+                ),
+                (
+                    "detected_at",
+                    models.DateTimeField(
+                        default=django.utils.timezone.now, help_text="When we found it."
                     ),
                 ),
                 (
-                    "reasons",
-                    apps.core.fields.StringListField(
-                        blank=True, default=list, help_text="Why this fit, in plain words."
+                    "expires_at",
+                    models.DateTimeField(
+                        blank=True,
+                        help_text="Null: no freshness rule applied yet (counts as fresh).",
+                        null=True,
                     ),
                 ),
-                (
-                    "concerns",
-                    apps.core.fields.StringListField(
-                        blank=True, default=list, help_text="Doubts or risks. May be empty."
-                    ),
-                ),
-                ("raw_output", models.JSONField(blank=True, default=dict)),
-                ("model_name", models.CharField(max_length=100)),
-                ("prompt_version", models.CharField(max_length=50)),
-                ("schema_version", models.CharField(max_length=50)),
-                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
-                (
-                    "campaign_profile",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="icp_assessments",
-                        to="campaigns.campaignprofile",
-                    ),
-                ),
-                (
-                    "client",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="%(app_label)s_%(class)s_set",
-                        related_query_name="%(app_label)s_%(class)s",
-                        to="campaigns.client",
-                    ),
-                ),
-                (
-                    "company",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="icp_assessments",
-                        to="companies.company",
-                    ),
-                ),
-                (
-                    "company_research",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="icp_assessments",
-                        to="companies.companyresearch",
-                    ),
-                ),
-            ],
-            options={
-                "ordering": ("-created_at", "-id"),
-            },
-        ),
-        migrations.CreateModel(
-            name="AIRecommendation",
-            fields=[
-                (
-                    "id",
-                    models.UUIDField(
-                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
-                    ),
-                ),
-                (
-                    "status",
-                    models.CharField(
-                        choices=[("add", "Add"), ("hold", "Hold"), ("skip", "Skip")], max_length=8
-                    ),
-                ),
-                ("explanation", models.TextField()),
-                ("raw_output", models.JSONField(blank=True, default=dict)),
-                ("model_name", models.CharField(max_length=100)),
-                ("prompt_version", models.CharField(max_length=50)),
-                ("schema_version", models.CharField(max_length=50)),
-                ("created_at", models.DateTimeField(default=django.utils.timezone.now)),
-                (
-                    "client",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="%(app_label)s_%(class)s_set",
-                        related_query_name="%(app_label)s_%(class)s",
-                        to="campaigns.client",
-                    ),
-                ),
-                (
-                    "company",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="ai_recommendations",
-                        to="companies.company",
-                    ),
-                ),
-                (
-                    "icp_assessment",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="recommendations",
-                        to="research.icpassessment",
-                    ),
-                ),
-            ],
-            options={
-                "ordering": ("-created_at", "-id"),
-            },
-        ),
-        migrations.CreateModel(
-            name="HumanDecision",
-            fields=[
-                (
-                    "id",
-                    models.UUIDField(
-                        default=uuid.uuid4, editable=False, primary_key=True, serialize=False
-                    ),
-                ),
-                (
-                    "decision",
-                    models.CharField(
-                        choices=[("add", "Add"), ("hold", "Hold"), ("skip", "Skip")], max_length=8
-                    ),
-                ),
-                ("note", models.TextField(blank=True)),
-                ("decided_at", models.DateTimeField(default=django.utils.timezone.now)),
+                ("model_name", models.CharField(blank=True, max_length=100)),
+                ("prompt_version", models.CharField(blank=True, max_length=50)),
+                ("schema_version", models.CharField(blank=True, max_length=50)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 (
-                    "ai_recommendation",
+                    "client",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="%(app_label)s_%(class)s_set",
+                        related_query_name="%(app_label)s_%(class)s",
+                        to="campaigns.client",
+                    ),
+                ),
+                (
+                    "company",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="signals",
+                        to="companies.company",
+                    ),
+                ),
+                (
+                    "created_by",
                     models.ForeignKey(
                         blank=True,
                         null=True,
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="human_decisions",
-                        to="research.airecommendation",
-                    ),
-                ),
-                (
-                    "client",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="%(app_label)s_%(class)s_set",
-                        related_query_name="%(app_label)s_%(class)s",
-                        to="campaigns.client",
-                    ),
-                ),
-                (
-                    "company",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT,
-                        related_name="human_decisions",
-                        to="companies.company",
-                    ),
-                ),
-                (
-                    "decided_by",
-                    models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="+",
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
+                (
+                    "data_source",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="signals",
+                        to="companies.datasource",
+                    ),
+                ),
+                (
+                    "supersedes",
+                    models.OneToOneField(
+                        blank=True,
+                        help_text="The earlier signal this row corrects or replaces.",
+                        null=True,
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="superseded_by",
+                        to="research.signal",
+                    ),
+                ),
             ],
             options={
-                "ordering": ("-decided_at", "-created_at", "-id"),
+                "ordering": ("-event_date", "-detected_at", "-id"),
                 "indexes": [
                     models.Index(
-                        fields=["company", "-decided_at", "-created_at", "-id"],
-                        name="rs_decision_latest_idx",
+                        fields=["company", "expires_at"], name="rs_signal_company_expiry_idx"
                     ),
-                    models.Index(fields=["client"], name="rs_decision_client_idx"),
-                    models.Index(fields=["ai_recommendation"], name="rs_decision_airec_idx"),
+                    models.Index(fields=["client"], name="rs_signal_client_idx"),
+                    models.Index(fields=["data_source"], name="rs_signal_source_idx"),
                 ],
                 "constraints": [
                     models.CheckConstraint(
-                        condition=models.Q(("decision__in", ["add", "hold", "skip"])),
-                        name="research_humandecision_decision_valid",
-                    )
+                        condition=models.Q(
+                            (
+                                "type__in",
+                                [
+                                    "sales_hiring",
+                                    "bd_hiring",
+                                    "commercial_hiring",
+                                    "partnerships_hiring",
+                                    "headcount_growth",
+                                    "commercial_team_growth",
+                                    "funding",
+                                    "market_expansion",
+                                    "new_leadership",
+                                    "new_office",
+                                    "new_product",
+                                    "major_partnership",
+                                    "other",
+                                ],
+                            )
+                        ),
+                        name="research_signal_type_valid",
+                    ),
+                    models.CheckConstraint(
+                        condition=models.Q(("evidence", ""), _negated=True),
+                        name="research_signal_evidence_not_empty",
+                    ),
                 ],
             },
-        ),
-        migrations.AddIndex(
-            model_name="icpassessment",
-            index=models.Index(fields=["company", "-created_at", "-id"], name="rs_icp_latest_idx"),
-        ),
-        migrations.AddIndex(
-            model_name="icpassessment",
-            index=models.Index(fields=["client"], name="rs_icp_client_idx"),
-        ),
-        migrations.AddIndex(
-            model_name="icpassessment",
-            index=models.Index(fields=["campaign_profile"], name="rs_icp_profile_idx"),
-        ),
-        migrations.AddIndex(
-            model_name="icpassessment",
-            index=models.Index(fields=["company_research"], name="rs_icp_research_idx"),
-        ),
-        migrations.AddConstraint(
-            model_name="icpassessment",
-            constraint=models.CheckConstraint(
-                condition=models.Q(("fit__in", ["strong", "medium", "weak"])),
-                name="research_icpassessment_fit_valid",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="icpassessment",
-            constraint=models.CheckConstraint(
-                condition=models.Q(
-                    models.Q(("model_name", ""), _negated=True),
-                    models.Q(("prompt_version", ""), _negated=True),
-                    models.Q(("schema_version", ""), _negated=True),
-                ),
-                name="research_icpassessment_versions_set",
-            ),
-        ),
-        migrations.AddIndex(
-            model_name="airecommendation",
-            index=models.Index(
-                fields=["company", "-created_at", "-id"], name="rs_airec_latest_idx"
-            ),
-        ),
-        migrations.AddIndex(
-            model_name="airecommendation",
-            index=models.Index(fields=["client"], name="rs_airec_client_idx"),
-        ),
-        migrations.AddIndex(
-            model_name="airecommendation",
-            index=models.Index(fields=["icp_assessment"], name="rs_airec_assessment_idx"),
-        ),
-        migrations.AddConstraint(
-            model_name="airecommendation",
-            constraint=models.CheckConstraint(
-                condition=models.Q(("status__in", ["add", "hold", "skip"])),
-                name="research_airecommendation_status_valid",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="airecommendation",
-            constraint=models.CheckConstraint(
-                condition=models.Q(("explanation", ""), _negated=True),
-                name="research_airecommendation_explained",
-            ),
-        ),
-        migrations.AddConstraint(
-            model_name="airecommendation",
-            constraint=models.CheckConstraint(
-                condition=models.Q(
-                    models.Q(("model_name", ""), _negated=True),
-                    models.Q(("prompt_version", ""), _negated=True),
-                    models.Q(("schema_version", ""), _negated=True),
-                ),
-                name="research_airecommendation_versions_set",
-            ),
         ),
     ]
