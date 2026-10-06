@@ -7,4 +7,6 @@ __pycache__/
 staticfiles/
 *.sqlite3
 .coverage
+coverage.xml
+.mypy_cache/
 htmlcov/

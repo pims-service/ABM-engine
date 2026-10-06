@@ -1,5 +1,6 @@
 """Production settings. Secure defaults; everything overridable via env vars."""
-from .base import *  # noqa: F403
+
+from .base import *
 from .base import env
 
 DEBUG = False
