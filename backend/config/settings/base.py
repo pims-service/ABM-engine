@@ -38,6 +38,7 @@ THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
     "django_q",
+    "drf_spectacular",
 ]
 LOCAL_APPS = [
     "apps.accounts.apps.AccountsConfig",
@@ -144,6 +145,30 @@ REST_FRAMEWORK = {
         "login_email": env("API_THROTTLE_LOGIN_EMAIL", default="5/min"),
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# OpenAPI schema (drf-spectacular). The committed copy is docs/api/openapi.yaml; the HTTP
+# endpoints /api/v1/schema/ and /api/v1/docs/ only answer while API_DOCS_ENABLED (dev: on,
+# everywhere else: off unless the env var says otherwise).
+API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ABM Engine API",
+    "DESCRIPTION": (
+        "Backend API of the ABM Engine. Authenticate with `POST /api/v1/auth/login/` and send "
+        "`Authorization: Bearer <access>`. Every error uses the `ErrorEnvelope` body."
+    ),
+    "VERSION": "0.1.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SERVE_AUTHENTICATION": [],  # the docs pages must open in a browser without a token
+    "SORT_OPERATIONS": True,
+    "COMPONENT_SPLIT_REQUEST": True,  # request bodies get their own component (no readOnly noise)
+    "TAGS": [
+        {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
+        {"name": "health", "description": "Liveness and readiness probes (no auth)."},
+        {"name": "meta", "description": "API metadata."},
+    ],
+    "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayOperationId": True},
 }
 
 # Logging: JSON lines by default (prod); dev.py switches to a readable format.

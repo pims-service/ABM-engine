@@ -32,6 +32,7 @@ INT_VARIABLES: dict[str, int] = {
 #: Optional boolean variables.
 BOOL_VARIABLES = (
     "DEBUG",
+    "API_DOCS_ENABLED",
     "SECURE_SSL_REDIRECT",
     "AUTH_REFRESH_COOKIE_ENABLED",
     "AUTH_REFRESH_COOKIE_SECURE",

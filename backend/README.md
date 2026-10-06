@@ -290,6 +290,60 @@ curl -i http://localhost:8000/healthz
 curl -i http://localhost:8000/readyz
 ```
 
+## OpenAPI schema and API client
+
+The API is described by an OpenAPI 3.0 schema generated with
+[drf-spectacular](https://drf-spectacular.readthedocs.io/). The generated file is **committed** at
+[`docs/api/openapi.yaml`](../docs/api/openapi.yaml) and is the contract the frontend client
+(`frontend/src/lib/api/`) is generated from, so backend and frontend cannot drift silently.
+
+| URL | What |
+| --- | --- |
+| `GET /api/v1/schema/` | the schema (YAML; `?format=json` for JSON) |
+| `GET /api/v1/docs/` | Swagger UI (use "Authorize" with an access token to call endpoints) |
+| `GET /api/v1/redoc/` | ReDoc |
+
+**Are the docs enabled in production? No, by default.** All three URLs answer only while the
+`API_DOCS_ENABLED` setting is true (env var, see `docs/environment.md`): `true` in
+`config.settings.dev`, `false` in base, prod and test. Otherwise they return the normal `404
+not_found` envelope. The committed `docs/api/openapi.yaml` is the production-safe copy of the
+contract. Turn the flag on for a staging/preview environment if you want live docs there. The UIs load their
+JavaScript from a CDN, which is another reason to keep them out of production.
+
+What the schema documents:
+
+- **Security**: a `jwtAuth` HTTP bearer scheme (`Authorization: Bearer <access>`). Endpoints that
+  need no token (login, refresh, logout, health, API root) are marked `security: [{}]`.
+- **Errors**: the standard envelope (see "Logging, request IDs and API errors") is the
+  `ErrorEnvelope` component (`{"error": ErrorBody}`, `ErrorBody` = `code`, `message`, `details`,
+  `request_id`). Every operation lists it for its error statuses (400/401/429/500 as applicable;
+  `/readyz` 503 returns the readiness body instead).
+- **Operations**: each has a stable `operationId` and a tag: `auth_login`, `auth_refresh`,
+  `auth_logout`, `auth_me` (tag `auth`); `health_live` (`/healthz`), `health_ready` (`/readyz`)
+  (tag `health`); `api_root` (tag `meta`). Paths are the real URLs (`/api/v1/auth/login/`,
+  `/healthz`). Operation ids become the names clients use, so do not rename them casually.
+
+### Adding or changing an endpoint
+
+1. Decorate the view method with `@extend_schema(tags=[...], operation_id="<tag>_<action>",
+   responses={200: MySerializer, **error_responses(400, 401, 500)})`
+   (`error_responses` is in `apps/core/schema.py` and produces the envelope responses).
+2. Regenerate and commit the schema: `make api-schema` (from the repo root), which runs
+   `DJANGO_SETTINGS_MODULE=config.settings.test uv run python manage.py spectacular --validate
+   --fail-on-warn --file ../docs/api/openapi.yaml`. It needs no database or `.env`. Then
+   `make api-client` also regenerates the frontend types.
+3. Fix any warning spectacular prints (unannotated `APIView`, unresolvable serializer, duplicate
+   component name). The generation is **warning-free by contract**: `--fail-on-warn` is used both
+   by the make target and by the test.
+
+### CI check: a stale schema fails
+
+`tests/test_openapi.py` regenerates the schema in memory with `--validate --fail-on-warn` and
+fails when it produces any warning, when it does not equal `docs/api/openapi.yaml`, or when the
+operation ids, tags, security scheme or error envelope drift. It runs with the normal backend
+test suite, so changing a serializer or view without running `make api-schema` fails CI. The frontend
+side (generated types out of date) is checked by `make api-check`, see `frontend/README.md`.
+
 ## Tests
 
 ```bash

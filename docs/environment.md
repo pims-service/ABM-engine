@@ -35,6 +35,7 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `SECRET_KEY` | api, worker | yes | none | `YOUR_SECRET_KEY` | root, backend | Secret. Rejected while it is still a `YOUR_*` placeholder; at least 32 characters in production. |
 | `DEBUG` | api, worker | no | `True` in dev, forced `False` in prod | `True` | root, backend | `true`/`false`. |
 | `ALLOWED_HOSTS` | api | prod only | `localhost,127.0.0.1,[::1]` in dev | `localhost,127.0.0.1` | root, backend | Comma-separated host names. |
+| `API_DOCS_ENABLED` | api | no | `true` in dev, `false` everywhere else | `false` | backend | `true`/`false`. Serves the OpenAPI schema and Swagger UI/ReDoc at `/api/v1/schema/`, `/docs/`, `/redoc/` (404 when off). Keep off in production. |
 | `CSRF_TRUSTED_ORIGINS` | api | no | empty | `https://YOUR_DOMAIN` | backend | Production only, comma-separated origins. |
 | `SECURE_SSL_REDIRECT` | api | no | `True` in prod | `True` | backend | Production only. |
 | `SECURE_HSTS_SECONDS` | api | no | `3600` | `3600` | backend | Production only. Integer. |
