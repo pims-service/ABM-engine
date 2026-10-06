@@ -12,13 +12,15 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.db.models.functions import Lower
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.core.roles import Role
 
+from .memberships import grant_membership
 from .models import Campaign, CampaignProfile, Client
 
 LIST_FIELDS = (
@@ -165,3 +167,113 @@ def create_profile_version(
     campaign.current_profile = profile
     campaign.updated_at = locked.updated_at or timezone.now()
     return profile
+
+
+# ------------------------------------------------------------------ clients (issue #47)
+
+CLIENT_EDITABLE_FIELDS = ("name", "notes")
+CLIENT_NAME_TAKEN = "An active client with this name already exists."
+_CLIENT_NAME_CONSTRAINT = "campaigns_client_name_unique_active"
+
+
+def _clean_client_name(name: Any) -> str:
+    if not isinstance(name, str) or not name.strip():
+        raise ValidationError({"name": "A client needs a name."})
+    cleaned = name.strip()
+    if len(cleaned) > 200:
+        raise ValidationError({"name": "Ensure this value has at most 200 characters."})
+    return cleaned
+
+
+def _ensure_client_name_free(name: str, exclude_pk: uuid.UUID | None = None) -> None:
+    """Names are unique, ignoring case, among clients that are not archived."""
+    others = Client.objects.active().annotate(lowered=Lower("name")).filter(lowered=name.lower())
+    if exclude_pk is not None:
+        others = others.exclude(pk=exclude_pk)
+    if others.exists():
+        raise ValidationError({"name": CLIENT_NAME_TAKEN})
+
+
+def _name_race(exc: IntegrityError) -> ValidationError | None:
+    """A lost race on the unique-name constraint, as the same field error as the pre-check."""
+    if _CLIENT_NAME_CONSTRAINT in str(exc):
+        return ValidationError({"name": CLIENT_NAME_TAKEN})
+    return None
+
+
+@transaction.atomic
+def create_client(name: str, notes: str = "", user: User | None = None) -> Client:
+    """Create an active client. The creating user (if any) becomes its admin member.
+
+    Without that membership a non-global-admin creator could not see the client they just made.
+    Pass ``user=None`` for system callers (seed, tests).
+    """
+    name = _clean_client_name(name)
+    _ensure_client_name_free(name)
+    client = Client(name=name, notes=(notes or "").strip(), created_by=user)
+    client.full_clean(validate_unique=False, validate_constraints=False)
+    try:
+        with transaction.atomic():
+            client.save()
+    except IntegrityError as exc:
+        raise _name_race(exc) or exc from exc
+    if user is not None:
+        grant_membership(client, user, Role.ADMIN)
+    return client
+
+
+@transaction.atomic
+def update_client(client: Client, data: Mapping[str, Any]) -> Client:
+    """Change ``name`` and/or ``notes``. Status only changes through archive/restore."""
+    unknown = sorted(set(data) - set(CLIENT_EDITABLE_FIELDS))
+    if unknown:
+        raise ValidationError(dict.fromkeys(unknown, "Unknown or read-only field."))
+    locked = Client.objects.select_for_update().get(pk=client.pk)
+    if locked.is_archived:
+        raise ValidationError("Archived clients are read-only; restore the client first.")
+    fields: list[str] = []
+    if "name" in data:
+        name = _clean_client_name(data["name"])
+        if name != locked.name:
+            _ensure_client_name_free(name, exclude_pk=locked.pk)
+            locked.name = name
+            fields.append("name")
+    if "notes" in data:
+        notes = (data["notes"] or "").strip()
+        if notes != locked.notes:
+            locked.notes = notes
+            fields.append("notes")
+    if fields:
+        try:
+            with transaction.atomic():
+                locked.save(update_fields=[*fields, "updated_at"])
+        except IntegrityError as exc:
+            raise _name_race(exc) or exc from exc
+    client.name, client.notes, client.updated_at = locked.name, locked.notes, locked.updated_at
+    return client
+
+
+@transaction.atomic
+def archive_client(client: Client) -> Client:
+    """Hide a client from default lists; keeps every row. Idempotent. Does not cascade."""
+    locked = Client.objects.select_for_update().get(pk=client.pk)
+    locked.archive()
+    client.archived_at, client.status = locked.archived_at, locked.status
+    client.updated_at = locked.updated_at
+    return client
+
+
+@transaction.atomic
+def restore_client(client: Client) -> Client:
+    """Bring an archived client back. Fails if an active client took its name meanwhile."""
+    locked = Client.objects.select_for_update().get(pk=client.pk)
+    if locked.is_archived:
+        _ensure_client_name_free(locked.name, exclude_pk=locked.pk)
+        try:
+            with transaction.atomic():
+                locked.restore()
+        except IntegrityError as exc:
+            raise _name_race(exc) or exc from exc
+    client.archived_at, client.status = locked.archived_at, locked.status
+    client.updated_at = locked.updated_at
+    return client
