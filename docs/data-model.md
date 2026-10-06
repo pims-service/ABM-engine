@@ -491,6 +491,14 @@ The person's call. Never edited. To change one's mind, add a new decision.
 | note | text, null | |
 | decided_at | timestamptz | |
 
+Implementation (#42): all three models live in the `research` app
+(`apps/research/models.py`, writes in `services.py`). Differences from the tables
+above: `raw_output` is also on AIRecommendation, `created_at` is also on
+HumanDecision (tie-break after `decided_at`), and `explanation`, `model_name`,
+`prompt_version` and `schema_version` are non-empty by CHECK constraint. Fit,
+status and decision are CHECK-constrained enums. There is no numeric field and the
+services refuse a `raw_output` that carries a key containing "score".
+
 ### OutreachAngle (issue #43), append-only
 
 Why we should contact this account (Brief §9). Stored apart from messages so
@@ -1003,6 +1011,11 @@ Numbered so they can be answered in review.
 3. **Can a human decide before the AI has run?** If yes,
    `HumanDecision.ai_recommendation_id` stays nullable (as written). If every
    decision must follow a recommendation, make it NOT NULL.
+   *Implemented in #42 as nullable.* A person can decide before the AI has run or
+   on a company never assessed (a manual add). Those decisions are valid, and are
+   left out of the AI-versus-human agreement figures. When a recommendation is
+   given it must be for the same company. Revisit if the product wants every
+   decision to follow a recommendation.
 4. **Contact history.** Contacts are mutable here (email and rank change after
    enrichment and verification). Is that acceptable, with changes visible via
    Activity, or do we want ranking and email results stored as history too
