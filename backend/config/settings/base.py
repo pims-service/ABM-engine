@@ -109,6 +109,7 @@ REST_FRAMEWORK = {
         "anon": env("API_THROTTLE_ANON", default="100/hour"),
         "user": env("API_THROTTLE_USER", default="1000/hour"),
     },
+    "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
 }
 
 # Logging: JSON lines by default (prod); dev.py switches to a readable format.
