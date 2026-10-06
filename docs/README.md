@@ -13,6 +13,7 @@ Project documentation lives here. If you are new, start with onboarding.
 
 ## How we work
 
+- [Continuous integration](ci.md): the GitHub Actions jobs, which checks are required and how to run each locally.
 - [Conventions](conventions.md): Conventional Commit messages, branch names,
   PR rules and the pre-commit hooks.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): ground rules, PR checklist, review
