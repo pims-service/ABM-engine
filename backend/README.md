@@ -327,6 +327,47 @@ Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
 `make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
 PostgreSQL.
 
+### Campaign API (`/api/v1/campaigns/`, issue #48)
+
+`apps/campaigns/api/campaigns.py` (`CampaignViewSet`, a `ClientScopedViewSet`), serializers in
+`campaign_serializers.py`. Routes: `GET/POST /campaigns/` (filters `client`, `status`,
+`archived`, `search`, `ordering`), `GET/PUT/PATCH /campaigns/{id}/`, `POST {id}/activate|archive|
+restore|clone/`, `GET {id}/profile-versions/` (newest first, paginated), `GET {id}/profile-versions/{n}/`
+and `GET {id}/rules-summary/[?version=n]`. The same campaigns are also reachable under a client:
+`GET/POST /clients/{client_pk}/campaigns/` (404 if the client is not visible; the client comes from
+the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](../docs/permissions.md#campaign-endpoints-apiv1campaigns-issue-48).
+
+- **Request shape**: `{"client": uuid (create only), "name": str, "profile": {offer, countries,
+  industries, company_size_min, company_size_max, business_model, excluded_industries,
+  excluded_company_types, target_departments, preferred_buyer_titles, outreach_languages,
+  custom_rules, change_note}}`. Rules live under `profile`, and field errors on them come back
+  nested (`error.details.profile.countries`). Unknown fields are a 400, never dropped; that includes
+  `structured_rules`: the profile model has no storage for a structured rule list yet, so it is
+  rejected with a "not supported yet" message (use `custom_rules`).
+- **Validation**: `company_size_min <= company_size_max` (also against the current version on
+  PATCH), `countries` in the ISO 3166-1 alpha-2 list shipped in `apps/campaigns/reference.py`
+  (case-insensitive input, stored upper case), `outreach_languages` in `settings.OUTREACH_LANGUAGES`
+  (`en`, `ar`), `business_model` in `b2b|b2c|both`, string lists only (max 100 items), titles
+  de-duplicated in order by the service.
+- **Versioning**: `name` changes go through `update_campaign`, rule changes through
+  `create_profile_version` in one transaction. A changed rule makes a new immutable version
+  (response `profile_version` shows it, header `X-Profile-Version-Created: true`). Rules equal to the
+  current version create nothing and still answer 200 with `X-Profile-Version-Created: false`.
+  On PUT/PATCH, rule fields left out keep their current value; send `[]`/`null`/`""` to clear.
+  Old versions stay retrievable through the history endpoints.
+- **Clone** (`services.clone_campaign`): an independent draft in the same client, version 1 =
+  copy of the source's current rules, named `<name> (copy)` (numbered if taken) unless `name` is
+  given; audited with `cloned_from`. Archiving with queued/running jobs is a 409
+  `campaign_has_active_jobs`.
+- **Rules summary** (`apps/campaigns/rules_summary.py`, schema `RulesSummary`): the contract
+  for the AI prompts, versioned by `schema_version` (1). Keys: `schema_version`, `campaign`
+  `{id,name}`, `profile_version`, `offer`, `targeting` `{countries, industries, company_size
+  {min,max}, business_model}`, `exclusions` `{industries, company_types}`, `buyers`
+  `{target_departments, preferred_buyer_titles}` (most preferred first), `outreach` `{languages}`,
+  `custom_rules`, `structured_rules` (reserved, always `[]`). Changing the shape means bumping
+  `RULES_SUMMARY_SCHEMA_VERSION`; `tests/test_campaign_api.py::test_rules_summary_shape_snapshot`
+  pins it.
+
 ### Companies, research history and data sources (`apps/companies`)
 
 `Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a

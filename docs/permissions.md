@@ -49,6 +49,19 @@ object belongs to a client the user is not a member of, so it does not exist for
 There is no DELETE (405): clients are archived. The creator of a client becomes its admin member.
 Archived clients are read-only (400) until restored.
 
+### Campaign endpoints (`/api/v1/campaigns/`, issue #48)
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list`, `retrieve`, `profile_versions`, `profile_version`, `rules_summary` | READ | yes | yes | yes | yes | yes | not listed / 404 |
+| `create` (also `/clients/{id}/campaigns/`) | EDIT in the target client | no | no | yes | yes | yes | 404 (403 if they can only view it or hold no EDIT role anywhere) |
+| `partial_update`, `update` (name and/or rules: a rule change makes a new profile version) | EDIT | no | no | yes | yes | yes | 404 |
+| `clone`, `activate` | EDIT | no | no | yes | yes | yes | 404 |
+| `archive`, `restore` | MANAGE | no | no | no | yes | yes | 404 |
+
+Reviewers (DECIDE) cannot edit rules: PUT/PATCH is 403 for them. There is no DELETE (405).
+Archived campaigns are read-only (400) until restored; their profile versions stay readable.
+
 Other rules:
 
 - Anonymous requests get 401. An inactive user (or inactive global admin) gets nothing, even with
