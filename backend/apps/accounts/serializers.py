@@ -16,6 +16,26 @@ class UserSerializer(serializers.ModelSerializer[User]):
         read_only_fields = fields
 
 
+class RefreshTokenSerializer(serializers.Serializer[dict[str, str]]):
+    """Body of `refresh/` and `logout/` (documentation only; the views read the raw body)."""
+
+    refresh = serializers.CharField(
+        required=False,
+        help_text="Refresh token. May be omitted when the refresh cookie is enabled.",
+    )
+
+
+class TokenResponseSerializer(serializers.Serializer[dict[str, str]]):
+    """Tokens returned by `login/` and `refresh/` (documentation only)."""
+
+    access = serializers.CharField(help_text="Short-lived JWT access token (Bearer).")
+    refresh = serializers.CharField(
+        required=False,
+        help_text="Refresh token. Omitted when the refresh cookie is enabled "
+        "(it is then delivered as an httpOnly cookie).",
+    )
+
+
 class RefreshSerializer(TokenRefreshSerializer):
     """Refresh serializer that answers 401 (not 500) when the token's user was deleted."""
 

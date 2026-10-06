@@ -245,6 +245,35 @@ Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
 `make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
 PostgreSQL.
 
+### Companies, research history and data sources (`apps/companies`)
+
+`Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a
+`DataSource`. Use `apps/companies/services.py`:
+
+- `normalize_domain(website)` (`apps/companies/domain.py`) lowercases the host and drops scheme,
+  credentials, port, path, a leading `www.` and trailing dots; IDN becomes punycode; IPs,
+  single labels and junk give `None`. `Company.save()` always derives `domain` from `website`.
+- `create_company(campaign, name, website="", *, profile_url, country, input_source, user,
+  created_by_job_id)` returns a `CompanyResult`. Same normalized domain already in the campaign:
+  nothing is inserted, `duplicate=True`, and an archived one is restored (`restored=True`). No
+  domain: created, with `similar` / `warnings` listing active same-name companies (never
+  auto-merged). Unique `(campaign, domain)` where domain is not null is also a database
+  constraint (archived rows count).
+- `add_research_snapshot(company, data_source, *, researched_at=None, **facts)` appends a
+  snapshot (facts: `RESEARCH_FIELDS`; omitted means null = not found). The source must belong to
+  the company's client. `researched_at` defaults to the source's `retrieved_at`.
+- "Current" research has no `is_current` column: `CompanyResearch.objects.latest_for(company)`
+  (or `company.latest_research`) picks the latest `researched_at` (ties: `created_at`, `id`),
+  and `CompanyResearch.objects.current()` returns each company's latest row for lists.
+- **`DataSource`** (`apps.companies.models.DataSource`, used by #41 for signals and contacts):
+  append-only, client-scoped; fields `client`, `type` (`provider`, `website`, `news`,
+  `manual`; `DataSourceType`), `name`, `url` (required unless manual or provider),
+  `provider_reference`, `retrieved_at`, `evidence_date` (nullable, the date the source states),
+  `created_by`, `created_at`. Create with `create_data_source(client, type, name, ...)`. Rows
+  that reference a source must have the same `client_id` (see `CompanyResearch.sync_client`).
+- Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
+  `make_research()`, `make_data_source()` in `tests/factories.py`.
+
 ## Authentication
 
 Decision and rationale: [ADR 0006](../docs/adr/0006-django-jwt-authentication.md). We use Django +
@@ -358,6 +387,60 @@ Behind a TLS-redirecting proxy in prod, both paths are exempt from `SECURE_SSL_R
 curl -i http://localhost:8000/healthz
 curl -i http://localhost:8000/readyz
 ```
+
+## OpenAPI schema and API client
+
+The API is described by an OpenAPI 3.0 schema generated with
+[drf-spectacular](https://drf-spectacular.readthedocs.io/). The generated file is **committed** at
+[`docs/api/openapi.yaml`](../docs/api/openapi.yaml) and is the contract the frontend client
+(`frontend/src/lib/api/`) is generated from, so backend and frontend cannot drift silently.
+
+| URL | What |
+| --- | --- |
+| `GET /api/v1/schema/` | the schema (YAML; `?format=json` for JSON) |
+| `GET /api/v1/docs/` | Swagger UI (use "Authorize" with an access token to call endpoints) |
+| `GET /api/v1/redoc/` | ReDoc |
+
+**Are the docs enabled in production? No, by default.** All three URLs answer only while the
+`API_DOCS_ENABLED` setting is true (env var, see `docs/environment.md`): `true` in
+`config.settings.dev`, `false` in base, prod and test. Otherwise they return the normal `404
+not_found` envelope. The committed `docs/api/openapi.yaml` is the production-safe copy of the
+contract. Turn the flag on for a staging/preview environment if you want live docs there. The UIs load their
+JavaScript from a CDN, which is another reason to keep them out of production.
+
+What the schema documents:
+
+- **Security**: a `jwtAuth` HTTP bearer scheme (`Authorization: Bearer <access>`). Endpoints that
+  need no token (login, refresh, logout, health, API root) are marked `security: [{}]`.
+- **Errors**: the standard envelope (see "Logging, request IDs and API errors") is the
+  `ErrorEnvelope` component (`{"error": ErrorBody}`, `ErrorBody` = `code`, `message`, `details`,
+  `request_id`). Every operation lists it for its error statuses (400/401/429/500 as applicable;
+  `/readyz` 503 returns the readiness body instead).
+- **Operations**: each has a stable `operationId` and a tag: `auth_login`, `auth_refresh`,
+  `auth_logout`, `auth_me` (tag `auth`); `health_live` (`/healthz`), `health_ready` (`/readyz`)
+  (tag `health`); `api_root` (tag `meta`). Paths are the real URLs (`/api/v1/auth/login/`,
+  `/healthz`). Operation ids become the names clients use, so do not rename them casually.
+
+### Adding or changing an endpoint
+
+1. Decorate the view method with `@extend_schema(tags=[...], operation_id="<tag>_<action>",
+   responses={200: MySerializer, **error_responses(400, 401, 500)})`
+   (`error_responses` is in `apps/core/schema.py` and produces the envelope responses).
+2. Regenerate and commit the schema: `make api-schema` (from the repo root), which runs
+   `DJANGO_SETTINGS_MODULE=config.settings.test uv run python manage.py spectacular --validate
+   --fail-on-warn --file ../docs/api/openapi.yaml`. It needs no database or `.env`. Then
+   `make api-client` also regenerates the frontend types.
+3. Fix any warning spectacular prints (unannotated `APIView`, unresolvable serializer, duplicate
+   component name). The generation is **warning-free by contract**: `--fail-on-warn` is used both
+   by the make target and by the test.
+
+### CI check: a stale schema fails
+
+`tests/test_openapi.py` regenerates the schema in memory with `--validate --fail-on-warn` and
+fails when it produces any warning, when it does not equal `docs/api/openapi.yaml`, or when the
+operation ids, tags, security scheme or error envelope drift. It runs with the normal backend
+test suite, so changing a serializer or view without running `make api-schema` fails CI. The frontend
+side (generated types out of date) is checked by `make api-check`, see `frontend/README.md`.
 
 ## Tests
 

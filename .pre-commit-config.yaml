@@ -30,7 +30,7 @@ repos:
   # ---- Backend (Python): activates for files under backend/ -------------
   # Ruff reads its settings from backend/pyproject.toml once issue #30 adds it.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+    rev: v0.16.10
     hooks:
       - id: ruff
         args: ["--fix", "--exit-non-zero-on-fix"]
