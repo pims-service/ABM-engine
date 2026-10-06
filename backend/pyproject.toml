@@ -53,6 +53,8 @@ select = [
 "config/settings/*.py" = ["F403", "F405"]
 # Test settings must set env defaults before importing base.
 "config/settings/test.py" = ["E402"]
+# Migrations follow Django's generated shape (mutable class attributes).
+"**/migrations/*.py" = ["RUF012"]
 # Asserts and throwaway credentials are normal in tests.
 "tests/**" = ["S101", "S105", "S106"]
 
