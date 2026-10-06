@@ -7,7 +7,10 @@ title = "ABM Engine gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Documented placeholders and one throwaway test value"
+description = "Documented placeholders, one throwaway test value, and the detect-secrets baseline (hashes only)"
+paths = [
+  '''^.secrets.baseline$''',
+]
 regexes = [
   '''^YOUR_[A-Z0-9_]+$''',
   '''^Wr0ng-Passw0rd-Marker-9917$''',
