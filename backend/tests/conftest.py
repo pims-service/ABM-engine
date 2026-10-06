@@ -38,3 +38,6 @@ def auth_client(api_client: APIClient, user: User) -> APIClient:
     """API client sending a real JWT access token for `user`."""
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {AccessToken.for_user(user)}")
     return api_client
+
+
+from tests.fixtures_seed import seeded_world  # noqa: E402,F401  (re-exported fixture, issue #52)
