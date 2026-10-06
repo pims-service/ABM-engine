@@ -55,6 +55,7 @@ class TestStringListField:
 
 
 class TestTenancyHelpers:
+    @pytest.mark.django_db
     def test_accessible_client_ids(self):
         assert tenancy.accessible_client_ids(UserFactory.build(is_superuser=True)) is None
         regular = UserFactory.build()

@@ -206,8 +206,20 @@ Rules: always use `PROTECT` (never `CASCADE`), name constraints `<app>_<model>_<
 tenant data through `Model.objects.for_user(user)` (views and services) or
 `.for_client(client)` (jobs that carry a client), never a bare `Model.objects.all()`.
 `for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
-superusers) see everything and everyone else sees nothing until memberships exist (issue #46
-fills in that one function).
+superusers) see everything, everyone else sees the clients where they have an active
+`ClientMembership`, and anonymous or inactive users see nothing.
+
+### Roles and permissions (issue #46)
+
+`ClientMembership` (`apps/campaigns`) gives a user a role (`admin`, `manager`, `reviewer`,
+`viewer`) in one client; `User.is_superuser` is the global admin flag. **Every endpoint serving
+client data must subclass `ClientScopedModelViewSet` / `ClientScopedReadOnlyModelViewSet` /
+`ClientScopedViewSet` from `apps/core/permissions.py`** and declare `action_levels`
+(`Level.READ`, `DECIDE`, `EDIT`, `MANAGE`). That scopes the queryset with `for_user` (404 for
+other clients' ids, never 403) and checks the role. Change memberships only with
+`apps/campaigns/memberships.py` (`grant_membership`, `change_role`, `revoke_membership`) or the
+admin. Matrix and step-by-step guide: [docs/permissions.md](../docs/permissions.md). Worked
+example: `tests/permissions_demo.py`.
 
 ### Campaigns, versioned profiles (`apps/campaigns`)
 
