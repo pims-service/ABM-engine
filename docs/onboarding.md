@@ -87,8 +87,7 @@ at http://localhost:8000/admin/ you need a user. The seed command creates one
 from environment variables and does nothing without a password:
 
 ```bash
-docker compose exec -e DEV_SUPERUSER_USERNAME=admin \
-  -e DEV_SUPERUSER_EMAIL=YOUR_EMAIL \
+docker compose exec -e DEV_SUPERUSER_EMAIL=YOUR_EMAIL \
   -e DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD \
   api python manage.py seed_dev_data
 ```
