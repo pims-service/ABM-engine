@@ -32,11 +32,14 @@ from django.utils import timezone
 from django.utils.cache import add_never_cache_headers
 from django_q.conf import Conf
 from django_q.status import Stat
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from .schema import error_responses
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +156,38 @@ def run_readiness_checks() -> tuple[bool, dict[str, CheckResult]]:
     return all(r.ok for r in results.values()), results
 
 
+class HealthSerializer(serializers.Serializer[dict[str, Any]]):
+    """Body of `/healthz` (documentation only)."""
+
+    status = serializers.ChoiceField(choices=[OK])
+
+
+class CheckSerializer(serializers.Serializer[dict[str, Any]]):
+    """One readiness check; the extra fields depend on the check (documentation only)."""
+
+    status = serializers.ChoiceField(choices=[OK, FAIL, SKIPPED])
+    detail = serializers.CharField(required=False, help_text="Fixed explanation of a failure.")
+    pending = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="migrations: up to 10 unapplied migrations.",
+    )
+    pending_count = serializers.IntegerField(required=False, help_text="migrations: total pending.")
+    clusters = serializers.IntegerField(required=False, help_text="worker: live clusters.")
+    heartbeat_age_seconds = serializers.FloatField(
+        required=False, help_text="worker: age of the newest heartbeat."
+    )
+
+
+class ReadinessSerializer(serializers.Serializer[dict[str, Any]]):
+    """Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`."""
+
+    status = serializers.ChoiceField(choices=[OK, "unavailable"])
+    checks = serializers.DictField(
+        child=CheckSerializer(), help_text="Keyed by check: database, migrations, worker."
+    )
+
+
 class _ProbeView(APIView):
     """Public, unthrottled and unauthenticated; probes must work with no credentials."""
 
@@ -171,6 +206,12 @@ class _ProbeView(APIView):
 class HealthzView(_ProbeView):
     """Liveness: the process is serving requests. Touches no dependency."""
 
+    @extend_schema(
+        tags=["health"],
+        operation_id="health_live",
+        summary="Liveness probe",
+        responses={200: HealthSerializer, **error_responses(500)},
+    )
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return Response({"status": OK})
 
@@ -178,6 +219,18 @@ class HealthzView(_ProbeView):
 class ReadyzView(_ProbeView):
     """Readiness: 200 when every check passes, otherwise 503 with the same JSON body."""
 
+    @extend_schema(
+        tags=["health"],
+        operation_id="health_ready",
+        summary="Readiness probe",
+        responses={
+            200: ReadinessSerializer,
+            503: OpenApiResponse(
+                response=ReadinessSerializer, description="At least one check failed."
+            ),
+            **error_responses(500),
+        },
+    )
     def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         ready, results = run_readiness_checks()
         body = {

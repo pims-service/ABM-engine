@@ -35,17 +35,25 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `SECRET_KEY` | api, worker | yes | none | `YOUR_SECRET_KEY` | root, backend | Secret. Rejected while it is still a `YOUR_*` placeholder; at least 32 characters in production. |
 | `DEBUG` | api, worker | no | `True` in dev, forced `False` in prod | `True` | root, backend | `true`/`false`. |
 | `ALLOWED_HOSTS` | api | prod only | `localhost,127.0.0.1,[::1]` in dev | `localhost,127.0.0.1` | root, backend | Comma-separated host names. |
+| `API_DOCS_ENABLED` | api | no | `true` in dev, `false` everywhere else | `false` | backend | `true`/`false`. Serves the OpenAPI schema and Swagger UI/ReDoc at `/api/v1/schema/`, `/docs/`, `/redoc/` (404 when off). Keep off in production. |
 | `CSRF_TRUSTED_ORIGINS` | api | no | empty | `https://YOUR_DOMAIN` | backend | Production only, comma-separated origins. |
 | `SECURE_SSL_REDIRECT` | api | no | `True` in prod | `True` | backend | Production only. |
 | `SECURE_HSTS_SECONDS` | api | no | `3600` | `3600` | backend | Production only. Integer. |
 | `API_PAGE_SIZE` | api | no | `25` | `25` | backend | DRF default page size. Integer. |
 | `API_THROTTLE_ANON` | api | no | `100/hour` | `100/hour` | backend | DRF rate for anonymous users. |
 | `API_THROTTLE_USER` | api | no | `1000/hour` | `1000/hour` | backend | DRF rate for authenticated users. |
+| `API_THROTTLE_LOGIN` | api | no | `20/min` | `20/min` | backend | Login attempts per client IP (DRF rate). |
+| `API_THROTTLE_LOGIN_EMAIL` | api | no | `5/min` | `5/min` | backend | Login attempts per submitted email (DRF rate). |
+| `JWT_ACCESS_LIFETIME_MINUTES` | api | no | `15` | `15` | backend | Access token lifetime in minutes. Integer. |
+| `JWT_REFRESH_LIFETIME_DAYS` | api | no | `7` | `7` | backend | Refresh token lifetime in days. Integer. |
+| `AUTH_REFRESH_COOKIE_ENABLED` | api | no | `false` | `false` | backend | `true`/`false`. Deliver the refresh token as an httpOnly cookie (BFF) instead of in the JSON body. |
+| `AUTH_REFRESH_COOKIE_SECURE` | api | no | `true` | `true` | backend | `true`/`false`. `Secure` flag of the refresh cookie; `false` only for plain-HTTP local dev. |
+| `AUTH_REFRESH_COOKIE_NAME` | api | no | `abm_refresh` | `abm_refresh` | backend | Name of the refresh cookie. |
+| `AUTH_REFRESH_COOKIE_SAMESITE` | api | no | `Lax` | `Lax` | backend | `Lax`, `Strict` or `None` (`None` needs Secure). |
 | `Q_WORKERS` | worker | no | `2` | `2` | root, backend | Django-Q2 worker processes. Integer. |
 | `Q_TASK_TIMEOUT` | worker | no | `300` | `300` | root, backend | Hard per-task limit in seconds. Integer. |
 | `Q_TASK_RETRY` | worker | no | `360` | `360` | root, backend | Redelivery delay in seconds; must be greater than `Q_TASK_TIMEOUT`. |
 | `LOG_LEVEL` | api, worker | no | `INFO` | `INFO` | root, backend | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
-| `DEV_SUPERUSER_USERNAME` | api | no | `admin` | `admin` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_EMAIL` | api | no | `admin@example.com` | `YOUR_EMAIL` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_PASSWORD` | api | no | none (no superuser is created) | `YOUR_DEV_ADMIN_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. |
 | `NEXT_PUBLIC_API_BASE_URL` | web | yes | `http://localhost:8000/api` in compose | `http://localhost:8000/api` | root, frontend | Public: shipped to browsers. Never put a secret in a `NEXT_PUBLIC_*` variable. |
@@ -127,4 +135,4 @@ deploy. That design is made in the integrations issues, not here.
   `# pragma: allowlist secret` on that line.
 - In the test suite, `backend/tests/test_env_docs.py` checks that every `.env.example` contains
   placeholders only and matches this page.
-- A CI secret-scan step is planned with the CI pipeline issue; it is not wired up yet.
+- In CI, the `Pre-commit hooks` job runs detect-secrets and the `Secret scan (gitleaks)` job scans the full git history (see [ci.md](ci.md)). CI jobs need no repository secrets.

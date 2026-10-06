@@ -44,8 +44,8 @@ class BasicAuthView(APIView):
         return Response({})
 
 
-class SessionAuthView(APIView):
-    """Uses project defaults: unauthenticated callers are rejected."""
+class DefaultAuthView(APIView):
+    """Uses project defaults (JWT, IsAuthenticated): unauthenticated callers get 401."""
 
     def get(self, request: Request) -> Response:
         return Response({})
@@ -123,7 +123,7 @@ class OnlyPostView(_Open):
 urlpatterns = [
     path("api/v1/validation/", ValidationView.as_view()),
     path("api/v1/basic-auth/", BasicAuthView.as_view()),
-    path("api/v1/session-auth/", SessionAuthView.as_view()),
+    path("api/v1/default-auth/", DefaultAuthView.as_view()),
     path("api/v1/forbidden/", ForbiddenView.as_view()),
     path("api/v1/django-forbidden/", DjangoForbiddenView.as_view()),
     path("api/v1/not-found/", NotFoundView.as_view()),

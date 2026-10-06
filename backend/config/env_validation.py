@@ -26,9 +26,17 @@ INT_VARIABLES: dict[str, int] = {
     "Q_TASK_TIMEOUT": 300,
     "Q_TASK_RETRY": 360,
     "SECURE_HSTS_SECONDS": 3600,
+    "JWT_ACCESS_LIFETIME_MINUTES": 15,
+    "JWT_REFRESH_LIFETIME_DAYS": 7,
 }
 #: Optional boolean variables.
-BOOL_VARIABLES = ("DEBUG", "SECURE_SSL_REDIRECT")
+BOOL_VARIABLES = (
+    "DEBUG",
+    "API_DOCS_ENABLED",
+    "SECURE_SSL_REDIRECT",
+    "AUTH_REFRESH_COOKIE_ENABLED",
+    "AUTH_REFRESH_COOKIE_SECURE",
+)
 
 
 def _is_placeholder(value: str) -> bool:

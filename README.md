@@ -1,5 +1,7 @@
 # ABM Engine
 
+[![CI](https://github.com/pims-service/ABM-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/pims-service/ABM-engine/actions/workflows/ci.yml)
+
 An internal web app that automates the manual research behind Account-Based Marketing (ABM). Working name: Growviah ABM Engine.
 
 The manual process today is: find a company, research it, decide whether it fits, look for a reason to reach out now, check the commercial team, find the right decision-maker, pick an angle, approve or reject, and prepare outreach. This project automates the research and analysis parts. A person keeps the final say.
@@ -83,7 +85,7 @@ This starts three services:
 
 Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data survives `docker compose down`; use `docker compose down -v` to wipe it. If a default host port is taken, set `DB_PORT`, `API_PORT` or `WEB_PORT` in `.env` (and update `NEXT_PUBLIC_API_BASE_URL` if you move the API). The `worker` service runs the Django-Q2 cluster (`python manage.py qcluster`) against the same Postgres.
 
-`make up`, `make down`, `make logs`, `make migrate`, `make test` and `make shell` wrap the common commands. See [infra/README.md](infra/README.md) for details.
+`make up`, `make down`, `make logs`, `make migrate`, `make test` and `make shell` wrap the common commands. `make api-schema` / `make api-client` regenerate the OpenAPI schema and the frontend types ([docs/api](docs/api/README.md)). See [infra/README.md](infra/README.md) for details.
 
 New to the project? Follow [docs/onboarding.md](docs/onboarding.md) (setup, Windows notes, troubleshooting) and then the [smoke-test checklist](docs/smoke-test.md). The reasoning behind the stack is in the [architecture decision records](docs/adr/README.md), and commit, branch and PR rules are in [docs/conventions.md](docs/conventions.md).
 

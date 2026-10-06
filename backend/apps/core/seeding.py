@@ -35,14 +35,13 @@ def seed_superuser(environ: Mapping[str, str]) -> SeedResult:
     password = environ.get("DEV_SUPERUSER_PASSWORD", "")
     if not password:
         return SeedResult("superuser", detail="skipped: DEV_SUPERUSER_PASSWORD is not set")
-    username = environ.get("DEV_SUPERUSER_USERNAME", "admin")
-    email = environ.get("DEV_SUPERUSER_EMAIL", "admin@example.com")
+    email = environ.get("DEV_SUPERUSER_EMAIL", "admin@example.com").strip().lower()
 
     user_model = get_user_model()
-    if user_model._default_manager.filter(username=username).exists():
-        return SeedResult("superuser", existing=1, detail=f"{username} already exists")
-    user_model._default_manager.create_superuser(username=username, email=email, password=password)
-    return SeedResult("superuser", created=1, detail=username)
+    if user_model._default_manager.filter(email=email).exists():
+        return SeedResult("superuser", existing=1, detail=f"{email} already exists")
+    user_model._default_manager.create_superuser(email=email, password=password)
+    return SeedResult("superuser", created=1, detail=email)
 
 
 # Sample domain data (companies, campaigns, ...) is added here once those models exist.

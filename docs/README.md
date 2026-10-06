@@ -13,10 +13,16 @@ Project documentation lives here. If you are new, start with onboarding.
 
 ## How we work
 
+- [Continuous integration](ci.md): the GitHub Actions jobs, which checks are required and how to run each locally.
 - [Conventions](conventions.md): Conventional Commit messages, branch names,
   PR rules and the pre-commit hooks.
 - [CONTRIBUTING.md](../CONTRIBUTING.md): ground rules, PR checklist, review
   expectations.
+
+## API
+
+- [API contract (OpenAPI)](api/README.md): the committed schema, how to
+  regenerate it and the TypeScript client, and what CI checks.
 
 ## Why things are the way they are
 
@@ -27,6 +33,9 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Data model and entity relationships](data-model.md): every core object with
   fields and enums, the ER diagram, tenancy and history rules, indexes and
   open questions.
+- [Roles and permissions](permissions.md): the role matrix (viewer, reviewer,
+  manager, admin, global admin), per-client isolation (404, not 403) and the
+  guide every new endpoint must follow.
 
 ## Reference for each part of the repo
 

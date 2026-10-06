@@ -2,7 +2,7 @@
 
 Django 5.2 + Django REST Framework API. PostgreSQL for data. Background jobs run on Django-Q2
 with a Postgres-backed queue (no Redis, no Celery); see "Background jobs" below.
-JWT auth (SimpleJWT) is a separate issue.
+Authentication is JWT (SimpleJWT) on a custom email-login user; see "Authentication" below.
 
 ## Dependency management: uv
 
@@ -23,7 +23,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
 config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
-apps/{accounts,campaigns,companies,research,integrations,ai,core}   empty apps (AppConfigs registered)
+apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models; others are empty AppConfigs)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
 
@@ -86,13 +86,13 @@ Rules:
 ### Seed data
 
 ```bash
-export DEV_SUPERUSER_USERNAME=admin DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
+export DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
 uv run python manage.py seed_dev_data
 ```
 
 `seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
 to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
-from the `DEV_SUPERUSER_*` variables (username defaults to `admin`; without a password the
+from the `DEV_SUPERUSER_*` variables (the email defaults to `admin@example.com`; without a password the
 step is skipped, so no account with a known password is ever created; an existing user is left
 untouched, including its password). There are no domain models yet, so there is no sample
 company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
@@ -176,6 +176,177 @@ database, not an untrusted network.
 Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
 AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
 
+## Domain model building blocks (`apps/core`)
+
+Design: [data-model.md](../docs/data-model.md) and [ADR 0009](../docs/adr/0009-data-model-conventions.md).
+New domain models (issues #40 to #44) compose these abstract bases from `apps/core/base.py`:
+
+| Base | Gives you |
+| --- | --- |
+| `UUIDModel` | `id` UUID primary key |
+| `TimestampedModel` | `created_at`, `updated_at` |
+| `BaseModel` | both of the above (use for mutable tables) |
+| `ArchivableModel` + `ArchivableQuerySet` | `archived_at`, `is_archived`, `archive()`, `restore()` (idempotent; keeps a `status` column in step via `archived_status` / `restored_status`), `.active()` / `.archived()`. Archiving never cascades. |
+| `TenantModel` + `TenantQuerySet` | direct `client` FK (PROTECT). Set `tenant_parent = "<fk name>"` and `save()` copies `client_id` from the parent and raises `TenantMismatchError` on a mismatch or a move to another client. Manager methods `for_user(user)` and `for_client(client_or_id)`. Root tables (like `Campaign`) pass `client` explicitly. A table that is the tenant itself (`Client`) sets `tenant_lookup = "id"` on its queryset. |
+| `AppendOnlyModel` + `AppendOnlyQuerySet` | history rows: `save()` on an existing row, `delete()`, and queryset `update` / `bulk_update` / `delete` raise `ImmutableRecordError`. Corrections are new rows. |
+| `StringListField` (`apps/core/fields.py`) | ordered list of strings: `text[]` on PostgreSQL, JSON text on SQLite. Defaults to `[]`, never NULL. |
+
+```python
+class ThingQuerySet(AppendOnlyQuerySet["Thing"], TenantQuerySet["Thing"]):  # type: ignore[override]
+    pass
+
+
+class Thing(AppendOnlyModel, TenantModel, UUIDModel):
+    tenant_parent = "company"  # the parent row's client_id is copied on create
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+    objects = ThingQuerySet.as_manager()
+```
+
+Rules: always use `PROTECT` (never `CASCADE`), name constraints `<app>_<model>_<what>`, and load
+tenant data through `Model.objects.for_user(user)` (views and services) or
+`.for_client(client)` (jobs that carry a client), never a bare `Model.objects.all()`.
+`for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
+superusers) see everything, everyone else sees the clients where they have an active
+`ClientMembership`, and anonymous or inactive users see nothing.
+
+### Roles and permissions (issue #46)
+
+`ClientMembership` (`apps/campaigns`) gives a user a role (`admin`, `manager`, `reviewer`,
+`viewer`) in one client; `User.is_superuser` is the global admin flag. **Every endpoint serving
+client data must subclass `ClientScopedModelViewSet` / `ClientScopedReadOnlyModelViewSet` /
+`ClientScopedViewSet` from `apps/core/permissions.py`** and declare `action_levels`
+(`Level.READ`, `DECIDE`, `EDIT`, `MANAGE`). That scopes the queryset with `for_user` (404 for
+other clients' ids, never 403) and checks the role. Change memberships only with
+`apps/campaigns/memberships.py` (`grant_membership`, `change_role`, `revoke_membership`) or the
+admin. Matrix and step-by-step guide: [docs/permissions.md](../docs/permissions.md). Worked
+example: `tests/permissions_demo.py`.
+
+### Campaigns, versioned profiles (`apps/campaigns`)
+
+`Client` -> `Campaign` -> `CampaignProfile` (immutable versions of the ICP rules). Use the service
+functions in `apps/campaigns/services.py`, never raw writes:
+
+- `create_campaign(client, name, data, user=None)` creates a draft campaign and its version 1.
+- `create_profile_version(campaign, data, user=None)` is the **only** way to change rules. `data`
+  is any subset of the rule fields plus `change_note`; the rest carries over from the current
+  version. It locks the campaign row, numbers the version, inserts it and moves
+  `campaign.current_profile` in one transaction, leaves old versions untouched, and refuses an
+  archived campaign (`ValidationError`) or identical rules (`ProfileUnchangedError`).
+- `Campaign.current_profile` is NOT NULL with a deferred FK (campaign and v1 are inserted
+  together). On PostgreSQL a composite FK also guarantees the profile belongs to the campaign.
+- Lists (`countries` as ISO alpha-2 upper case, `outreach_languages` lower case, titles in
+  preference order) are trimmed and de-duplicated by the service; `business_model` is
+  `b2b` / `b2c` / `both`.
+- The admin shows profile versions read-only, has no delete buttons (archive actions instead) and
+  campaigns are created through the service, not the admin add form.
+
+Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
+`create_campaign`; override rules with `profile__offer="..."`), `make_client()` and
+`make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
+PostgreSQL.
+
+### Companies, research history and data sources (`apps/companies`)
+
+`Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a
+`DataSource`. Use `apps/companies/services.py`:
+
+- `normalize_domain(website)` (`apps/companies/domain.py`) lowercases the host and drops scheme,
+  credentials, port, path, a leading `www.` and trailing dots; IDN becomes punycode; IPs,
+  single labels and junk give `None`. `Company.save()` always derives `domain` from `website`.
+- `create_company(campaign, name, website="", *, profile_url, country, input_source, user,
+  created_by_job_id)` returns a `CompanyResult`. Same normalized domain already in the campaign:
+  nothing is inserted, `duplicate=True`, and an archived one is restored (`restored=True`). No
+  domain: created, with `similar` / `warnings` listing active same-name companies (never
+  auto-merged). Unique `(campaign, domain)` where domain is not null is also a database
+  constraint (archived rows count).
+- `add_research_snapshot(company, data_source, *, researched_at=None, **facts)` appends a
+  snapshot (facts: `RESEARCH_FIELDS`; omitted means null = not found). The source must belong to
+  the company's client. `researched_at` defaults to the source's `retrieved_at`.
+- "Current" research has no `is_current` column: `CompanyResearch.objects.latest_for(company)`
+  (or `company.latest_research`) picks the latest `researched_at` (ties: `created_at`, `id`),
+  and `CompanyResearch.objects.current()` returns each company's latest row for lists.
+- **`DataSource`** (`apps.companies.models.DataSource`, used by #41 for signals and contacts):
+  append-only, client-scoped; fields `client`, `type` (`provider`, `website`, `news`,
+  `manual`; `DataSourceType`), `name`, `url` (required unless manual or provider),
+  `provider_reference`, `retrieved_at`, `evidence_date` (nullable, the date the source states),
+  `created_by`, `created_at`. Create with `create_data_source(client, type, name, ...)`. Rows
+  that reference a source must have the same `client_id` (see `CompanyResearch.sync_client`).
+- Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
+  `make_research()`, `make_data_source()` in `tests/factories.py`.
+
+## Authentication
+
+Decision and rationale: [ADR 0006](../docs/adr/0006-django-jwt-authentication.md). We use Django +
+`djangorestframework-simplejwt` rather than Supabase Auth, to keep one stack and one user store.
+There is no self-signup: admins create users (Django admin, `createsuperuser`, or
+`User.objects.create_user(email=..., password=...)`).
+
+**User model** (`apps/accounts/models.py`, `AUTH_USER_MODEL = "accounts.User"`): UUID primary key,
+`email` (the login; stored lower-case, unique, enforced by a DB check constraint), `name`,
+`is_active`, `is_staff`, `is_superuser`, `created_at`, `updated_at`. Because the project swaps the
+user model, `accounts` migration `0001` must exist before anything that references users (the
+token blacklist, admin, future apps); never change `AUTH_USER_MODEL` on a database that has
+migrated. Roles and per-client access arrive with the tenancy model (issue #46).
+
+**Endpoints** (all under `/api/v1/auth/`, JSON):
+
+| Endpoint | Body | Success | Notes |
+| --- | --- | --- | --- |
+| `POST login/` | `{"email", "password"}` | 200 `{"access", "refresh"}` | generic 401 for any failure; throttled |
+| `POST refresh/` | `{"refresh"}` | 200 `{"access", "refresh"}` (new pair) | rotates: the old refresh token is blacklisted |
+| `POST logout/` | `{"refresh"}` | 204 | blacklists the refresh token; no access token needed |
+| `GET me/` | none | 200 `{"id", "email", "name", "is_staff", "last_login", "created_at"}` | needs `Authorization: Bearer <access>` |
+
+```bash
+curl -X POST localhost:8000/api/v1/auth/login/ -H 'Content-Type: application/json' \
+  -d '{"email": "YOUR_EMAIL", "password": "YOUR_PASSWORD"}'
+curl localhost:8000/api/v1/auth/me/ -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+Every other endpoint requires the bearer token. A missing token is `401 not_authenticated`; a
+malformed, expired, wrong-type or blacklisted one is `401 authentication_failed`. Session
+authentication is not used by the API (the Django admin keeps its own session login).
+
+**Token lifetimes and settings** (`SIMPLE_JWT` in `config/settings/base.py`): access token 15
+minutes (`JWT_ACCESS_LIFETIME_MINUTES`), refresh token 7 days (`JWT_REFRESH_LIFETIME_DAYS`),
+`ROTATE_REFRESH_TOKENS` and `BLACKLIST_AFTER_ROTATION` on, `UPDATE_LAST_LOGIN` on, HS256 signed with
+`SECRET_KEY` (rotating it logs everyone out). Rotation means a refresh token works once: replaying a
+used or logged-out token is a 401. Note that replay does not revoke the rest of the token family.
+Deactivating a user (`is_active=False`) takes effect at once: login, refresh and already issued
+access tokens are all rejected, because the user row is checked on every request. The blacklist tables grow; prune expired rows periodically with
+`python manage.py flushexpiredtokens` (schedule it with Django-Q2 or cron).
+
+**Login throttling.** Two limits apply to `POST login/`, both counted per request (successful or
+not): per client IP (`API_THROTTLE_LOGIN`, default `20/min`) and per submitted email, case-insensitive
+(`API_THROTTLE_LOGIN_EMAIL`, default `5/min`). Over the limit: `429 throttled` with `retry_after`.
+Counters use Django's cache, which is per process by default (`LocMemCache`); with several gunicorn
+workers or containers configure a shared cache backend so limits are enforced globally, and set
+DRF's `NUM_PROXIES` when behind a reverse proxy so the real client IP is used.
+
+**Password validators** (`AUTH_PASSWORD_VALIDATORS`): similarity to user attributes, minimum length
+12, not a common password, not purely numeric. They run in the admin and in any future
+password-setting endpoint; `create_user` itself does not validate.
+
+**Refresh token as an httpOnly cookie (for the Next.js BFF).** Off by default: API clients get the
+refresh token in the JSON body and send it back in the body. Set `AUTH_REFRESH_COOKIE_ENABLED=true`
+and the refresh token is instead delivered only as a cookie (`login` and `refresh` responses
+contain just `access`); `refresh` and `logout` read it from the cookie when the body has no
+`refresh` (a body value always wins, so API clients keep working), and `logout` clears the cookie.
+A rejected refresh cookie is cleared too.
+
+| Setting / env var | Default | Meaning |
+| --- | --- | --- |
+| `AUTH_REFRESH_COOKIE_ENABLED` | `false` | turn cookie delivery on |
+| `AUTH_REFRESH_COOKIE_NAME` | `abm_refresh` | cookie name |
+| `AUTH_REFRESH_COOKIE_SECURE` | `true` | `Secure` flag; set `false` only for plain-HTTP local dev |
+| `AUTH_REFRESH_COOKIE_SAMESITE` | `Lax` | `Strict`, `Lax` or `None` (`None` requires Secure) |
+| (fixed) `AUTH_REFRESH_COOKIE_PATH` | `/api/v1/auth/` | the cookie is only sent to the auth endpoints |
+
+The cookie is always `HttpOnly`. CSRF: the auth endpoints accept JSON only (not form posts) and the
+cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the browser send it with a
+state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
+can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
+
 ## Health and readiness
 
 Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
@@ -217,6 +388,60 @@ curl -i http://localhost:8000/healthz
 curl -i http://localhost:8000/readyz
 ```
 
+## OpenAPI schema and API client
+
+The API is described by an OpenAPI 3.0 schema generated with
+[drf-spectacular](https://drf-spectacular.readthedocs.io/). The generated file is **committed** at
+[`docs/api/openapi.yaml`](../docs/api/openapi.yaml) and is the contract the frontend client
+(`frontend/src/lib/api/`) is generated from, so backend and frontend cannot drift silently.
+
+| URL | What |
+| --- | --- |
+| `GET /api/v1/schema/` | the schema (YAML; `?format=json` for JSON) |
+| `GET /api/v1/docs/` | Swagger UI (use "Authorize" with an access token to call endpoints) |
+| `GET /api/v1/redoc/` | ReDoc |
+
+**Are the docs enabled in production? No, by default.** All three URLs answer only while the
+`API_DOCS_ENABLED` setting is true (env var, see `docs/environment.md`): `true` in
+`config.settings.dev`, `false` in base, prod and test. Otherwise they return the normal `404
+not_found` envelope. The committed `docs/api/openapi.yaml` is the production-safe copy of the
+contract. Turn the flag on for a staging/preview environment if you want live docs there. The UIs load their
+JavaScript from a CDN, which is another reason to keep them out of production.
+
+What the schema documents:
+
+- **Security**: a `jwtAuth` HTTP bearer scheme (`Authorization: Bearer <access>`). Endpoints that
+  need no token (login, refresh, logout, health, API root) are marked `security: [{}]`.
+- **Errors**: the standard envelope (see "Logging, request IDs and API errors") is the
+  `ErrorEnvelope` component (`{"error": ErrorBody}`, `ErrorBody` = `code`, `message`, `details`,
+  `request_id`). Every operation lists it for its error statuses (400/401/429/500 as applicable;
+  `/readyz` 503 returns the readiness body instead).
+- **Operations**: each has a stable `operationId` and a tag: `auth_login`, `auth_refresh`,
+  `auth_logout`, `auth_me` (tag `auth`); `health_live` (`/healthz`), `health_ready` (`/readyz`)
+  (tag `health`); `api_root` (tag `meta`). Paths are the real URLs (`/api/v1/auth/login/`,
+  `/healthz`). Operation ids become the names clients use, so do not rename them casually.
+
+### Adding or changing an endpoint
+
+1. Decorate the view method with `@extend_schema(tags=[...], operation_id="<tag>_<action>",
+   responses={200: MySerializer, **error_responses(400, 401, 500)})`
+   (`error_responses` is in `apps/core/schema.py` and produces the envelope responses).
+2. Regenerate and commit the schema: `make api-schema` (from the repo root), which runs
+   `DJANGO_SETTINGS_MODULE=config.settings.test uv run python manage.py spectacular --validate
+   --fail-on-warn --file ../docs/api/openapi.yaml`. It needs no database or `.env`. Then
+   `make api-client` also regenerates the frontend types.
+3. Fix any warning spectacular prints (unannotated `APIView`, unresolvable serializer, duplicate
+   component name). The generation is **warning-free by contract**: `--fail-on-warn` is used both
+   by the make target and by the test.
+
+### CI check: a stale schema fails
+
+`tests/test_openapi.py` regenerates the schema in memory with `--validate --fail-on-warn` and
+fails when it produces any warning, when it does not equal `docs/api/openapi.yaml`, or when the
+operation ids, tags, security scheme or error envelope drift. It runs with the normal backend
+test suite, so changing a serializer or view without running `make api-schema` fails CI. The frontend
+side (generated types out of date) is checked by `make api-check`, see `frontend/README.md`.
+
 ## Tests
 
 ```bash
@@ -229,7 +454,7 @@ Coverage is configured in `pyproject.toml` (branch coverage over `apps/` and `co
 fails under 90%; `coverage.xml` is written for CI to pick up).
 
 Harness (`tests/`): `conftest.py` provides `api_client`, `user` and `auth_client` fixtures
-(authentication uses `force_authenticate` until JWT lands); `factories.py` holds factory_boy
+(`auth_client` sends a real JWT access token); `factories.py` holds factory_boy
 factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.django_db` gives a
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
@@ -246,7 +471,7 @@ uv run mypy .                      # types: strict, django-stubs + djangorestfra
 
 Run all gates in one go: `uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.
 
-Makefile targets, container test runs, pre-commit hooks and CI are tracked in other issues.
+Makefile targets and container test runs are tracked in other issues. CI runs all of the above; see [docs/ci.md](../docs/ci.md).
 
 ## Test settings
 
@@ -305,7 +530,7 @@ request, at WARNING for 4xx and ERROR for 5xx.
 | --- | --- | --- |
 | `validation_error` | 400 | field errors (`{"field": ["msg"]}`) or a list |
 | `parse_error` | 400 | null |
-| `not_authenticated` / `authentication_failed` | 401, or 403 for session auth | null |
+| `not_authenticated` / `authentication_failed` | 401 (with `WWW-Authenticate: Bearer`) | null |
 | `permission_denied` | 403 | null |
 | `not_found` | 404 (also unknown `/api/` routes) | null |
 | `method_not_allowed` | 405 | null |
@@ -347,5 +572,5 @@ password, token and API-key values (`apps/core/logging.py`).
 ## DRF defaults
 
 JSON renderer only (browsable API added in dev), JSON parser, page-number pagination
-(`page_size` query param, max 100), anon/user throttling enabled with configurable rates
+(`page_size` query param, max 100), JWT bearer authentication (no session auth), anon/user throttling enabled with configurable rates
 (disabled in test), `IsAuthenticated` as the default permission (the API root is public).
