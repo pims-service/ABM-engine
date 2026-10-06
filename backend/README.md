@@ -309,6 +309,19 @@ functions in `apps/campaigns/services.py`, never raw writes:
 - The admin shows profile versions read-only, has no delete buttons (archive actions instead) and
   campaigns are created through the service, not the admin add form.
 
+### Client API (`/api/v1/clients/`, issue #47)
+
+`apps/campaigns/api/clients.py` (`ClientViewSet`, a `ClientScopedViewSet`): list, create, retrieve,
+PUT/PATCH (name, notes), `POST {id}/archive/` and `POST {id}/restore/`. No DELETE. `status` is
+read-only (changed only by archive/restore). List query params: `status` (`active`|`archived`),
+`archived` (`false` default, `true`, `all`), `search` (name), `ordering` (`name`, `status`,
+`created_at`, `updated_at`, prefix `-`), plus `page`/`page_size`. Names are unique ignoring case
+among non-archived clients: a duplicate gives 400 `validation_error` with `details.name`. Writes
+go through `create_client_with_admin` (creator becomes admin, audited), `update_client`,
+`archive_client`, `restore_client` in `services.py`, so every change writes an `AuditLog` row with
+the actor and diff. Archiving a client with queued or running jobs gives 409
+`client_has_active_jobs`; an archived client is read-only (400). Per-action levels: [docs/permissions.md](../docs/permissions.md#client-endpoints-apiv1clients-issue-47).
+
 Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
 `create_campaign`; override rules with `profile__offer="..."`), `make_client()` and
 `make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on

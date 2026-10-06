@@ -165,6 +165,7 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,  # request bodies get their own component (no readOnly noise)
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
+        {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "meta", "description": "API metadata."},
     ],
