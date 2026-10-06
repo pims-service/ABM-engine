@@ -7,8 +7,7 @@ When you are done, walk through the [smoke-test checklist](smoke-test.md) to
 confirm everything works.
 
 A note on honesty: the project is early (milestone M0). Some things you might
-expect are not built yet, such as the background worker and a dedicated health
-endpoint. Where that matters, this page says so and names the issue.
+expect are not built yet, such as the background worker. Where that matters, this page says so and names the issue.
 
 ## 1. Prerequisites
 
@@ -50,7 +49,9 @@ The other values in `.env.example` have working defaults. Leave them unless a
 port clashes (see [Troubleshooting](#ports-already-in-use)).
 
 `.env` is git-ignored. Never commit real credentials; see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+[CONTRIBUTING.md](../CONTRIBUTING.md). Every variable, and the secrets policy, is in
+[environment.md](environment.md). The API refuses to start while `SECRET_KEY` is still the
+`YOUR_SECRET_KEY` placeholder, and its error names each missing variable.
 
 ## 3. Start the stack
 

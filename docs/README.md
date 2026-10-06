@@ -6,9 +6,10 @@ Project documentation lives here. If you are new, start with onboarding.
 
 - [Developer onboarding](onboarding.md): prerequisites, setup, running the
   stack, Windows notes and troubleshooting.
+- [Environment variables and secrets](environment.md): every variable, startup
+  validation and the secrets-handling policy.
 - [Smoke-test checklist](smoke-test.md): manual check that stack, API and
-  frontend work. Notes which parts wait on later issues (worker #25, health
-  endpoint #28).
+  frontend work. Notes which parts wait on later issues (worker #25).
 
 ## How we work
 
@@ -22,7 +23,10 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Architecture decision records](adr/README.md): the index of ADRs, plus how
   to add one. Currently covers the adapter pattern, structured LLM output, the
   Django/Next.js/Postgres stack, the Postgres-backed queue, JWT auth, history
-  keeping and the ICP fit versus trigger split.
+  keeping, the ICP fit versus trigger split and data model conventions.
+- [Data model and entity relationships](data-model.md): every core object with
+  fields and enums, the ER diagram, tenancy and history rules, indexes and
+  open questions.
 
 ## Reference for each part of the repo
 

@@ -9,6 +9,8 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=True)
+# Container/orchestrator probes speak plain HTTP to the pod; never redirect them to https.
+SECURE_REDIRECT_EXEMPT = [r"^healthz$", r"^readyz$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=3600)

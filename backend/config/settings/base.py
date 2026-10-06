@@ -1,11 +1,13 @@
 """Base settings shared by every environment. All config comes from environment variables."""
 
+import os
 from datetime import timedelta
 from pathlib import Path
 
 import environ
 
 from apps.core.logging import build_logging_config
+from config.env_validation import check_environment
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -13,7 +15,13 @@ env = environ.Env()
 # Optional local .env file (never committed). Real environment variables win.
 environ.Env.read_env(BASE_DIR / ".env", overwrite=False)
 
-# Required: no default, so a missing value fails loudly at startup.
+# Fail fast, naming every missing or invalid variable (never its value). Test settings supply
+# throwaway values and skip this check.
+_SETTINGS_MODULE = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+if not _SETTINGS_MODULE.endswith(".test"):
+    check_environment(os.environ, settings_module=_SETTINGS_MODULE)
+
+# Required and validated above.
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
@@ -74,6 +82,21 @@ TEMPLATES = [
 
 # PostgreSQL via DATABASE_URL, e.g. postgres://USER:PASSWORD@HOST:5432/DBNAME
 DATABASES = {"default": env.db("DATABASE_URL")}
+if DATABASES["default"]["ENGINE"].endswith("postgresql"):
+    # Fail fast instead of hanging when the database host is unreachable (health checks, workers).
+    DATABASES["default"].setdefault("OPTIONS", {}).setdefault("connect_timeout", 3)
+
+# Django-Q2 publishes worker heartbeats (cluster stats) to a cache, and /readyz reads them from
+# the web process. The default cache is per-process, so use a database cache shared by api and
+# worker. Its table is created by apps/core/migrations/0003_q_stats_cache_table.py.
+Q_STATS_CACHE_TABLE = "q_stats_cache"
+CACHES = {
+    "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"},
+    "q_stats": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": Q_STATS_CACHE_TABLE,
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"  # must be set before the first migration of any dependent app
@@ -135,6 +158,7 @@ LOGGING = build_logging_config(json_logs=env.bool("LOG_JSON", default=True), lev
 Q_CLUSTER = {
     "name": "abm",
     "orm": "default",
+    "cache": "q_stats",  # cluster heartbeats, read by /readyz (apps/core/health.py)
     "workers": env.int("Q_WORKERS", default=2),
     "timeout": env.int("Q_TASK_TIMEOUT", default=300),  # hard limit per task, seconds
     "retry": env.int("Q_TASK_RETRY", default=360),  # must exceed timeout

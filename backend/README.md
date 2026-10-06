@@ -22,7 +22,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
-config/urls.py                            /admin/ and /api/v1/
+config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
 apps/{accounts,campaigns,companies,research,integrations,ai,core}   empty apps (AppConfigs registered)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
@@ -249,6 +249,47 @@ cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the brows
 state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
 can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
 
+## Health and readiness
+
+Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
+They need no authentication, are excluded from throttling, send `Cache-Control: no-store`, carry the
+usual `X-Request-ID`, and return fixed strings only (no exception text, SQL, hosts or settings; the
+details go to the log with the request ID).
+
+| Endpoint | Meaning | Touches |
+| --- | --- | --- |
+| `GET /healthz` | Liveness: the process serves requests. Always `200 {"status": "ok"}`. | nothing |
+| `GET /readyz` | Readiness: `200` when all checks pass, else `503` with the same JSON shape. | db, migrations, worker |
+
+```json
+{"status": "unavailable",
+ "checks": {"database": {"status": "ok"},
+            "migrations": {"status": "fail", "detail": "pending migrations",
+                           "pending": ["core.0004_x"], "pending_count": 1},
+            "worker": {"status": "fail", "detail": "no recent worker heartbeat"}}}
+```
+
+- `database`: `SELECT 1` with a 2 s statement timeout; connections time out after 3 s
+  (`connect_timeout` in `config/settings/base.py`). When it fails, `migrations` and `worker` are
+  reported as `skipped`.
+- `migrations`: every migration on disk is applied.
+- `worker`: a Django-Q2 cluster published a heartbeat (its cluster `Stat`) at most 30 s ago and is
+  not stopped. Override the window with the Django setting `HEALTH_WORKER_MAX_AGE_SECONDS`. A
+  running cluster refreshes the heartbeat about twice a second and it expires after 3 s, so a stopped
+  or crashed worker is detected within seconds. The heartbeat is stored in the `q_stats` cache, a
+  database cache (table `q_stats_cache`, created by migration `core.0003`) that the api and the
+  worker share; the default per-process cache could not carry it between processes.
+
+Use `/healthz` for liveness/restart decisions (a database outage should not restart the web
+process) and `/readyz` for CI, deployment gates and humans. Compose uses `/healthz` for `api` and
+`python manage.py worker_healthcheck` (same worker check, exits non-zero when stale) for `worker`.
+Behind a TLS-redirecting proxy in prod, both paths are exempt from `SECURE_SSL_REDIRECT`.
+
+```bash
+curl -i http://localhost:8000/healthz
+curl -i http://localhost:8000/readyz
+```
+
 ## Tests
 
 ```bash
@@ -365,26 +406,16 @@ headers wholesale.
 
 ## Environment variables
 
-See `.env.example`. Values are read via django-environ; a local `.env` is loaded if present and
-real environment variables take precedence.
+Every variable is listed in [docs/environment.md](../docs/environment.md), the single source of
+truth (name, service, required, default, placeholder, notes). `.env.example` has the placeholders.
+Values are read via django-environ; a local `.env` is loaded if present and real environment
+variables take precedence.
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `DJANGO_SETTINGS_MODULE` | no | `manage.py` defaults to `config.settings.dev`; wsgi/asgi default to `config.settings.prod` |
-| `SECRET_KEY` | yes (dev/prod) | no default, startup fails if missing |
-| `DATABASE_URL` | yes (dev/prod) | Postgres URL |
-| `DEV_SUPERUSER_EMAIL`, `DEV_SUPERUSER_PASSWORD` | no | read by `seed_dev_data` only; no password means no superuser is created |
-| `DEBUG` | no | dev defaults to true, prod forced false |
-| `ALLOWED_HOSTS` | prod: yes | comma-separated |
-| `LOG_LEVEL` | no | default `INFO` |
-| `LOG_JSON` | no | JSON log lines; default true, but false in dev settings |
-| `Q_WORKERS`, `Q_TASK_TIMEOUT`, `Q_TASK_RETRY` | no | Django-Q2 worker processes (2), per-task time limit in seconds (300), redelivery delay in seconds (360, must exceed the timeout) |
-| `API_PAGE_SIZE` | no | default 25 |
-| `API_THROTTLE_ANON`, `API_THROTTLE_USER` | no | DRF rates, default `100/hour`, `1000/hour` |
-| `API_THROTTLE_LOGIN`, `API_THROTTLE_LOGIN_EMAIL` | no | login attempts per IP (`20/min`) and per email (`5/min`) |
-| `JWT_ACCESS_LIFETIME_MINUTES`, `JWT_REFRESH_LIFETIME_DAYS` | no | token lifetimes, default 15 and 7 |
-| `AUTH_REFRESH_COOKIE_ENABLED`, `_NAME`, `_SECURE`, `_SAMESITE` | no | refresh-token cookie for the BFF, see "Authentication" |
-| `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `CSRF_TRUSTED_ORIGINS` | no | prod hardening |
+On startup (every settings module except `config.settings.test`) `config/env_validation.py`
+checks the environment and refuses to start, naming every missing or invalid variable in one
+error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
+`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults
 
