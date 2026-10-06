@@ -14,8 +14,8 @@ from apps.core.seeding import SEEDERS
 
 class Command(BaseCommand):
     help = (
-        "Create local development data (dev superuser from DEV_SUPERUSER_USERNAME / "
-        "DEV_SUPERUSER_EMAIL / DEV_SUPERUSER_PASSWORD). Idempotent. Refuses to run when "
+        "Create local development data (dev superuser from DEV_SUPERUSER_EMAIL / "
+        "DEV_SUPERUSER_PASSWORD). Idempotent. Refuses to run when "
         "DEBUG is off unless --force is given."
     )
 

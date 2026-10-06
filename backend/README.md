@@ -2,7 +2,7 @@
 
 Django 5.2 + Django REST Framework API. PostgreSQL for data. Background jobs run on Django-Q2
 with a Postgres-backed queue (no Redis, no Celery); see "Background jobs" below.
-JWT auth (SimpleJWT) is a separate issue.
+Authentication is JWT (SimpleJWT) on a custom email-login user; see "Authentication" below.
 
 ## Dependency management: uv
 
@@ -86,13 +86,13 @@ Rules:
 ### Seed data
 
 ```bash
-export DEV_SUPERUSER_USERNAME=admin DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
+export DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
 uv run python manage.py seed_dev_data
 ```
 
 `seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
 to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
-from the `DEV_SUPERUSER_*` variables (username defaults to `admin`; without a password the
+from the `DEV_SUPERUSER_*` variables (the email defaults to `admin@example.com`; without a password the
 step is skipped, so no account with a known password is ever created; an existing user is left
 untouched, including its password). There are no domain models yet, so there is no sample
 company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
@@ -176,6 +176,79 @@ database, not an untrusted network.
 Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
 AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
 
+## Authentication
+
+Decision and rationale: [ADR 0006](../docs/adr/0006-django-jwt-authentication.md). We use Django +
+`djangorestframework-simplejwt` rather than Supabase Auth, to keep one stack and one user store.
+There is no self-signup: admins create users (Django admin, `createsuperuser`, or
+`User.objects.create_user(email=..., password=...)`).
+
+**User model** (`apps/accounts/models.py`, `AUTH_USER_MODEL = "accounts.User"`): UUID primary key,
+`email` (the login; stored lower-case, unique, enforced by a DB check constraint), `name`,
+`is_active`, `is_staff`, `is_superuser`, `created_at`, `updated_at`. Because the project swaps the
+user model, `accounts` migration `0001` must exist before anything that references users (the
+token blacklist, admin, future apps); never change `AUTH_USER_MODEL` on a database that has
+migrated. Roles and per-client access arrive with the tenancy model (issue #46).
+
+**Endpoints** (all under `/api/v1/auth/`, JSON):
+
+| Endpoint | Body | Success | Notes |
+| --- | --- | --- | --- |
+| `POST login/` | `{"email", "password"}` | 200 `{"access", "refresh"}` | generic 401 for any failure; throttled |
+| `POST refresh/` | `{"refresh"}` | 200 `{"access", "refresh"}` (new pair) | rotates: the old refresh token is blacklisted |
+| `POST logout/` | `{"refresh"}` | 204 | blacklists the refresh token; no access token needed |
+| `GET me/` | none | 200 `{"id", "email", "name", "is_staff", "last_login", "created_at"}` | needs `Authorization: Bearer <access>` |
+
+```bash
+curl -X POST localhost:8000/api/v1/auth/login/ -H 'Content-Type: application/json' \
+  -d '{"email": "YOUR_EMAIL", "password": "YOUR_PASSWORD"}'
+curl localhost:8000/api/v1/auth/me/ -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
+```
+
+Every other endpoint requires the bearer token. A missing token is `401 not_authenticated`; a
+malformed, expired, wrong-type or blacklisted one is `401 authentication_failed`. Session
+authentication is not used by the API (the Django admin keeps its own session login).
+
+**Token lifetimes and settings** (`SIMPLE_JWT` in `config/settings/base.py`): access token 15
+minutes (`JWT_ACCESS_LIFETIME_MINUTES`), refresh token 7 days (`JWT_REFRESH_LIFETIME_DAYS`),
+`ROTATE_REFRESH_TOKENS` and `BLACKLIST_AFTER_ROTATION` on, `UPDATE_LAST_LOGIN` on, HS256 signed with
+`SECRET_KEY` (rotating it logs everyone out). Rotation means a refresh token works once: replaying a
+used or logged-out token is a 401. Note that replay does not revoke the rest of the token family.
+Deactivating a user (`is_active=False`) takes effect at once: login, refresh and already issued
+access tokens are all rejected, because the user row is checked on every request. The blacklist tables grow; prune expired rows periodically with
+`python manage.py flushexpiredtokens` (schedule it with Django-Q2 or cron).
+
+**Login throttling.** Two limits apply to `POST login/`, both counted per request (successful or
+not): per client IP (`API_THROTTLE_LOGIN`, default `20/min`) and per submitted email, case-insensitive
+(`API_THROTTLE_LOGIN_EMAIL`, default `5/min`). Over the limit: `429 throttled` with `retry_after`.
+Counters use Django's cache, which is per process by default (`LocMemCache`); with several gunicorn
+workers or containers configure a shared cache backend so limits are enforced globally, and set
+DRF's `NUM_PROXIES` when behind a reverse proxy so the real client IP is used.
+
+**Password validators** (`AUTH_PASSWORD_VALIDATORS`): similarity to user attributes, minimum length
+12, not a common password, not purely numeric. They run in the admin and in any future
+password-setting endpoint; `create_user` itself does not validate.
+
+**Refresh token as an httpOnly cookie (for the Next.js BFF).** Off by default: API clients get the
+refresh token in the JSON body and send it back in the body. Set `AUTH_REFRESH_COOKIE_ENABLED=true`
+and the refresh token is instead delivered only as a cookie (`login` and `refresh` responses
+contain just `access`); `refresh` and `logout` read it from the cookie when the body has no
+`refresh` (a body value always wins, so API clients keep working), and `logout` clears the cookie.
+A rejected refresh cookie is cleared too.
+
+| Setting / env var | Default | Meaning |
+| --- | --- | --- |
+| `AUTH_REFRESH_COOKIE_ENABLED` | `false` | turn cookie delivery on |
+| `AUTH_REFRESH_COOKIE_NAME` | `abm_refresh` | cookie name |
+| `AUTH_REFRESH_COOKIE_SECURE` | `true` | `Secure` flag; set `false` only for plain-HTTP local dev |
+| `AUTH_REFRESH_COOKIE_SAMESITE` | `Lax` | `Strict`, `Lax` or `None` (`None` requires Secure) |
+| (fixed) `AUTH_REFRESH_COOKIE_PATH` | `/api/v1/auth/` | the cookie is only sent to the auth endpoints |
+
+The cookie is always `HttpOnly`. CSRF: the auth endpoints accept JSON only (not form posts) and the
+cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the browser send it with a
+state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
+can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
+
 ## Health and readiness
 
 Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
@@ -229,7 +302,7 @@ Coverage is configured in `pyproject.toml` (branch coverage over `apps/` and `co
 fails under 90%; `coverage.xml` is written for CI to pick up).
 
 Harness (`tests/`): `conftest.py` provides `api_client`, `user` and `auth_client` fixtures
-(authentication uses `force_authenticate` until JWT lands); `factories.py` holds factory_boy
+(`auth_client` sends a real JWT access token); `factories.py` holds factory_boy
 factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.django_db` gives a
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
@@ -305,7 +378,7 @@ request, at WARNING for 4xx and ERROR for 5xx.
 | --- | --- | --- |
 | `validation_error` | 400 | field errors (`{"field": ["msg"]}`) or a list |
 | `parse_error` | 400 | null |
-| `not_authenticated` / `authentication_failed` | 401, or 403 for session auth | null |
+| `not_authenticated` / `authentication_failed` | 401 (with `WWW-Authenticate: Bearer`) | null |
 | `permission_denied` | 403 | null |
 | `not_found` | 404 (also unknown `/api/` routes) | null |
 | `method_not_allowed` | 405 | null |
@@ -347,5 +420,5 @@ password, token and API-key values (`apps/core/logging.py`).
 ## DRF defaults
 
 JSON renderer only (browsable API added in dev), JSON parser, page-number pagination
-(`page_size` query param, max 100), anon/user throttling enabled with configurable rates
+(`page_size` query param, max 100), JWT bearer authentication (no session auth), anon/user throttling enabled with configurable rates
 (disabled in test), `IsAuthenticated` as the default permission (the API root is public).

@@ -6,19 +6,18 @@ from typing import Any, cast
 
 import factory
 from django.contrib.auth.hashers import make_password
-from django.contrib.auth.models import User
 
-DEFAULT_PASSWORD = "test-password"
+from apps.accounts.models import User
+
+DEFAULT_PASSWORD = "test-password-123"
 
 
 class UserFactory(factory.django.DjangoModelFactory):
-    """Placeholder factory for the stock auth user (replaced by the custom user model later)."""
-
     class Meta:
         model = User
 
-    username = factory.Sequence(lambda n: f"user{n}")
-    email = factory.LazyAttribute(lambda o: f"{o.username}@example.com")
+    email = factory.Sequence(lambda n: f"user{n}@example.com")
+    name = factory.Sequence(lambda n: f"User {n}")
     # Hashed at build time (test settings use a fast hasher), so no post-generation save needed.
     password = factory.LazyFunction(lambda: make_password(DEFAULT_PASSWORD))
 
