@@ -6,7 +6,7 @@ Home for Docker, environment and deployment files.
 
 - Docker Compose for local development (`docker-compose.yml` at the repo root).
 - PostgreSQL for data and for the Django-Q2 job queue. There is no Redis and no Celery.
-- Services: `db`, `api`, `web`, and `worker` (placeholder until issue #25).
+- Services: `db`, `api`, `web` and `worker` (Django-Q2).
 
 ## Local development
 
@@ -27,9 +27,16 @@ docker compose up --build
 - `NEXT_PUBLIC_API_BASE_URL` is read by the browser, so it must point at the host port of the API.
 - `docker-compose.override.yml` is git-ignored for personal tweaks.
 
-### Worker (issue #25)
+### Worker
 
-When Django-Q2 lands, uncomment the `worker` block in `docker-compose.yml`. It runs `python manage.py qcluster` from the same image and uses Postgres as its queue.
+The `worker` service runs `python manage.py qcluster` from the same image as `api` and uses Postgres as its queue (no Redis). It starts after `api` is healthy, because `api` runs the migrations (including Django-Q2's tables). Check it and run the smoke task:
+
+```bash
+docker compose logs -f worker
+docker compose exec api python manage.py enqueue_smoke_task ping --wait 30
+```
+
+See `backend/README.md` (Background jobs) for adding tasks and the retry/failed behaviour. `Q_WORKERS`, `Q_TASK_TIMEOUT` and `Q_TASK_RETRY` tune the cluster.
 
 ### Make targets
 

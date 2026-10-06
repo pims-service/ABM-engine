@@ -54,3 +54,12 @@ not add Redis or Celery.
 - Revisit if the queue causes noticeable database load, if job latency matters
   to users, or if we need fan-out workflows beyond what Django-Q2 handles. The
   job functions are plain Python, so moving brokers should be contained.
+
+## Implementation notes (issue #25)
+
+- Redis stays out. Revisit only if throughput measurements in M9 say the ORM broker is not enough.
+- Failed tasks are retried with exponential backoff by `apps.core.jobs` (through the Django-Q2
+  scheduler), not by Django-Q2's own redelivery, which is reserved for workers that die before
+  acknowledging a task.
+- Task arguments and results must be plain JSON values. Django-Q2 has no serializer setting and
+  pickles its signed envelope internally, so JSON is enforced when enqueuing, not in the library.

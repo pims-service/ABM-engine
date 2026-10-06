@@ -1,8 +1,8 @@
 # ABM Engine backend
 
-Django 5.2 + Django REST Framework API. PostgreSQL for data. Background jobs will use
-Django-Q2 on a Postgres-backed queue (no Redis, no Celery); that wiring is a separate issue.
-JWT auth (SimpleJWT) is also a separate issue.
+Django 5.2 + Django REST Framework API. PostgreSQL for data. Background jobs run on Django-Q2
+with a Postgres-backed queue (no Redis, no Celery); see "Background jobs" below.
+JWT auth (SimpleJWT) is a separate issue.
 
 ## Dependency management: uv
 
@@ -122,6 +122,59 @@ inside the container, then `docker cp` it out). Restore into an empty database; 
 the dev database, run `reset_local_db --no-migrate` first. Dumps contain real data, so keep them
 out of git.
 
+## Background jobs (Django-Q2)
+
+Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
+the queue and its results live in the same Postgres database; `migrate` creates its tables.
+Config is `Q_CLUSTER` in `config/settings/base.py`: acks happen after a task finishes (a worker that
+dies mid-task has it redelivered after `Q_TASK_RETRY` seconds), a hard `Q_TASK_TIMEOUT` (300 s)
+per task, `Q_WORKERS` processes (2), and the scheduler runs inside the cluster for periodic tasks
+(`django_q.tasks.schedule` or the admin "Scheduled tasks").
+
+Run a worker next to the dev server, then enqueue a smoke task:
+
+```bash
+uv run python manage.py qcluster                              # in Docker: the `worker` service
+uv run python manage.py enqueue_smoke_task ping --wait 30     # round trip
+uv run python manage.py enqueue_smoke_task flaky --wait 90    # fails twice, retried with backoff, succeeds
+uv run python manage.py enqueue_smoke_task fail --wait 90     # retried, then ends in "failed"
+```
+
+### Adding a task
+
+1. In the owning app's `tasks.py`, write a function decorated with `@tracked_job` that takes the
+   `BackgroundJob` first, then JSON-only arguments, and returns a JSON dict (or `None`):
+
+   ```python
+   from apps.core.jobs import tracked_job, update_progress
+
+   @tracked_job(max_attempts=3, base_delay=5)
+   def import_companies(job, campaign_id: int) -> dict[str, int]:
+       update_progress(job, 50)
+       return {"imported": 120}
+   ```
+
+2. Enqueue it from a view, service or command: `job = enqueue(import_companies, campaign_id=7)`.
+   `job` is the status record (`queued`, `running`, `retrying`, `succeeded`, `failed`, plus
+   `progress`, `attempts`, `error`) to show or poll.
+3. Make it idempotent: it can run twice (crash redelivery) or be retried.
+4. Test it with the default test settings: `Q_CLUSTER["sync"] = True` runs the task inline, no
+   worker needed (`tests/examples/test_task.py`, `tests/test_jobs.py`).
+
+Retries: on an exception the task is rescheduled with exponential backoff (`base_delay`,
+2x, 4x, ...) through the Django-Q2 scheduler, status `retrying`; after `max_attempts` runs the job
+is `failed` with the error text, and the failure is also visible in the Django admin (Failed tasks).
+The scheduler polls roughly every 30 seconds, so backoff delays are rounded up to that granularity.
+Django-Q2's own retry is not used for failures (`ack_failures` is on), so attempts are counted once.
+
+JSON only: `enqueue` rejects arguments, and `tracked_job` rejects results, that are not plain JSON
+values (so ids, not model instances). Django-Q2 itself has no serializer setting and pickles its
+signed envelope internally; the JSON rule is enforced at our boundary, and the broker is our own
+database, not an untrusted network.
+
+Scope: `BackgroundJob` (`apps/core/models.py`) is a minimal status record only. The full Job and
+AuditLog models are issue #44 and will replace it behind the same `apps.core.jobs` helpers.
+
 ## Tests
 
 ```bash
@@ -137,7 +190,7 @@ Harness (`tests/`): `conftest.py` provides `api_client`, `user` and `auth_client
 (authentication uses `force_authenticate` until JWT lands); `factories.py` holds factory_boy
 factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.django_db` gives a
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
-view, task. The task example is a plain function because Django-Q2 is not installed yet.
+view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
 
 ## Code quality
 
@@ -251,6 +304,8 @@ real environment variables take precedence.
 | `ALLOWED_HOSTS` | prod: yes | comma-separated |
 | `LOG_LEVEL` | no | default `INFO` |
 | `LOG_JSON` | no | JSON log lines; default true, but false in dev settings |
+
+| `Q_WORKERS`, `Q_TASK_TIMEOUT`, `Q_TASK_RETRY` | no | Django-Q2 worker processes (2), per-task time limit in seconds (300), redelivery delay in seconds (360, must exceed the timeout) |
 | `API_PAGE_SIZE` | no | default 25 |
 | `API_THROTTLE_ANON`, `API_THROTTLE_USER` | no | DRF rates, default `100/hour`, `1000/hour` |
 | `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `CSRF_TRUSTED_ORIGINS` | no | prod hardening |

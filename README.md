@@ -81,9 +81,11 @@ This starts three services:
 | `api` | http://localhost:8000/api/v1/ | Django dev server; runs migrations on start |
 | `web` | http://localhost:3000 | Next.js dev server |
 
-Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data survives `docker compose down`; use `docker compose down -v` to wipe it. If a default host port is taken, set `DB_PORT`, `API_PORT` or `WEB_PORT` in `.env` (and update `NEXT_PUBLIC_API_BASE_URL` if you move the API). The `worker` service (Django-Q2) is a commented placeholder in `docker-compose.yml` until issue #25.
+Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data survives `docker compose down`; use `docker compose down -v` to wipe it. If a default host port is taken, set `DB_PORT`, `API_PORT` or `WEB_PORT` in `.env` (and update `NEXT_PUBLIC_API_BASE_URL` if you move the API). The `worker` service runs the Django-Q2 cluster (`python manage.py qcluster`) against the same Postgres.
 
 `make up`, `make down`, `make logs`, `make migrate`, `make test` and `make shell` wrap the common commands. See [infra/README.md](infra/README.md) for details.
+
+New to the project? Follow [docs/onboarding.md](docs/onboarding.md) (setup, Windows notes, troubleshooting) and then the [smoke-test checklist](docs/smoke-test.md). The reasoning behind the stack is in the [architecture decision records](docs/adr/README.md), and commit, branch and PR rules are in [docs/conventions.md](docs/conventions.md).
 
 ## Repository layout
 

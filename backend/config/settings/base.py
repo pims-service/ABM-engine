@@ -27,6 +27,7 @@ DJANGO_APPS = [
 ]
 THIRD_PARTY_APPS = [
     "rest_framework",
+    "django_q",
 ]
 LOCAL_APPS = [
     "apps.accounts.apps.AccountsConfig",
@@ -115,3 +116,21 @@ REST_FRAMEWORK = {
 # Logging: JSON lines by default (prod); dev.py switches to a readable format.
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
 LOGGING = build_logging_config(json_logs=env.bool("LOG_JSON", default=True), level=LOG_LEVEL)
+
+# Background jobs: Django-Q2 with the Django ORM broker, i.e. the queue lives in Postgres
+# (ADR 0005; no Redis, no Celery). Run the worker with `python manage.py qcluster`.
+# Tasks are acked only after they finish (a crashed worker's task is redelivered after `retry`
+# seconds). `ack_failures` is on because retries with backoff are handled by apps.core.jobs.
+# Payloads must be JSON values; apps.core.jobs enforces that when enqueuing.
+Q_CLUSTER = {
+    "name": "abm",
+    "orm": "default",
+    "workers": env.int("Q_WORKERS", default=2),
+    "timeout": env.int("Q_TASK_TIMEOUT", default=300),  # hard limit per task, seconds
+    "retry": env.int("Q_TASK_RETRY", default=360),  # must exceed timeout
+    "max_attempts": 3,  # redeliveries of a task whose worker died before acking
+    "ack_failures": True,
+    "bulk": 1,
+    "save_limit": 500,  # finished task rows kept for the admin; older ones are pruned
+    "catch_up": False,  # do not replay missed schedules after downtime
+}

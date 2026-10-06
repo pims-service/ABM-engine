@@ -9,6 +9,7 @@ dependencies = [
     "django-environ>=0.12",
     "psycopg[binary]>=3.2",
     "gunicorn>=23",
+    "django-q2>=1.8",
 ]
 
 [dependency-groups]
@@ -89,7 +90,7 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 # These libraries ship no type information.
-module = ["factory.*", "environ.*"]
+module = ["factory.*", "environ.*", "django_q.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
