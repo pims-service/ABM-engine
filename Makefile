@@ -2,7 +2,7 @@
 COMPOSE ?= docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test shell api-schema api-client api-check
+.PHONY: help up down logs migrate seed test shell api-schema api-client api-check
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -18,6 +18,9 @@ logs: ## Follow service logs
 
 migrate: ## Apply Django migrations
 	$(COMPOSE) exec api python manage.py migrate
+
+seed: ## Create sample data and dev users (needs DEBUG on; see backend/README.md)
+	$(COMPOSE) exec api python manage.py seed_dev_data
 
 test: ## Run backend tests in a one-off api container (installs dev dependencies)
 	$(COMPOSE) run --rm api sh -c "uv sync --frozen && pytest"
