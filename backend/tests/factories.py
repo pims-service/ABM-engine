@@ -10,6 +10,7 @@ from django.contrib.auth.hashers import make_password
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
 from apps.campaigns.services import create_campaign
+from apps.companies.models import Company, CompanyResearch, DataSource, DataSourceType
 
 DEFAULT_PASSWORD = "test-password-123"
 
@@ -83,3 +84,57 @@ def make_client(**overrides: Any) -> Client:
 def make_campaign(**overrides: Any) -> Campaign:
     """Persisted campaign with version 1 (`campaign.current_profile`)."""
     return cast(Campaign, CampaignFactory(**overrides))
+
+
+# ------------------------------------------------------------------ companies (issue #40)
+
+
+class DataSourceFactory(factory.django.DjangoModelFactory):
+    """A manual data source by default. Override `type`/`url` for other kinds."""
+
+    class Meta:
+        model = DataSource
+
+    client = factory.SubFactory(ClientFactory)
+    type = DataSourceType.MANUAL
+    name = factory.Sequence(lambda n: f"Source {n}")
+
+
+class CompanyFactory(factory.django.DjangoModelFactory):
+    """A company straight through the model (no dedupe). Use `create_company` to test that."""
+
+    class Meta:
+        model = Company
+
+    campaign = factory.SubFactory(CampaignFactory)
+    name = factory.Sequence(lambda n: f"Company {n}")
+    website = factory.Sequence(lambda n: f"https://www.company{n}.example.com/about")
+    country = "SA"
+
+
+class CompanyResearchFactory(factory.django.DjangoModelFactory):
+    """A snapshot; the data source defaults to a manual one for the company's client."""
+
+    class Meta:
+        model = CompanyResearch
+
+    company = factory.SubFactory(CompanyFactory)
+    data_source = factory.LazyAttribute(
+        lambda o: DataSourceFactory(client=o.company.campaign.client)
+    )
+    industry = "Logistics"
+    description = "Regional freight forwarder."
+    employee_count = 250
+    classification = "b2b"
+
+
+def make_company(**overrides: Any) -> Company:
+    return cast(Company, CompanyFactory(**overrides))
+
+
+def make_data_source(**overrides: Any) -> DataSource:
+    return cast(DataSource, DataSourceFactory(**overrides))
+
+
+def make_research(**overrides: Any) -> CompanyResearch:
+    return cast(CompanyResearch, CompanyResearchFactory(**overrides))

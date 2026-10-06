@@ -233,6 +233,35 @@ Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
 `make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
 PostgreSQL.
 
+### Companies, research history and data sources (`apps/companies`)
+
+`Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a
+`DataSource`. Use `apps/companies/services.py`:
+
+- `normalize_domain(website)` (`apps/companies/domain.py`) lowercases the host and drops scheme,
+  credentials, port, path, a leading `www.` and trailing dots; IDN becomes punycode; IPs,
+  single labels and junk give `None`. `Company.save()` always derives `domain` from `website`.
+- `create_company(campaign, name, website="", *, profile_url, country, input_source, user,
+  created_by_job_id)` returns a `CompanyResult`. Same normalized domain already in the campaign:
+  nothing is inserted, `duplicate=True`, and an archived one is restored (`restored=True`). No
+  domain: created, with `similar` / `warnings` listing active same-name companies (never
+  auto-merged). Unique `(campaign, domain)` where domain is not null is also a database
+  constraint (archived rows count).
+- `add_research_snapshot(company, data_source, *, researched_at=None, **facts)` appends a
+  snapshot (facts: `RESEARCH_FIELDS`; omitted means null = not found). The source must belong to
+  the company's client. `researched_at` defaults to the source's `retrieved_at`.
+- "Current" research has no `is_current` column: `CompanyResearch.objects.latest_for(company)`
+  (or `company.latest_research`) picks the latest `researched_at` (ties: `created_at`, `id`),
+  and `CompanyResearch.objects.current()` returns each company's latest row for lists.
+- **`DataSource`** (`apps.companies.models.DataSource`, used by #41 for signals and contacts):
+  append-only, client-scoped; fields `client`, `type` (`provider`, `website`, `news`,
+  `manual`; `DataSourceType`), `name`, `url` (required unless manual or provider),
+  `provider_reference`, `retrieved_at`, `evidence_date` (nullable, the date the source states),
+  `created_by`, `created_at`. Create with `create_data_source(client, type, name, ...)`. Rows
+  that reference a source must have the same `client_id` (see `CompanyResearch.sync_client`).
+- Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
+  `make_research()`, `make_data_source()` in `tests/factories.py`.
+
 ## Authentication
 
 Decision and rationale: [ADR 0006](../docs/adr/0006-django-jwt-authentication.md). We use Django +
