@@ -85,6 +85,8 @@ Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data 
 
 `make up`, `make down`, `make logs`, `make migrate`, `make test` and `make shell` wrap the common commands. See [infra/README.md](infra/README.md) for details.
 
+New to the project? Follow [docs/onboarding.md](docs/onboarding.md) (setup, Windows notes, troubleshooting) and then the [smoke-test checklist](docs/smoke-test.md). The reasoning behind the stack is in the [architecture decision records](docs/adr/README.md), and commit, branch and PR rules are in [docs/conventions.md](docs/conventions.md).
+
 ## Repository layout
 
 ```
