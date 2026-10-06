@@ -4,6 +4,8 @@ from pathlib import Path
 
 import environ
 
+from apps.core.logging import build_logging_config
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env()
@@ -39,6 +41,7 @@ LOCAL_APPS = [
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
+    "apps.core.middleware.RequestIDMiddleware",  # first: every response gets X-Request-ID
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -107,7 +110,12 @@ REST_FRAMEWORK = {
         "anon": env("API_THROTTLE_ANON", default="100/hour"),
         "user": env("API_THROTTLE_USER", default="1000/hour"),
     },
+    "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
 }
+
+# Logging: JSON lines by default (prod); dev.py switches to a readable format.
+LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+LOGGING = build_logging_config(json_logs=env.bool("LOG_JSON", default=True), level=LOG_LEVEL)
 
 # Background jobs: Django-Q2 with the Django ORM broker, i.e. the queue lives in Postgres
 # (ADR 0005; no Redis, no Celery). Run the worker with `python manage.py qcluster`.
