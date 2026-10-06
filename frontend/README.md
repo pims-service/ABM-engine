@@ -4,7 +4,7 @@ Next.js (App Router) + React + strict TypeScript. The backend is Django/DRF with
 
 ## Component approach
 
-**Tailwind CSS** (v3) for styling, with small hand-written components in `src/components`. A headless component library (e.g. Radix UI) can be added when a feature needs complex widgets (dialogs, menus). Theming / dark mode tokens are deferred to issue #35.
+**Tailwind CSS** (v3) for styling, with small hand-written components in `src/components`. A headless component library (e.g. Radix UI) can be added when a feature needs complex widgets (dialogs, menus). Theming is done with CSS-variable design tokens (see below).
 
 ## Getting started
 
@@ -33,9 +33,55 @@ docker run --rm -p 3000:3000 abm-frontend
 
 ## Layout
 
-- `src/app/layout.tsx` - shell: sidebar, header, content area
+- `src/app/layout.tsx` - root layout: skip link, theme init script, `AppShell`
+- `src/components/AppShell.tsx` - sidebar + header + `<main id="main-content">`; owns the small-screen drawer
 - `src/app/{dashboard,campaigns,companies}` - placeholder routes (`/` redirects to `/dashboard`)
 - `src/app/error.tsx` - error boundary; `src/app/not-found.tsx` - 404
+- `src/app/globals.css` - design tokens (both themes); `tailwind.config.ts` maps them to utilities
+- `src/components/ui/` - base primitives: `Button`, `Badge`, `StatusPill`, `Card`, `EmptyState`, `Skeleton`, `PageHeader`
+- `src/lib/config.ts` - typed env config; `src/lib/theme.ts` - theme storage key and pre-paint script
+- `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
+
+## Design tokens
+
+All colour, radius, shadow and type-scale values are CSS variables in `src/app/globals.css`, exposed as Tailwind utilities in `tailwind.config.ts`. Components use the utilities and never raw colours, so one edit rethemes everything and dark mode is automatic. Rationale and contrast ratios: [`docs/ui-guidelines.md`](../docs/ui-guidelines.md).
+
+| Group      | Utilities                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| Surfaces   | `bg-surface`, `bg-surface-raised`, `bg-surface-muted`                                                               |
+| Text       | `text-fg`, `text-fg-muted`                                                                                          |
+| Borders    | `border-line` (decorative), `border-line-strong` (controls)                                                         |
+| Action     | `bg-accent` `text-accent-fg` `hover:bg-accent-hover`; `bg-danger-solid` `text-danger-solid-fg`                      |
+| Focus      | `outline-ring` (a global `:focus-visible` ring is already applied)                                                  |
+| Status     | `bg-{success,warning,danger,info}-bg` + `text-{...}-fg`                                                             |
+| ICP fit    | `bg-icp-{strong,medium,weak}-bg` + `text-icp-{...}-fg`                                                              |
+| Trigger    | `bg-trigger-{yes,no}-bg` + `text-trigger-{yes,no}-fg`                                                               |
+| AI         | `bg-ai-{add,hold,skip}-bg` + `text-ai-{...}-fg`                                                                     |
+| Layout     | `p-gutter`, `w-sidebar`, `h-header` (everything else uses Tailwind's 4px spacing scale)                             |
+| Shape      | `rounded-{sm,md,lg}`, `shadow-{sm,md}`                                                                              |
+| Typography | `font-sans`, `font-mono` (system stacks, no webfont), `text-{xs,sm,base,lg,xl,2xl}` (size and line-height together) |
+
+Use the domain pills instead of hand-colouring statuses; each state has a distinct colour, glyph and label:
+
+```tsx
+<StatusPill kind="icp" value="strong" />   {/* strong | medium | weak */}
+<StatusPill kind="trigger" value="yes" />  {/* yes | no */}
+<StatusPill kind="ai" value="add" />       {/* add | hold | skip */}
+<Badge tone="success">Sent</Badge>
+<Button variant="secondary" size="sm">Edit</Button>   {/* primary | secondary | ghost | danger */}
+<Link href="/x" className={buttonStyles()}>Looks like a button</Link>
+```
+
+### Light and dark
+
+Light is the default. Dark follows `prefers-color-scheme` unless overridden with `<html data-theme="light|dark">`. The header's theme toggle cycles System, Light, Dark and stores an explicit choice in `localStorage` (`abm-theme`); a tiny inline script in `layout.tsx` applies it before first paint to avoid a flash. To add or change a token, edit it in the `:root` block and in **both** dark blocks (a unit test fails if they drift apart or if contrast drops below the documented targets), then map it in `tailwind.config.ts` if it is new.
+
+### App shell and accessibility
+
+- A "Skip to main content" link is the first tab stop and focuses `<main id="main-content">`.
+- Below the `md` breakpoint the sidebar becomes a drawer opened by the header's Menu button (`aria-expanded`/`aria-controls`); Escape or choosing a link closes it, and while closed its links are not focusable.
+- Do not remove outlines; the global `:focus-visible` ring uses the `ring` token.
+
 - `src/lib/config.ts` - typed env config
 - `src/lib/api/` - typed API client generated from the OpenAPI schema (see below)
 - `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
