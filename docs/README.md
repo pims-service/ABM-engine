@@ -28,7 +28,6 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Data model and entity relationships](data-model.md): every core object with
   fields and enums, the ER diagram, tenancy and history rules, indexes and
   open questions.
-
 - [Roles and permissions](permissions.md): the role matrix (viewer, reviewer,
   manager, admin, global admin), per-client isolation (404, not 403) and the
   guide every new endpoint must follow.
