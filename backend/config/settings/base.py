@@ -45,6 +45,7 @@ LOCAL_APPS = [
     "apps.campaigns.apps.CampaignsConfig",
     "apps.companies.apps.CompaniesConfig",
     "apps.research.apps.ResearchConfig",
+    "apps.outreach.apps.OutreachConfig",
     "apps.integrations.apps.IntegrationsConfig",
     "apps.ai.apps.AIConfig",
     "apps.core.apps.CoreConfig",
