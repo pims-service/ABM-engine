@@ -169,7 +169,7 @@ export interface paths {
     put?: never;
     /**
      * Archive a client
-     * @description Soft delete: the client leaves default lists, all its data is kept. Idempotent. Campaigns are not changed. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     * @description Soft delete: the client leaves default lists, all its data is kept. Idempotent. Campaigns are not changed. 409 `client_has_active_jobs` while the client has queued or running jobs. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
      */
     post: operations["clients_archive"];
     delete?: never;
@@ -1100,6 +1100,15 @@ export interface operations {
       };
       /** @description Not found (`not_found`). */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
+      409: {
         headers: {
           [name: string]: unknown;
         };
