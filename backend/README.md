@@ -24,7 +24,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
 config/urls.py                            /admin/ and /api/v1/
 apps/{accounts,campaigns,companies,research,integrations,ai,core}   empty apps (AppConfigs registered)
-tests/                                    pytest smoke tests
+tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
 
 The API is versioned by URL namespace: everything lives under `/api/v1/`
@@ -48,8 +48,35 @@ Generate a secret key with:
 ## Tests
 
 ```bash
-uv run pytest
+uv run pytest                      # tests + coverage (terminal report, coverage.xml)
+uv run pytest tests/examples -k view   # subset
+uv run pytest --no-cov             # skip coverage for a quick loop
 ```
+
+Coverage is configured in `pyproject.toml` (branch coverage over `apps/` and `config/`,
+fails under 90%; `coverage.xml` is written for CI to pick up).
+
+Harness (`tests/`): `conftest.py` provides `api_client`, `user` and `auth_client` fixtures
+(authentication uses `force_authenticate` until JWT lands); `factories.py` holds factory_boy
+factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.django_db` gives a
+test database. `tests/examples/` has one example per layer to copy from: model, serializer,
+view, task. The task example is a plain function because Django-Q2 is not installed yet.
+
+## Code quality
+
+All tool config lives in `pyproject.toml`. Run these from `backend/`:
+
+```bash
+uv run ruff check .                # lint (add --fix to apply safe fixes)
+uv run ruff format .               # format (use --check to verify only)
+uv run mypy .                      # types: strict, django-stubs + djangorestframework-stubs
+```
+
+Run all gates in one go: `uv run ruff check . && uv run ruff format --check . && uv run mypy . && uv run pytest`.
+
+Makefile targets, container test runs, pre-commit hooks and CI are tracked in other issues.
+
+## Test settings
 
 Tests use `config.settings.test`, which needs no `.env` or database server: it supplies throwaway
 values and uses in-memory SQLite. SQLite is a fallback for the test settings only; dev and prod
