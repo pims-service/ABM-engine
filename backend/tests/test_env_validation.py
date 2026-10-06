@@ -93,7 +93,7 @@ def test_check_environment_raises_with_every_variable_named() -> None:
 
 
 def test_error_message_never_contains_values() -> None:
-    secret = "do-not-leak-me"  # noqa: S105
+    secret = "do-not-leak-me"
     environ = _env(
         SECRET_KEY="YOUR_" + secret,
         DATABASE_URL="mysql://user:" + secret + "@h/db",

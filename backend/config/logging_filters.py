@@ -27,7 +27,8 @@ def build_pattern(fields: Iterable[str]) -> re.Pattern[str]:
 
     A field name also matches inside longer names (``access_token``, ``DB_PASSWORD``).
     """
-    names = "|".join(re.escape(f) for f in sorted({f.lower() for f in fields}, key=len, reverse=True))
+    unique = {f.strip().lower() for f in fields if f.strip()}  # blank names would match anything
+    names = "|".join(re.escape(f) for f in sorted(unique, key=len, reverse=True))
     return re.compile(rf"""(["']?[\w-]*(?:{names})[\w-]*["']?\s*[:=]\s*){_VALUE}""", re.IGNORECASE)
 
 

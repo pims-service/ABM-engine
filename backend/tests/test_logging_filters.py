@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 import pytest
 from django.conf import settings
@@ -38,6 +39,11 @@ def test_extra_fields_are_redacted() -> None:
     assert scrubbed == f"ssn={REDACTED}"
 
 
+def test_blank_extra_fields_are_ignored() -> None:
+    text = "user=bob page=3"
+    assert SecretScrubbingFilter(extra_fields=["", " "]).scrub(text) == text
+
+
 def test_filter_scrubs_formatted_record() -> None:
     record = logging.LogRecord("t", logging.INFO, __file__, 1, "pw %s", ("password=abc",), None)
     assert SecretScrubbingFilter().filter(record) is True
@@ -45,4 +51,5 @@ def test_filter_scrubs_formatted_record() -> None:
 
 
 def test_logging_config_installs_the_scrubber() -> None:
-    assert "scrub_secrets" in settings.LOGGING["handlers"]["console"]["filters"]
+    handlers = cast("dict[str, dict[str, list[str]]]", settings.LOGGING["handlers"])
+    assert "scrub_secrets" in handlers["console"]["filters"]
