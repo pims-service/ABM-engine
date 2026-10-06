@@ -13,7 +13,8 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
-from .models import Campaign, CampaignProfile, Client
+from .memberships import change_role, grant_membership, revoke_membership
+from .models import Campaign, CampaignProfile, Client, ClientMembership
 
 
 class NoDeleteAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
@@ -96,6 +97,44 @@ class CampaignAdmin(NoDeleteAdmin):
     def restore_selected(self, request: HttpRequest, queryset: QuerySet[Campaign]) -> None:
         for campaign in queryset:
             campaign.restore()
+
+
+@admin.register(ClientMembership)
+class ClientMembershipAdmin(NoDeleteAdmin):
+    """Grant and change roles here (superusers only in practice); revoke = archive."""
+
+    list_display = ("user", "client", "role", "created_at", "archived_at")
+    list_filter = ("role", "client")
+    search_fields = ("user__email", "client__name")
+    readonly_fields = ("id", "archived_at", "created_at", "updated_at")
+    autocomplete_fields = ("user", "client")
+    actions = ("archive_selected", "restore_selected")
+
+    def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> tuple[str, ...]:
+        # The pair is fixed once created: revoke and grant again instead of moving a row.
+        base = tuple(self.readonly_fields)
+        return (*base, "user", "client") if obj is not None else base
+
+    def save_model(self, request: HttpRequest, obj: Any, form: Any, change: bool) -> None:
+        if change:
+            change_role(obj.client, obj.user, obj.role, actor=request.user)  # type: ignore[arg-type]
+        else:
+            grant_membership(obj.client, obj.user, obj.role, actor=request.user)  # type: ignore[arg-type]
+
+    @admin.action(description="Revoke (archive) selected memberships")
+    def archive_selected(self, request: HttpRequest, queryset: QuerySet[ClientMembership]) -> None:
+        for membership in queryset.filter(archived_at__isnull=True):
+            revoke_membership(membership.client, membership.user, actor=request.user)  # type: ignore[arg-type]
+
+    @admin.action(description="Restore selected memberships")
+    def restore_selected(self, request: HttpRequest, queryset: QuerySet[ClientMembership]) -> None:
+        for membership in queryset.filter(archived_at__isnull=False):
+            grant_membership(
+                membership.client,
+                membership.user,
+                membership.role,
+                actor=request.user,  # type: ignore[arg-type]
+            )
 
 
 @admin.register(CampaignProfile)
