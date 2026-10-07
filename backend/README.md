@@ -356,6 +356,30 @@ PostgreSQL.
 - Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
   `make_research()`, `make_data_source()` in `tests/factories.py`.
 
+### Assessments and decisions (`apps/research`)
+
+`ICPAssessment` (fit only), `AIRecommendation` and `HumanDecision` are append-only, carry
+`client`, and have no score. AI and human answers are different tables. Use
+`apps/research/services.py`:
+
+- `record_icp_assessment(company, fit, reasons, concerns=(), *, model_name, prompt_version,
+  schema_version, raw_output=None, campaign_profile=None, company_research=None)`: `fit` is
+  `strong` / `medium` / `weak`. The profile defaults to the campaign's current version and the
+  research to the company's latest snapshot (none: `ValidationError`). Both must belong to the
+  company, else `TenantMismatchError`. No signal input: a strong fit with no signals is valid.
+- `record_ai_recommendation(icp_assessment, status, explanation, *, model_name, prompt_version,
+  schema_version, raw_output=None)`: `status` is `add` / `hold` / `skip`.
+- `record_human_decision(company, decision, user, *, ai_recommendation=None, note="",
+  decided_at=None)`: never touches the recommendation. `ai_recommendation` is nullable (a decision
+  with no AI answer is valid and is excluded from agreement).
+- Current row: `Model.objects.latest_for(company)` and `Model.objects.current()` (latest per
+  company; `decided_at` for decisions, `created_at` otherwise, ties by id).
+- Agreement (Brief section 11): `HumanDecision.objects.agreement()` returns an `AgreementSummary`
+  (`compared`, `agreed`, `disagreed`, `without_ai`, `rate`, `pairs`). Chain `.current()` for only
+  each company's latest decision, or `.for_client(client)`. Also `.overrides()`, `.agreeing()`,
+  `.with_ai_status()`.
+- Factories: `make_icp_assessment()`, `make_ai_recommendation()`, `make_human_decision()`.
+
 ### Signals (`apps/research`) and contacts (`apps/companies`)
 
 Placement: `Signal` lives in `apps/research` (timing evidence, used by M4/M5); `Contact` lives in
