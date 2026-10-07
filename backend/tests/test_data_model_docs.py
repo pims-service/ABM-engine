@@ -60,10 +60,22 @@ def test_generated_blocks_are_current(block: str) -> None:
     )
 
 
-def test_print_schema_write_is_idempotent() -> None:
-    before = {p: p.read_text(encoding="utf-8") for p in set(schema_doc.BLOCKS.values())}
-    call_command("print_schema", "--write")
-    assert {p: p.read_text(encoding="utf-8") for p in before} == before, STALE_HINT
+def test_print_schema_command_prints_blocks(capsys: pytest.CaptureFixture[str]) -> None:
+    call_command("print_schema", "--block", "index")
+    out = capsys.readouterr().out
+    assert "| Campaign | campaigns |" in out
+    assert out == f"<!-- index -->\n{schema_doc.entity_index()}\n\n"
+
+
+def test_replace_block_round_trips() -> None:
+    begin, end = schema_doc._markers("x")
+    text = f"before\n{begin}\nold\n{end}\nafter\n"
+    updated = schema_doc.replace_block(text, "x", "new\nlines")
+    assert schema_doc.extract_block(updated, "x") == "new\nlines"
+    assert updated.startswith("before\n")
+    assert updated.endswith("\nafter\n")
+    with pytest.raises(ValueError, match="not found"):
+        schema_doc.replace_block("no markers", "x", "y")
 
 
 def test_every_local_model_is_in_the_index_and_has_a_section() -> None:

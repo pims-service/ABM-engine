@@ -1154,9 +1154,11 @@ adds `CompanyNote` to the `companies` app. The bases are documented in
        objects = CompanyNoteQuerySet.as_manager()
 
        class Meta:
-           ordering = ("-created_at", "-id")
-           indexes = [models.Index(fields=["company", "-created_at"], name="co_note_company_idx")]
-           constraints = [
+           ordering: ClassVar[tuple[str, ...]] = ("-created_at", "-id")
+           indexes: ClassVar[list[models.Index]] = [
+               models.Index(fields=["company", "-created_at"], name="co_note_company_idx")
+           ]
+           constraints: ClassVar[list[models.BaseConstraint]] = [
                models.CheckConstraint(
                    condition=~models.Q(body=""), name="companies_companynote_body_not_empty"
                ),
@@ -1173,9 +1175,10 @@ adds `CompanyNote` to the `companies` app. The bases are documented in
    a transaction, return the row. There is no update function. Call
    `apps.core.audit.record_change` only if the row is configuration; research history keeps its own
    history.
-3. **Migration.** `python manage.py makemigrations companies`, read the generated file, then
-   `python manage.py migrate`. `tests/test_migrations.py` fails if a migration is missing. Keep
-   the migration backend neutral (it must run on SQLite and PostgreSQL).
+3. **Migration.** `python manage.py makemigrations companies`, read the generated file, run
+   `ruff format` on it (CI checks the migration too), then `python manage.py migrate`.
+   `tests/test_migrations.py` fails if a migration is missing. Keep the migration backend
+   neutral (it must run on SQLite and PostgreSQL).
 4. **Admin, read only.** In the app's `admin.py`:
 
    ```python
@@ -1231,7 +1234,7 @@ class CompanyNoteViewSet(ClientScopedModelViewSet):
     queryset = CompanyNote.objects.select_related("company")  # scoped with for_user for you
     serializer_class = CompanyNoteSerializer  # read-only: id, client, company, body, created_at
     http_method_names = ["get", "post", "head", "options"]  # history: no PUT, PATCH, DELETE
-    action_levels = {"create": Level.EDIT}
+    action_levels: ClassVar[dict[str, Level]] = {"create": Level.EDIT}
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -1245,7 +1248,7 @@ class CompanyNoteViewSet(ClientScopedModelViewSet):
 
 Tests to write for it (copy `backend/tests/test_permissions.py`, which runs a demo viewset from
 `backend/tests/permissions_demo.py`): one request per role against each action, an id from another
-client (expect 404), an inactive user, an anonymous request (401), and a list that must not
+client (expect 404 for a user who holds an EDIT role elsewhere, 403 for one who holds none), an inactive user, an anonymous request (401), and a list that must not
 include another client's rows.
 
 ## Authentication and roles
