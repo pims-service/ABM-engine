@@ -233,3 +233,60 @@ def make_signal(**overrides: Any) -> Any:
 
 def make_contact(**overrides: Any) -> Any:
     return ContactFactory(**overrides)
+
+
+# ------------------------------------------------------------------ outreach (#43)
+
+
+def allow_outreach(company: Company) -> str:
+    """Decision lookup stub for tests: the human said `add` (HumanDecision comes from #42)."""
+    return "add"
+
+
+class OutreachAngleFactory(factory.django.DjangoModelFactory):
+    """Goes through `create_angle`. Pass `signals=[...]` / `data_sources=[...]` to cite evidence."""
+
+    class Meta:
+        model = "outreach.OutreachAngle"
+
+    company = factory.SubFactory(CompanyFactory)
+    angle = "Support the existing business development team"
+    rationale = "The company is hiring sales staff."
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        from apps.outreach.services import create_angle
+
+        company, angle = kwargs.pop("company"), kwargs.pop("angle")
+        return create_angle(company, angle, kwargs.pop("rationale"), **kwargs)
+
+
+class MessageFactory(factory.django.DjangoModelFactory):
+    """A draft email through `create_message`, with the decision lookup stubbed to `add`."""
+
+    class Meta:
+        model = "outreach.Message"
+
+    angle = factory.SubFactory(OutreachAngleFactory)
+    contact = factory.LazyAttribute(lambda o: ContactFactory(company=o.angle.company))
+    channel = "email"
+    language = "en"
+    subject = "Quick question"
+    body = "Hello, we help logistics teams with managed cloud security."
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        from apps.outreach.services import create_message
+
+        kwargs.setdefault("decision_lookup", allow_outreach)
+        angle, contact = kwargs.pop("angle"), kwargs.pop("contact")
+        channel, language = kwargs.pop("channel"), kwargs.pop("language")
+        return create_message(angle, contact, channel, language, kwargs.pop("body"), **kwargs)
+
+
+def make_angle(**overrides: Any) -> Any:
+    return OutreachAngleFactory(**overrides)
+
+
+def make_message(**overrides: Any) -> Any:
+    return MessageFactory(**overrides)
