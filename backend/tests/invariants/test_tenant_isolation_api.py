@@ -34,8 +34,10 @@ from apps.campaigns.models import Campaign, CampaignProfile, Client
 from apps.core.models import AuditLog
 from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
-from apps.core.seed_sample import SeededWorld
+from apps.core.seed_sample import SeededWorld, load_seeded_world
 from tests.factories import make_campaign, make_client, make_user
+from tests.fixtures_seed import run_all_seeders
+from tests.invariants.conftest import shared_db
 
 # ------------------------------------------------------------------ endpoint inventory
 
@@ -111,9 +113,20 @@ class Ctx:
         return client
 
 
+@pytest.fixture(scope="module")
+def _ctx_module(django_db_setup: None, django_db_blocker: Any) -> Iterator[Ctx]:
+    """Seed once per module (seeding is the slow part); every test rolls back its own changes."""
+    with shared_db(django_db_blocker):
+        run_all_seeders()
+        yield build_ctx(load_seeded_world())
+
+
 @pytest.fixture
-def ctx(seeded_world: SeededWorld) -> Ctx:
-    world = seeded_world
+def ctx(_ctx_module: Ctx, db: None) -> Ctx:
+    return _ctx_module
+
+
+def build_ctx(world: SeededWorld) -> Ctx:
     a, b = world.clients["skylight"], world.clients["meridian"]
     users = {role: world.users[f"skylight_{role}"] for role in ROLES}
 
@@ -550,8 +563,7 @@ def test_anonymous_requests_get_401(ctx, key) -> None:
 def test_an_inactive_user_gets_nothing_even_with_a_valid_token(ctx, key, who) -> None:
     user = ctx.users["admin"] if who == "admin" else make_user(is_superuser=True)
     api = ctx.api(user)  # the token is issued while the user is still active
-    user.is_active = False
-    user.save()
+    User.objects.filter(pk=user.pk).update(is_active=False)
     s = SCENARIOS[key]
     method, url, body = request_for(ctx, s, foreign=False)
     with rolled_back():
