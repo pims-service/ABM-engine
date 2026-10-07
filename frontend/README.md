@@ -38,10 +38,11 @@ docker run --rm -p 3000:3000 abm-frontend
 - `src/components/AuthFrame.tsx` - bare frame for `/login`; otherwise `AuthGate` (needs a session) + `AppShell`
 - `src/components/AppShell.tsx` - sidebar + header (theme toggle, current user, sign out) + `<main id="main-content">`; owns the small-screen drawer
 - `src/app/login`, `src/app/api/auth/*`, `src/middleware.ts`, `src/lib/auth/` - authentication (below)
-- `src/app/{dashboard,campaigns,companies}` - placeholder routes (`/` redirects to `/dashboard`)
+- `src/app/{clients,campaigns}` - client and campaign lists (see "Clients, campaigns and the switcher"); `src/app/{dashboard,companies}` - placeholder routes (`/` redirects to `/dashboard`)
+- `src/features/` - feature code: `clients`, `campaigns`, `selection` (current client/campaign), `access` (what the UI shows)
 - `src/app/error.tsx` - error boundary; `src/app/not-found.tsx` - 404
 - `src/app/globals.css` - design tokens (both themes); `tailwind.config.ts` maps them to utilities
-- `src/components/ui/` - base primitives: `Button`, `Badge`, `StatusPill`, `Card`, `EmptyState`, `Skeleton`, `PageHeader`
+- `src/components/ui/` - base primitives: `Button`, `Badge`, `StatusPill`, `Card`, `EmptyState`, `Skeleton`, `PageHeader`, `TextField`, `TextArea`, `Select`, `Checkbox`, `Alert`, `Table`, `Pagination`, `Modal`, `ConfirmDialog`
 - `src/lib/config.ts` - typed env config; `src/lib/theme.ts` - theme storage key and pre-paint script
 - `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
 
@@ -129,8 +130,8 @@ auth endpoints of the API directly. A small BFF (backend for frontend) in Next.j
   `/login?next=<current path, query and hash>&reason=expired`; signing in returns them to the same page.
   An explicit sign-out goes to plain `/login`.
 - **Using it**: `const { status, user, login, logout } = useAuth()` from `@/lib/auth/AuthProvider`. The header
-  shows the current user and a Sign out button. The authorization decisions stay in the API; role-based hiding
-  of actions needs the roles model (issue #46) and is not part of this change. Password reset needs an API
+  shows the current user and a Sign out button. The authorization decisions stay in the API; how the UI hides
+  actions for read-only roles is described under "Roles and what the UI shows". Password reset needs an API
   endpoint that does not exist yet.
 
 Tests: unit tests next to the code (`redirect`, `login-form`, `AuthProvider`, route handlers, middleware); the
@@ -185,6 +186,82 @@ try {
   `schema.ts` is stale; add it to the CI frontend job (workflows are issue #32).
 - **Tests**: Vitest with a mocked `fetch` passed to `createApiClient` (see `client.test.ts`); no
   network, no backend.
+
+## Clients, campaigns and the switcher
+
+Screens (issue #50): `/clients` (list), `/clients/[id]` (client with its campaigns underneath) and
+`/campaigns` (all campaigns). Code lives in `src/features/{clients,campaigns,selection,access}`.
+
+| Screen          | What it does                                                                                                                                                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/clients`      | Search, status filter, "Show archived" (off by default), pagination (10 per page), empty state that guides to the first client, row actions Edit / Archive / Restore (confirmation dialogs), "New client" dialog (name, notes). |
+| `/clients/[id]` | Name, notes, status; Edit, Archive/Restore, "Set as current client"; the client's campaigns (same table as below, nested endpoint).                                                                                             |
+| `/campaigns`    | Status badge and a compact ICP summary (countries, industries, company size, profile version); client/status/search filters and "Show archived". Row actions: Edit (link), Clone, Activate (drafts), Archive/Restore, Use.      |
+| Header switcher | Two selects, "Current client" and "Current campaign" (`src/components/ContextSwitcher.tsx`).                                                                                                                                    |
+
+**Client and campaign API validation** errors (`validation_error`) are mapped to the dialog's fields
+(`ApiError.fieldErrors`); any other failure (409 `client_has_active_jobs`, network, 5xx) shows in the dialog or
+as an alert above the list. Lists show a skeleton while loading and an alert with "Try again" on failure.
+
+### Shared pieces (import these; keep them stable)
+
+| Import                                   | What                                                                                                                                                                                                                                               |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@/features/selection/SelectionProvider` | `useSelection()` gives `{ clientId, campaignId, client, campaign, clients, campaigns, loading, error, selectClient(id), selectCampaign(campaign), refresh() }`. `useOptionalSelection()` is null outside the provider.                             |
+| `@/features/clients/api`                 | `listClients`, `getClient`, `createClient`, `updateClient` (PATCH), `archiveClient`, `restoreClient`; hooks `useClients(query)`, `useClient(id)`; types `Client`, `ClientInput`, ...                                                               |
+| `@/features/campaigns/api`               | `listCampaigns`, `listClientCampaigns`, `getCampaign`, `cloneCampaign`, `activateCampaign`, `archiveCampaign`, `restoreCampaign`; hooks `useCampaigns`, `useClientCampaigns`, `useCampaign`; `campaignEditPath(id)`, `campaignNewPath(clientId?)`. |
+| `@/features/access/AccessProvider`       | `useAccess()` gives `can("edit" \| "manage", clientId?)` and `noteError(error, level, clientId?)`.                                                                                                                                                 |
+| `@/lib/hooks/useApiQuery`                | `useApiQuery(key, fetcher)` returns `{ data, error, loading, reload }`; stale answers are ignored, the previous data stays while the next loads.                                                                                                   |
+| `@/components/ui/*`                      | New: `Modal`, `ConfirmDialog`, `Alert`, `Table` (`Th`, `Td`), `Select`, `TextArea`, `Checkbox`, `Pagination`. `@/components/StatusBadge`, `ListToolbar`, `ListSkeleton`.                                                                           |
+
+After you change a client or campaign (create, rename, archive, clone, ...) call `useSelection().refresh()` so the
+switcher and the context stay current; the shared action hooks (`useClientActions`, `useCampaignActions`) do it
+for you. Campaign create/edit (`POST`/`PUT`/`PATCH`) is not wrapped in `campaigns/api.ts`: it belongs to the campaign
+form (issue #49), which owns `/campaigns/new` (`campaignNewPath(clientId)` adds `?client=<id>`) and
+`/campaigns/[id]/edit` (`campaignEditPath(id)`). The list links and Clone navigate to those routes.
+
+### The selection (switcher context)
+
+- `SelectionProvider` sits inside the authenticated shell (`AuthFrame`), so it only fetches for a signed-in user.
+- The choice is remembered in `localStorage` under `abm-selection` as `{clientId, campaignId}`. Every access is
+  wrapped in try/catch (private windows, blocked storage); ids that are not UUIDs are dropped before use.
+- On load the stored ids are **validated against the API**: a client that is gone, archived or not visible to the user
+  (404/403) is dropped, and so is a campaign that is archived or belongs to another client. A network failure keeps
+  the stored choice. Choosing another client clears the campaign; choosing a campaign (list "Use" button, or the
+  switcher) also selects its client.
+- The switcher loads the first 100 non-archived clients (by name) and the selected client's first 100 campaigns.
+  A stored id beyond that is still found by a direct `GET`, but picking among more than 100 needs a search box (not built).
+
+### Roles and what the UI shows (known gap)
+
+Viewers and reviewers must not see edit actions, but **the API does not tell the frontend the user's role**:
+`GET /api/v1/auth/me/` returns only `id, email, name, is_staff, last_login, created_at`, and the client and campaign
+payloads carry no "what can I do" flags (roles live in `ClientMembership`, see [docs/permissions.md](../docs/permissions.md)).
+Adding it is not trivial (a per-client role in the list payloads plus schema regeneration and tests), so this change
+does the safe thing without a backend change:
+
+- `AccessProvider` starts optimistic and learns from the API: the first **403** for an action hides that level's
+  actions from then on (this session, per client; an `edit` denial also hides `manage`; a `manage` denial on
+  create hides "New client"). The user sees "You do not have permission to do this." once; the API stays the gate.
+- Archived items hide Edit (they are read-only); Activate shows for drafts only.
+- To make it correct from the first render, expose the role per client in the API (for example `role` on `Client`
+  or a `memberships` list on `/auth/me/`) and pass the denied levels to `AccessProvider`'s `initialDenied` prop; no
+  screen needs to change.
+
+### Dialogs and accessibility
+
+`Modal` renders in a portal with `role="dialog"`, `aria-modal`, `aria-labelledby`/`aria-describedby`; focus moves into
+it, Tab/Shift+Tab wrap inside, Escape or a click on the backdrop closes it and focus returns to the opener. The body
+does not scroll while it is open. `ConfirmDialog` focuses **Cancel** first, disables both buttons while the request
+runs and shows a failure inside the dialog. Tables have a (screen-reader) caption and `scope="col"` headers and scroll
+sideways inside their card on narrow screens; status badges carry a glyph and a label, not only a colour.
+
+### Test data in e2e
+
+`e2e/mock-data.mjs` (loaded by `e2e/mock-api.mjs`) adds in-memory clients and campaigns with the real shapes and
+filters, plus CORS (the browser calls these endpoints directly). Test controls: `POST /__data/reset` (back to the
+seed, returns the ids), `POST /__data/role {role: "admin" | "manager" | "viewer"}` (writes the role may not do
+answer 403) and `GET /__data/log` (write requests seen). `e2e/clients.spec.ts` runs serially because it shares that data.
 
 ## Tooling and testing
 
