@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 
+import { ContextSwitcher } from "@/components/ContextSwitcher";
 import { SIDEBAR_ID } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
@@ -28,9 +29,7 @@ export function Header({
         >
           Menu
         </Button>
-        <span className="hidden text-sm text-fg-muted sm:inline">
-          Account-based marketing
-        </span>
+        <ContextSwitcher />
       </div>
       <div className="flex items-center gap-2">
         <ThemeToggle />
