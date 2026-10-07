@@ -37,6 +37,18 @@ object belongs to a client the user is not a member of, so it does not exist for
 | archive / delete | MANAGE | no | no | no | yes | yes | 404 |
 | grant, change or revoke memberships | MANAGE | no | no | no | yes (own client) | yes | 404 |
 
+### Client endpoints (`/api/v1/clients/`, issue #47)
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list`, `retrieve` | READ | yes | yes | yes | yes | yes | not listed / 404 |
+| `partial_update`, `update` (name, notes) | EDIT | no | no | yes | yes | yes | 404 |
+| `archive`, `restore` | MANAGE | no | no | no | yes | yes | 404 |
+| `create` | MANAGE (in any client) | no | no | no | yes | yes | 403 (no client to hide yet) |
+
+There is no DELETE (405): clients are archived. The creator of a client becomes its admin member.
+Archived clients are read-only (400) until restored.
+
 Other rules:
 
 - Anonymous requests get 401. An inactive user (or inactive global admin) gets nothing, even with

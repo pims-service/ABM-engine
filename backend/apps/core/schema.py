@@ -44,6 +44,7 @@ _DESCRIPTIONS = {
     401: "Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`).",
     403: "Not allowed (`permission_denied`).",
     404: "Not found (`not_found`).",
+    409: "Conflict with the current state (e.g. `client_has_active_jobs`).",
     429: "Throttled (`throttled`, with `details.retry_after`).",
     500: "Unexpected server error (`internal_error`).",
 }

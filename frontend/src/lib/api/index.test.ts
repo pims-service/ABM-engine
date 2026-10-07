@@ -39,4 +39,65 @@ describe("getApiClient", () => {
     );
     expect(auth).toEqual(["Bearer live-token", null]);
   });
+
+  it("retries once with the token from the 401 handler", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: "authentication_failed", message: "x" } },
+          { status: 401 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({ status: "ok" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { getApiClient, setAccessTokenGetter, setUnauthorizedHandler } =
+      await load();
+    const handler = vi.fn(async () => "fresh-token");
+    setAccessTokenGetter(() => "stale-token");
+    setUnauthorizedHandler(handler);
+
+    const { data } = await getApiClient().GET("/healthz");
+
+    expect(data).toEqual({ status: "ok" });
+    expect(handler).toHaveBeenCalledTimes(1);
+    const sent = fetchMock.mock.calls.map((call) =>
+      (call as unknown as [Request])[0].headers.get("Authorization"),
+    );
+    expect(sent).toEqual(["Bearer stale-token", "Bearer fresh-token"]);
+  });
+
+  it("surfaces the 401 when the handler has no new token", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        { error: { code: "authentication_failed", message: "x" } },
+        { status: 401 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { ApiError, getApiClient, setUnauthorizedHandler } = await load();
+    setUnauthorizedHandler(async () => null);
+
+    await expect(getApiClient().GET("/healthz")).rejects.toBeInstanceOf(
+      ApiError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a second 401 forever", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        { error: { code: "authentication_failed", message: "x" } },
+        { status: 401 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { ApiError, getApiClient, setUnauthorizedHandler } = await load();
+    setUnauthorizedHandler(async () => "t");
+
+    await expect(getApiClient().GET("/healthz")).rejects.toBeInstanceOf(
+      ApiError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -23,13 +23,22 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.core.audit import record_change, snapshot
 from apps.core.models import AuditAction, Job
+from apps.core.roles import Role
 
+from .memberships import grant_membership
 from .models import Campaign, CampaignProfile, Client
 
 CLIENT_AUDIT_FIELDS = ("name", "notes", "status", "archived_at")
 CAMPAIGN_AUDIT_FIELDS = ("name", "status", "archived_at", "current_profile")
 CLIENT_EDITABLE_FIELDS = ("name", "notes")
 CAMPAIGN_EDITABLE_FIELDS = ("name",)
+
+CLIENT_NAME_TAKEN = "An active client with that name already exists."
+
+
+class ClientHasActiveJobsError(ValidationError):
+    """A client with queued or running jobs cannot be archived (the API answers 409)."""
+
 
 LIST_FIELDS = (
     "countries",
@@ -242,6 +251,8 @@ def update_client(client: Client, user: User | None = None, **changes: Any) -> C
     if unknown:
         raise ValidationError(dict.fromkeys(unknown, "Unknown field."))
     locked = Client.objects.select_for_update().get(pk=client.pk)
+    if locked.is_archived:
+        raise ValidationError("Archived clients are read-only; restore the client first.")
     before = snapshot(locked, CLIENT_AUDIT_FIELDS)
     for key, value in changes.items():
         setattr(locked, key, value.strip() if key == "name" else value)
@@ -287,14 +298,32 @@ def archive_client(client: Client, user: User | None = None) -> Client:
 
     def mutate(locked: Client) -> None:
         if not locked.is_archived and Job.objects.for_client(locked).active().exists():
-            raise ValidationError("Cannot archive a client with queued or running jobs.")
+            raise ClientHasActiveJobsError("Cannot archive a client with queued or running jobs.")
         locked.archive()
 
     return _change_client(client, AuditAction.ARCHIVE, user, mutate)
 
 
 def restore_client(client: Client, user: User | None = None) -> Client:
-    return _change_client(client, AuditAction.RESTORE, user, lambda locked: locked.restore())
+    """Restore a client (idempotent). Refused if an active client now uses its name."""
+
+    def mutate(locked: Client) -> None:
+        if locked.is_archived and _name_taken(Client, locked.name, exclude_pk=locked.pk):
+            raise ValidationError({"name": "An active client with that name already exists."})
+        locked.restore()
+
+    return _change_client(client, AuditAction.RESTORE, user, mutate)
+
+
+@transaction.atomic
+def create_client_with_admin(name: str, notes: str, user: User) -> Client:
+    """``create_client`` plus an admin membership for the creator (audited), in one transaction.
+
+    Without the membership a non-global-admin creator could not see the client they just made.
+    """
+    client = create_client(name, notes, user)
+    grant_membership(client, user, Role.ADMIN, audit_actor=user)
+    return client
 
 
 # ------------------------------------------------------------------ campaigns
