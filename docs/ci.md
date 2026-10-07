@@ -33,7 +33,7 @@ check):
 | `Coverage of models and permissions (85% each)` | `scripts/check_module_coverage.py`: every `apps/*/models.py` and `core/permissions.py`, `tenancy.py`, `roles.py` must reach 85% by itself. | after `uv run pytest`: `uv run python scripts/check_module_coverage.py` |
 
 How to extend the group (new model, new endpoint): [backend/README.md](../backend/README.md#invariant-tests-testsinvariants-issue-53).
-The job timeout is 25 minutes because the isolation tests seed data per test.
+The job timeout is 25 minutes (the invariant group adds about 4 minutes on PostgreSQL).
 
 Dependencies are cached (uv cache keyed on `backend/uv.lock`, npm cache keyed
 on `frontend/package-lock.json`, Playwright browsers keyed on the Playwright
