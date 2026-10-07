@@ -16,6 +16,7 @@ interface StoredCampaign {
   name: string;
   profile_version: number;
   profile: Record<string, unknown>;
+  lastPatch?: Record<string, unknown>;
 }
 
 async function stored(name: string): Promise<StoredCampaign | undefined> {
@@ -121,7 +122,7 @@ test.describe("create campaign", () => {
       excluded_company_types: ["Government"],
       target_departments: ["Sales", "Business Development"],
       preferred_buyer_titles: ["VP BD", "CEO", "Founder"],
-      outreach_languages: ["en", "ar"],
+      outreach_languages: ["ar", "en"],
       custom_rules: "No startups",
     });
   });
@@ -249,7 +250,7 @@ test.describe("edit campaign", () => {
     await expect(status).toBeFocused();
     await expect(page.getByText("Version 2").first()).toBeVisible();
     await expect(
-      page.getByText("Sharper offer", { exact: true }),
+      page.getByText("What changed in this version: Sharper offer"),
     ).toBeVisible();
     await expect(page.getByLabel("What changed")).toHaveValue("");
     await expect(page.getByText("Unsaved changes")).toHaveCount(0);
@@ -277,15 +278,13 @@ test.describe("edit campaign", () => {
   test("sends only what changed", async ({ page }) => {
     const name = uniqueName("Patch");
     await createCampaign(page, name);
-    const request = page.waitForRequest(
-      (r) => r.method() === "PATCH" && r.url().includes("/api/v1/campaigns/"),
-    );
     await page.getByLabel("Company size, maximum").fill("900");
     await page.getByRole("button", { name: "Save changes" }).click();
-    expect((await request).postDataJSON()).toEqual({
+    await expect(page.getByText("Saved as version 2.")).toBeVisible();
+    // The mock records the body it received (the browser streams it, so Playwright cannot).
+    expect((await stored(name))?.lastPatch).toEqual({
       profile: { company_size_max: 900 },
     });
-    await expect(page.getByText("Saved as version 2.")).toBeVisible();
   });
 
   test("a viewer sees a read-only state when saving is refused", async ({

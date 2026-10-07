@@ -238,7 +238,12 @@ export async function handleCampaignApi(req, res, url, h) {
     return true;
   }
   if (path === "/__campaigns" && req.method === "GET") {
-    send(res, 200, { campaigns: campaigns.map(campaignOut) });
+    send(res, 200, {
+      campaigns: campaigns.map((c) => ({
+        ...campaignOut(c),
+        lastPatch: c.lastPatch,
+      })),
+    });
     return true;
   }
   if (
@@ -387,6 +392,7 @@ export async function handleCampaignApi(req, res, url, h) {
         return true;
       }
       const body = await readJson(req);
+      campaign.lastPatch = body;
       const errors = {};
       for (const key of Object.keys(body)) {
         if (!["client", "name", "profile"].includes(key)) {
