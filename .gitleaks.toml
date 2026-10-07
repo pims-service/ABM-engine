@@ -14,4 +14,7 @@ paths = [
 regexes = [
   '''^YOUR_[A-Z0-9_]+$''',
   '''^Wr0ng-Passw0rd-Marker-9917$''',
+  # Deliberately fake value used by the admin audit-log redaction test
+  # (backend/tests/test_admin.py): the test proves this string is masked on display.
+  '''^sk-live-abc123$''',
 ]

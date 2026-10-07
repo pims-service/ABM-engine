@@ -1,11 +1,14 @@
 # Data model and entity relationships
 
-Status: draft for team sign-off (issue #38). The model issues #39 to #44 should
-not start until this is reviewed. Where this doc and those issue bodies
-disagree, the section [Where the sibling issues need adjusting](#where-the-sibling-issues-need-adjusting)
-says what to change, and this doc is the proposal to review.
+Status: final for M1, as implemented (design written in #38, built in #39 to #46, #52). It
+describes the schema that is in `backend/apps/*/models.py`, not a proposal. Three parts are
+generated from the models and checked by a test, so they cannot drift: the ER diagram, the
+entity index and the [field reference](data-model-reference.md) (regenerate with
+`python manage.py print_schema --write`, see [Keeping this doc in sync](#keeping-this-doc-in-sync)).
+Where the first design changed while building, [Decisions and deviations](#decisions-and-deviations)
+says what and why.
 
-The rules behind it come from the Brief and two accepted ADRs:
+The rules behind it come from the Brief and the accepted ADRs:
 
 - Brief §19: keep historical research instead of overwriting records
   ([ADR 0007](adr/0007-keep-history-and-separate-ai-from-human-decisions.md)).
@@ -31,164 +34,223 @@ The rules behind it come from the Brief and two accepted ADRs:
 8. [Trigger freshness](#trigger-freshness)
 9. [Indexes and uniqueness](#indexes-and-uniqueness)
 10. [Archive and delete rules](#archive-and-delete-rules)
-11. [Where the sibling issues need adjusting](#where-the-sibling-issues-need-adjusting)
-12. [Open questions](#open-questions)
+11. [Decisions and deviations](#decisions-and-deviations)
+12. [Decisions on the open questions](#decisions-on-the-open-questions)
+13. [Keeping this doc in sync](#keeping-this-doc-in-sync)
+14. [How to add a new append-only record type](#how-to-add-a-new-append-only-record-type)
+15. [How to add a permission-safe endpoint](#how-to-add-a-permission-safe-endpoint)
+16. [Authentication and roles](#authentication-and-roles)
+
+Related: [data-model-reference.md](data-model-reference.md) (generated field reference),
+[permissions.md](permissions.md) (roles and endpoint rules), [admin.md](admin.md) (Django admin).
 
 ## The picture
 
-GitHub renders this diagram. It shows keys and the fields that matter for
-relationships. The full field lists are in [Entities](#entities).
+GitHub renders this diagram. It is generated from the models (see
+[Keeping this doc in sync](#keeping-this-doc-in-sync)) and shows relationships, keys and enum
+columns. The full field lists are in the [field reference](data-model-reference.md).
 
+<!-- BEGIN GENERATED: erd (python manage.py print_schema --write) -->
 ```mermaid
 erDiagram
-    USER ||--o{ CLIENT_MEMBERSHIP : "belongs to clients via"
-    CLIENT ||--o{ CLIENT_MEMBERSHIP : "has members"
-    CLIENT ||--o{ CAMPAIGN : "runs"
-    CAMPAIGN ||--|{ CAMPAIGN_PROFILE : "has versions"
-    CAMPAIGN |o--|| CAMPAIGN_PROFILE : "current_profile"
-    CAMPAIGN ||--o{ COMPANY : "contains"
-    CLIENT ||--o{ DATA_SOURCE : "owns"
-
-    COMPANY ||--o{ COMPANY_RESEARCH : "snapshots"
-    COMPANY ||--o{ SIGNAL : "evidence of timing"
-    COMPANY ||--o{ CONTACT : "people"
-    COMPANY ||--o{ ICP_ASSESSMENT : "fit history"
-    COMPANY ||--o{ AI_RECOMMENDATION : "AI says"
-    COMPANY ||--o{ HUMAN_DECISION : "human says"
-    COMPANY ||--o{ OUTREACH_ANGLE : "why contact"
-    COMPANY ||--o{ MESSAGE : "drafts"
-    COMPANY ||--o{ ACTIVITY : "timeline"
-
-    DATA_SOURCE ||--o{ COMPANY_RESEARCH : "source of"
-    DATA_SOURCE ||--o{ SIGNAL : "source of"
-    DATA_SOURCE ||--o{ CONTACT : "source of"
-
-    CAMPAIGN_PROFILE ||--o{ ICP_ASSESSMENT : "rules used"
-    COMPANY_RESEARCH ||--o{ ICP_ASSESSMENT : "facts assessed"
-    ICP_ASSESSMENT ||--o{ AI_RECOMMENDATION : "basis of"
-    AI_RECOMMENDATION |o--o{ HUMAN_DECISION : "decided against"
-    USER ||--o{ HUMAN_DECISION : "decided_by"
-
-    OUTREACH_ANGLE ||--o{ MESSAGE : "turned into"
-    CONTACT ||--o{ MESSAGE : "addressed to"
-    OUTREACH_ANGLE }o--o{ SIGNAL : "cites"
-    OUTREACH_ANGLE }o--o{ DATA_SOURCE : "cites"
-
-    CAMPAIGN ||--o{ JOB : "background runs"
-    JOB ||--o{ JOB_ITEM : "per company"
-    COMPANY ||--o{ JOB_ITEM : "processed in"
-    USER ||--o{ AUDIT_LOG : "actor"
-
-    CLIENT {
+    AIRecommendation |o--o{ HumanDecision : "ai_recommendation"
+    Campaign |o--o{ Job : "campaign"
+    Campaign ||--o{ Activity : "campaign"
+    Campaign ||--o{ CampaignProfile : "campaign"
+    Campaign ||--o{ Company : "campaign"
+    CampaignProfile ||--o{ Campaign : "current_profile"
+    CampaignProfile ||--o{ ICPAssessment : "campaign_profile"
+    Client |o--o{ AuditLog : "client"
+    Company ||--o{ AIRecommendation : "company"
+    Company ||--o{ Activity : "company"
+    Company ||--o{ CompanyResearch : "company"
+    Company ||--o{ Contact : "company"
+    Company ||--o{ HumanDecision : "company"
+    Company ||--o{ ICPAssessment : "company"
+    Company ||--o{ Message : "company"
+    Company ||--o{ OutreachAngle : "company"
+    Company ||--o{ Signal : "company"
+    CompanyResearch ||--o{ ICPAssessment : "company_research"
+    Contact ||--o{ Message : "contact"
+    DataSource ||--o{ AngleSource : "data_source"
+    DataSource ||--o{ CompanyResearch : "data_source"
+    DataSource ||--o{ Contact : "data_source"
+    DataSource ||--o{ MessageSource : "data_source"
+    DataSource ||--o{ Signal : "data_source"
+    ICPAssessment ||--o{ AIRecommendation : "icp_assessment"
+    Job ||--o{ JobItem : "job"
+    Message |o--o| Message : "supersedes"
+    Message ||--o{ MessageSignal : "message"
+    Message ||--o{ MessageSource : "message"
+    OutreachAngle ||--o{ AngleSignal : "angle"
+    OutreachAngle ||--o{ AngleSource : "angle"
+    OutreachAngle ||--o{ Message : "angle"
+    Signal |o--o| Signal : "supersedes"
+    Signal ||--o{ AngleSignal : "signal"
+    Signal ||--o{ MessageSignal : "signal"
+    User ||--o{ ClientMembership : "user"
+    User ||--o{ HumanDecision : "decided_by"
+    User {
         uuid id PK
-        string name
-        string status
     }
-    CAMPAIGN {
+    Campaign {
         uuid id PK
         uuid client_id FK
-        string status
+        text_16 status
         uuid current_profile_id FK
+        uuid created_by_id FK
     }
-    CAMPAIGN_PROFILE {
-        uuid id PK
-        uuid campaign_id FK
-        int version
-    }
-    COMPANY {
+    CampaignProfile {
         uuid id PK
         uuid client_id FK
         uuid campaign_id FK
-        string domain "normalized, nullable"
-        timestamp archived_at
+        text_8 business_model
+        uuid created_by_id FK
     }
-    COMPANY_RESEARCH {
+    Client {
         uuid id PK
+        text_16 status
+        uuid created_by_id FK
+    }
+    ClientMembership {
+        uuid id PK
+        uuid client_id FK
+        uuid user_id FK
+        text_16 role
+    }
+    Company {
+        uuid id PK
+        uuid client_id FK
+        uuid campaign_id FK
+        text_16 input_source
+        text_16 status
+        uuid created_by_id FK
+    }
+    CompanyResearch {
+        uuid id PK
+        uuid client_id FK
         uuid company_id FK
         uuid data_source_id FK
-        timestamp researched_at
+        text_8 classification
     }
-    SIGNAL {
+    Contact {
         uuid id PK
+        uuid client_id FK
         uuid company_id FK
         uuid data_source_id FK
-        date event_date
-        timestamp expires_at
+        text_16 email_status
+        text_16 role
+        uuid created_by_id FK
     }
-    CONTACT {
+    DataSource {
         uuid id PK
+        uuid client_id FK
+        text_16 type
+        uuid created_by_id FK
+    }
+    AuditLog {
+        uuid id PK
+        uuid actor_id FK
+        uuid client_id FK
+        text_16 action
+    }
+    Job {
+        uuid id PK
+        uuid client_id FK
+        uuid campaign_id FK
+        text_16 status
+        uuid created_by_id FK
+    }
+    JobItem {
+        uuid id PK
+        uuid client_id FK
+        uuid job_id FK
+        text_16 status
+    }
+    Activity {
+        uuid id PK
+        uuid client_id FK
         uuid company_id FK
-        string role "primary, secondary, none"
+        uuid campaign_id FK
+        text_24 type
+        uuid actor_id FK
     }
-    ICP_ASSESSMENT {
+    AngleSignal {
         uuid id PK
+        uuid client_id FK
+        uuid angle_id FK
+        uuid signal_id FK
+    }
+    AngleSource {
+        uuid id PK
+        uuid client_id FK
+        uuid angle_id FK
+        uuid data_source_id FK
+    }
+    Message {
+        uuid id PK
+        uuid client_id FK
+        uuid company_id FK
+        uuid contact_id FK
+        uuid angle_id FK
+        text_16 channel
+        text_16 status
+        uuid approved_by_id FK
+        uuid supersedes_id FK
+        uuid created_by_id FK
+    }
+    MessageSignal {
+        uuid id PK
+        uuid client_id FK
+        uuid message_id FK
+        uuid signal_id FK
+    }
+    MessageSource {
+        uuid id PK
+        uuid client_id FK
+        uuid message_id FK
+        uuid data_source_id FK
+    }
+    OutreachAngle {
+        uuid id PK
+        uuid client_id FK
+        uuid company_id FK
+        uuid created_by_id FK
+    }
+    AIRecommendation {
+        uuid id PK
+        uuid client_id FK
+        uuid company_id FK
+        uuid icp_assessment_id FK
+        text_8 status
+    }
+    HumanDecision {
+        uuid id PK
+        uuid client_id FK
+        uuid company_id FK
+        uuid ai_recommendation_id FK
+        text_8 decision
+        uuid decided_by_id FK
+    }
+    ICPAssessment {
+        uuid id PK
+        uuid client_id FK
         uuid company_id FK
         uuid campaign_profile_id FK
         uuid company_research_id FK
-        string fit "strong, medium, weak"
+        text_8 fit
     }
-    AI_RECOMMENDATION {
-        uuid id PK
-        uuid icp_assessment_id FK
-        string status "add, hold, skip"
-    }
-    HUMAN_DECISION {
-        uuid id PK
-        uuid ai_recommendation_id FK
-        string decision "add, hold, skip"
-        uuid decided_by FK
-    }
-    OUTREACH_ANGLE {
-        uuid id PK
-        uuid company_id FK
-        text angle
-    }
-    MESSAGE {
-        uuid id PK
-        uuid angle_id FK
-        uuid contact_id FK
-        string channel
-        string status
-    }
-    ACTIVITY {
-        uuid id PK
-        uuid company_id FK
-        string type
-    }
-    DATA_SOURCE {
+    Signal {
         uuid id PK
         uuid client_id FK
-        string type
-        timestamp retrieved_at
-    }
-    JOB {
-        uuid id PK
-        uuid campaign_id FK
-        string status
-    }
-    JOB_ITEM {
-        uuid id PK
-        uuid job_id FK
         uuid company_id FK
-        string status
-    }
-    AUDIT_LOG {
-        uuid id PK
-        uuid actor_id FK
-        string object_type
-        uuid object_id
-    }
-    CLIENT_MEMBERSHIP {
-        uuid id PK
-        uuid user_id FK
-        uuid client_id FK
-        string role
-    }
-    USER {
-        uuid id PK
-        string email
+        uuid data_source_id FK
+        text_32 type
+        uuid supersedes_id FK
+        uuid created_by_id FK
     }
 ```
+<!-- END GENERATED: erd -->
 
 Reading it in plain words: a Client has Campaigns. A Campaign has a versioned
 profile (its ICP rules) and a list of Companies. Everything we learn about a
@@ -200,9 +262,8 @@ add-only. Every fact points at a Data Source.
 
 These apply to every table unless the entity says otherwise.
 
-- **Primary keys** are UUIDs (as #39 already says). Tables also carry
-  `created_at` (timestamptz, UTC, set by the database or the service, never
-  by the client).
+- **Primary keys** are UUIDs. Tables also carry `created_at` (timestamptz, UTC, set by
+  Django or the service, never by the client); mutable tables also carry `updated_at`.
 - **Authorship**: `created_by` is a nullable FK to User. Null means the system
   or an AI step did it, and AI-made rows also carry `model_name`,
   `prompt_version` and `schema_version` (ADR 0003, ADR 0007).
@@ -210,8 +271,12 @@ These apply to every table unless the entity says otherwise.
   constraint (Django `TextChoices` plus a constraint), so the allowed values
   below are enforced in Postgres, not only in Python.
 - **Lists of short strings** (reasons, concerns, industries, titles) use
-  Postgres `text[]`. JSON (`jsonb`) is used only where the shape is truly
-  free-form (activity payloads, audit diffs, raw model output).
+  `StringListField`: Postgres `text[]`, or a JSON array in `text` on SQLite (tests). JSON
+  (`jsonb`) is used only where the shape is truly free-form (activity payloads, audit diffs,
+  raw model output).
+- **Empty versus null**: optional text is stored as an empty string, not NULL (Django
+  convention), and the tables below call it `text, blank`. NULL is used for facts that were not
+  found (research columns), optional dates and numbers, optional foreign keys and `jsonb`.
 - **No numeric score** is the core output anywhere (Brief §15). There is no
   `score` column on any assessment.
 - **Foreign keys use PROTECT**, not CASCADE. We archive, we do not cascade
@@ -219,19 +284,54 @@ These apply to every table unless the entity says otherwise.
 - **Times**: `*_at` is a timestamp. `event_date` is a plain date, because
   evidence usually only says "March 2026", not an hour.
 
-Legend for the tables below: `null` means nullable, otherwise NOT NULL. "Append-only"
-means rows are inserted and never updated or deleted by application code.
+Legend for the tables below: `null` means nullable, `blank` means NOT NULL with an empty string
+when there is no value, otherwise NOT NULL. "Append-only" means rows are inserted and never
+updated or deleted by application code (`apps/core/base.py`; raw SQL is out of its reach).
 
 ## Entities
 
-These are the 14 objects from Brief §19, plus the Job, JobItem, AuditLog and
-ClientMembership tables the M1 issues already call for. No other new objects
-are proposed. Brief §16 feedback is stored as an Activity (see Activity).
+These are the 14 objects from Brief §19, plus Job, JobItem, AuditLog and
+ClientMembership (M1) and four evidence link tables (`AngleSignal`, `AngleSource`,
+`MessageSignal`, `MessageSource`, the real tables behind the "cites" relations). Brief §16
+feedback is stored as an Activity (see Activity).
 
-Every entity below except User, Client, ClientMembership and AuditLog also has
-a `client_id` FK to Client. That is the tenancy column (see
-[Tenancy](#tenancy-how-data-stays-inside-a-client)) and is not repeated in each
-table.
+The index below is generated from the models. The per-entity sections that follow explain
+what each one is for and its rules; the complete, generated list of every column, enum value,
+constraint and index is in [data-model-reference.md](data-model-reference.md). If a table in
+this page and the reference disagree, the reference is right: fix the table.
+
+<!-- BEGIN GENERATED: index (python manage.py print_schema --write) -->
+| Model | App | Behaviour | Table |
+| --- | --- | --- | --- |
+| User | accounts | mutable | `accounts_user` |
+| Campaign | campaigns | mutable, archivable, tenant | `campaigns_campaign` |
+| CampaignProfile | campaigns | append-only, tenant | `campaigns_campaignprofile` |
+| Client | campaigns | mutable, archivable | `campaigns_client` |
+| ClientMembership | campaigns | mutable, archivable, tenant | `campaigns_clientmembership` |
+| Company | companies | mutable, archivable, tenant | `companies_company` |
+| CompanyResearch | companies | append-only, tenant | `companies_companyresearch` |
+| Contact | companies | mutable, archivable, tenant | `companies_contact` |
+| DataSource | companies | append-only, tenant | `companies_datasource` |
+| AuditLog | core | append-only | `core_auditlog` |
+| Job | core | mutable, tenant | `core_job` |
+| JobItem | core | mutable, tenant | `core_jobitem` |
+| Activity | outreach | append-only, tenant | `outreach_activity` |
+| AngleSignal | outreach | append-only, tenant | `outreach_angle_signals` |
+| AngleSource | outreach | append-only, tenant | `outreach_angle_sources` |
+| Message | outreach | mutable, tenant | `outreach_message` |
+| MessageSignal | outreach | append-only, tenant | `outreach_message_signals` |
+| MessageSource | outreach | append-only, tenant | `outreach_message_sources` |
+| OutreachAngle | outreach | append-only, tenant | `outreach_outreachangle` |
+| AIRecommendation | research | append-only, tenant | `research_airecommendation` |
+| HumanDecision | research | append-only, tenant | `research_humandecision` |
+| ICPAssessment | research | append-only, tenant | `research_icpassessment` |
+| Signal | research | append-only, tenant | `research_signal` |
+<!-- END GENERATED: index -->
+
+Every tenant entity (the ones marked `tenant` above) has a direct `client_id` FK to Client.
+That is the tenancy column (see [Tenancy](#tenancy-how-data-stays-inside-a-client)) and is
+not repeated in each table below. User is global, Client is the tenant itself, and AuditLog
+carries a nullable `client_id` of its own.
 
 ### User (issue #45)
 
@@ -241,12 +341,13 @@ flag).
 | Field | Type | Notes |
 | --- | --- | --- |
 | id | uuid | PK |
-| email | citext, unique | login |
-| name | text | |
+| email | text(254), unique | login, stored lower-case (CHECK), so lookups are case-insensitive |
+| name | text, blank | |
 | is_active | bool | deactivate instead of delete |
-| is_admin | bool | global admin sees every client, see open question 1 |
-| password | text | Django hash, never copied into audit diffs |
-| created_at, last_login | timestamptz, last_login null | |
+| is_superuser | bool | the global admin: sees every client, needs no membership (decision 1) |
+| is_staff | bool | may sign in to the Django admin; client roles never grant it ([admin.md](admin.md)) |
+| password | text(128) | Django hash, never shown in the admin and never copied into audit diffs |
+| created_at, updated_at, last_login | timestamptz, last_login null | |
 
 ### ClientMembership (issue #46)
 
@@ -272,7 +373,7 @@ Mutable (name, notes, status). Edits are audited.
 | --- | --- | --- |
 | id | uuid | PK |
 | name | text | unique per lower(name) among non-archived |
-| notes | text, null | |
+| notes | text, blank | |
 | status | enum | `active`, `archived` |
 | created_by | FK User, null | |
 | created_at, updated_at | timestamptz | |
@@ -316,8 +417,8 @@ an old assessment can show exactly which rules it used.
 | target_departments | text[] | |
 | preferred_buyer_titles | text[] | ordered, first is most preferred |
 | outreach_languages | text[] | codes such as `en`, `ar` |
-| custom_rules | text, null | free-form qualification notes |
-| change_note | text, null | why this version was made |
+| custom_rules | text, blank | free-form qualification notes |
+| change_note | text, blank | why this version was made |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 
@@ -336,13 +437,13 @@ snapshot, not an edit here. Only `status` and `archived_at` change.
 | client_id | FK Client | tenancy |
 | campaign_id | FK Campaign | |
 | name | text | as entered |
-| website | text, null | as entered |
+| website | text, blank | as entered |
 | domain | text, null | normalized, see below |
-| profile_url | text, null | company profile URL (Brief §4) |
-| country | text, null | ISO alpha-2 |
+| profile_url | text, blank | company profile URL (Brief §4) |
+| country | text(2), blank | ISO alpha-2, upper case |
 | input_source | enum | `manual`, `csv`, `provider` |
-| status | enum | `pending`, `analyzing`, `analyzed`, `failed` (proposed, see open question 6) |
-| created_by_job_id | FK Job, null | the import job, if any |
+| status | enum | `pending`, `analyzing`, `analyzed`, `failed` |
+| created_by_job_id | uuid, null | the import job's id, if any (a plain column, not a FK yet) |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 | archived_at | timestamptz, null | |
@@ -392,9 +493,10 @@ Where a piece of evidence came from. See [Evidence and provenance](#evidence-and
 | client_id | FK Client | tenancy |
 | type | enum | `provider`, `website`, `news`, `manual` |
 | name | text | for example the provider name, site or publication |
-| url | text, null | required unless type is `manual` or `provider` with no URL |
-| provider_reference | text, null | provider's record id, a link to the adapter (ADR 0002) |
+| url | text, blank | required (CHECK) unless type is `manual` or `provider` |
+| provider_reference | text, blank | provider's record id, a link to the adapter (ADR 0002) |
 | retrieved_at | timestamptz | when we fetched or typed it |
+| evidence_date | date, null | the date the source itself states (publication or event date), if any |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 
@@ -415,13 +517,13 @@ is the "Trigger" side of ADR 0008. There is no stored Yes/No, see
 | detected_at | timestamptz | when we found it |
 | expires_at | timestamptz, null | null means no expiry rule applied yet (M5) |
 | supersedes_id | FK Signal, null | set when this row corrects or replaces an earlier one |
-| model_name, prompt_version, schema_version | text, null | null for manual entries |
+| model_name, prompt_version, schema_version | text, blank | blank for manual entries |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 
 ### Contact (issue #41)
 
-A person at the company who may be a buyer (Brief §8). See open question 4:
+A person at the company who may be a buyer (Brief §8). See decision 4:
 this is the one table that holds mutable enrichment data.
 
 | Field | Type | Notes |
@@ -430,13 +532,14 @@ this is the one table that holds mutable enrichment data.
 | company_id | FK Company | |
 | data_source_id | FK DataSource | |
 | name | text | |
-| title | text, null | |
-| profile_url | text, null | |
-| email | text, null | |
-| email_status | enum | `unknown`, `not_found`, `unverified`, `verified`, `invalid` (proposed, see open question 6) |
+| title | text, blank | |
+| profile_url | text, blank | personal data, hidden from non-superuser staff in the admin |
+| email | text, blank | personal data, masked for non-superuser staff in the admin |
+| email_status | enum | `unknown`, `not_found`, `unverified`, `verified`, `invalid`; CHECKs: a status beyond unknown/not_found needs an email, `not_found` has none |
 | relevance_reason | text | why this person, shown in the card (Brief §15) |
 | rank | int, null | 1 is best |
 | role | enum | `primary`, `secondary`, `none` |
+| erased_at | timestamptz, null | set by `erase_personal_data()`; an erased contact cannot be restored |
 | created_by | FK User, null | |
 | created_at, updated_at | timestamptz | |
 | archived_at | timestamptz, null | |
@@ -487,11 +590,12 @@ The person's call. Never edited. To change one's mind, add a new decision.
 | --- | --- | --- |
 | id | uuid | PK |
 | company_id | FK Company | |
-| ai_recommendation_id | FK AIRecommendation, null | the recommendation this was made against (ADR 0007), see open question 3 |
+| ai_recommendation_id | FK AIRecommendation, null | the recommendation this was made against (ADR 0007), see decision 3 |
 | decision | enum | `add`, `hold`, `skip` |
 | decided_by | FK User | NOT NULL, a human, never null |
-| note | text, null | |
-| decided_at | timestamptz | |
+| note | text, blank | |
+| decided_at | timestamptz | when the person decided; the "latest" ordering key |
+| created_at | timestamptz | tie-break after `decided_at` |
 
 Implementation (#42): all three models live in the `research` app
 (`apps/research/models.py`, writes in `services.py`). Differences from the tables
@@ -514,7 +618,7 @@ one angle can feed LinkedIn, email, WhatsApp and call copy.
 | rationale | text | the "because..." (Brief §15) |
 | signals | M2M Signal | evidence cited, through `outreach_angle_signals` |
 | data_sources | M2M DataSource | evidence cited, through `outreach_angle_sources` |
-| model_name, prompt_version, schema_version | text, null | |
+| model_name, prompt_version, schema_version | text, blank | |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 
@@ -525,7 +629,7 @@ must not cite a signal that does not exist (Brief §12, §22).
 ### Message (issue #43)
 
 A drafted piece of outreach (Brief §12). The text is immutable. Only workflow
-fields change (see open question 5).
+fields change (see decision 5).
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -535,20 +639,23 @@ fields change (see open question 5).
 | angle_id | FK OutreachAngle | many messages per angle |
 | channel | enum | `linkedin`, `email`, `whatsapp`, `call` |
 | language | text | code such as `en` or `ar`, must be in the campaign profile's languages |
-| subject | text, null | email only |
+| subject | text, blank | email only (CHECK) |
 | body | text | immutable once saved |
 | is_followup | bool | |
 | status | enum | `draft`, `approved`, `exported` |
 | approved_by | FK User, null | set with `approved_at` |
 | approved_at, exported_at | timestamptz, null | |
 | supersedes_id | FK Message, null | an edited message is a new row pointing at the old |
-| model_name, prompt_version, schema_version | text, null | |
+| model_name, prompt_version, schema_version | text, blank | |
+| signals, data_sources | M2M | evidence the text uses, through `MessageSignal` and `MessageSource` |
 | created_by | FK User, null | |
 | created_at | timestamptz | |
 
 A message can only be created or approved if the company's latest human
 decision is `add` (ADR 0007: outreach starts only from an approved human
-decision). CHECK: status `approved` or `exported` requires `approved_by`.
+decision). CHECKs: status `approved` or `exported` requires `approved_by` and `approved_at`,
+`exported` requires `exported_at`, and `subject` is for email only. Status moves one step
+forward (`draft`, `approved`, `exported`); the text columns cannot change after insert.
 
 ### Activity (issue #43), append-only
 
@@ -570,7 +677,7 @@ For `feedback`, the payload carries `kind` (one of `wrong_buyer`, `not_b2b`,
 `ceo_should_not_be_primary`, `government_company`, `incorrect_company_data`,
 `other`), an optional `target` (`{"type": "signal", "id": "..."}`) and a `note`.
 Those kinds are the list in Brief §16. If feedback later needs richer querying
-it can graduate to its own table (open question 7).
+it can graduate to its own table (decision 7).
 
 ### Job (issue #44)
 
@@ -581,37 +688,36 @@ while it runs (status and counts), by nature.
 | --- | --- | --- |
 | id | uuid | PK |
 | client_id | FK Client | |
-| campaign_id | FK Campaign | |
+| campaign_id | FK Campaign, null | must belong to the same client |
 | type | text | a registered job name in code, for example `analyze_company`, `import_csv` |
 | status | enum | `queued`, `running`, `succeeded`, `partial`, `failed` |
-| total_count, done_count, failed_count | int | |
-| error_summary | text, null | |
-| queue_task_id | text, null | Django-Q2 task id (ADR 0005) |
+| total_count, done_count, failed_count | int | CHECK `done + failed <= total` |
+| attempts | smallint | runs started so far |
+| error_summary | text, blank | |
+| queue_task_id | text, blank | Django-Q2 task id (ADR 0005) |
 | created_by | FK User, null | |
-| created_at, started_at, finished_at | timestamptz, last two null | |
+| created_at, updated_at, started_at, finished_at | timestamptz, last two null | `finished_at` is set exactly when the status is terminal (CHECK) |
 
 ### JobItem (issue #44)
 
-Per-company status inside a bulk Job, so one failure does not fail the run.
-Mutable like Job.
+One result row per subject (a company) inside a bulk Job, so one failure does not fail the run.
+Mutable like Job until it is terminal.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | id | uuid | PK |
 | job_id | FK Job | |
-| client_id | FK Client | |
-| company_id | FK Company | |
+| client_id | FK Client | copied from the job |
+| subject_type, subject_id | text, uuid | what was processed: `company` and its id (a generic reference) |
 | status | enum | `queued`, `running`, `succeeded`, `failed` |
-| error | text, null | |
-| started_at, finished_at | timestamptz, null | |
+| error | text, blank | |
+| result | jsonb, null | small JSON outcome |
+| started_at, finished_at | timestamptz, null | `finished_at` is set exactly when terminal (CHECK) |
+| created_at, updated_at | timestamptz | |
 
-Unique on (job_id, company_id).
-
-As built (issue #44): until the Company model exists the item points at its subject with
-`subject_type` + `subject_id` (`company` and the company id), unique on
-`(job_id, subject_type, subject_id)`, and has an optional JSON `result`. A Job also keeps
-`attempts`, and a retry waiting for its backoff is `queued` again (there is no `retrying`
-status). The `AuditLog` also stores `request_id`.
+Unique on (job_id, subject_type, subject_id). A retry that waits for its backoff puts the job
+back to `queued` (there is no `retrying` status), and `Job.attempts` counts the runs. To retry a
+failed subject, start a new job.
 
 ### AuditLog (issue #44), append-only
 
@@ -627,7 +733,8 @@ used for research data, which keeps its own history.
 | action | enum | `create`, `update`, `archive`, `restore`, `delete` |
 | object_type | text | for example `campaign` |
 | object_id | uuid | |
-| before, after | jsonb, null | field-level diff, never includes passwords, tokens or API keys |
+| before, after | jsonb, null | field-level diff, never includes passwords, tokens or API keys (redacted on write and again on display in the admin) |
+| request_id | text, blank | the request that caused it |
 | created_at | timestamptz | |
 
 ## Relationships and cardinalities
@@ -653,9 +760,10 @@ used for research data, which keeps its own history.
 | OutreachAngle | Signal, DataSource | many to many | evidence cited |
 | DataSource | CompanyResearch, Signal, Contact | 1 to many | each fact has exactly one source |
 | Company | Activity | 1 to many | |
-| Campaign | Job | 1 to many | |
+| Campaign | Job | 1 to many (0 or more) | a job may have no campaign |
 | Job | JobItem | 1 to many | |
-| Company | JobItem | 1 to many | one per job |
+| Company | JobItem | 1 to many | by `subject_type` + `subject_id`, one per job (not a FK) |
+| Message | Signal, DataSource | many to many | evidence the text uses, through `MessageSignal` / `MessageSource` |
 | Signal | Signal (supersedes) | 1 to 0 or 1 | correction chain |
 | Message | Message (supersedes) | 1 to 0 or 1 | edit chain |
 
@@ -672,19 +780,22 @@ makes the M1 exit criterion "two clients coexist with no data leaking" true.
 How:
 
 1. **Every tenant table has a direct `client_id` FK.** That covers every table
-   except User (global), Client (it is the tenant) and ClientMembership /
-   AuditLog (which carry their own client link). A direct column means a scoped
+   except User (global), Client (it is the tenant) and AuditLog (whose nullable
+   `client_id` is set when the object belongs to a client). ClientMembership has
+   its own `client_id` like the others. A direct column means a scoped
    query is a single `WHERE client_id IN (...)`, not a four-table join that
    someone can forget.
 2. **Company belongs to one Campaign, which belongs to one Client.** The
    company's `client_id` is copied from its campaign when the row is created.
    Child rows copy `client_id` from their company. The copy is set in one place
    (a shared base model or a service helper), never typed by callers.
-3. **A consistency test (issue #53) walks every FK.** For each row it checks
-   `child.client_id == parent.client_id`. If anyone writes a row with a
-   mismatched client, a test fails. Django has no composite foreign keys, so
-   this is checked in code and tests rather than by the database (open
-   question 2).
+3. **Consistency is checked on every save and in tests.** `TenantModel.sync_client` copies
+   `client_id` from the parent, raises `TenantMismatchError` if a caller passes a different one,
+   and refuses to move a saved row to another client. Models that also point at another tenant row
+   (a data source, a signal) refuse a different client in their own `sync_client`. The invariants
+   tests (issue #53) walk every FK and check `child.client_id == parent.client_id`. Django has no
+   composite foreign keys, so this is checked in code and tests rather than by the database
+   (decision 2).
 4. **Default scoped manager.** Tenant models use a manager with
    `for_user(user)`: global admins get everything, others get rows whose
    `client_id` is in their ClientMembership rows. Views and services use this
@@ -712,10 +823,11 @@ Which things are history and which are working state:
 | AIRecommendation | append-only | latest `created_at` per company |
 | HumanDecision | append-only | latest `decided_at` per company |
 | OutreachAngle | append-only | latest `created_at` per company |
-| Message | text append-only, status moves forward | latest non-superseded per (angle, contact, channel, is_followup) |
+| AngleSignal, AngleSource, MessageSignal, MessageSource | append-only link rows | n/a |
+| Message | text immutable, status moves forward | latest non-superseded per (angle, contact, channel, is_followup) (`Message.is_current`) |
 | Activity | append-only | n/a, it is a timeline |
 | AuditLog | append-only | n/a |
-| Contact | mutable enrichment, see open question 4 | non-archived rows |
+| Contact | mutable enrichment (decision 4) | non-archived rows |
 | Client, Campaign, Company(status), ClientMembership, Job, JobItem, User | mutable working state | the row itself |
 
 Decision on the "current" marker (also in ADR 0009): for append-only tables we
@@ -749,9 +861,9 @@ Derived views the product needs, all built from the above and not stored:
 
 Corrections are new rows. A wrong signal is superseded by a new signal row
 (and a `feedback` activity), not edited or deleted. If a fresh signal is simply
-wrong and nothing replaces it, the correction row is a signal of type `other`
-with `supersedes_id` set and `expires_at` equal to `created_at` (it expires
-immediately). See open question 8 for a cleaner way, if the team prefers.
+wrong and nothing replaces it, `research.services.retire_signal` inserts a
+signal of type `other` with `supersedes_id` set and `expires_at` equal to
+the time of writing (it expires immediately), decision 8.
 
 Every `*_at` for fresh and stale logic is evaluated at query time against the
 database clock, so nothing has to run to keep "current" correct.
@@ -811,25 +923,44 @@ stay current. In the schema:
 
 ## Indexes and uniqueness
 
-Suggestions for the model issues. All names are examples.
+The exact constraint and index names are generated in the [field reference](data-model-reference.md).
+The rules they implement:
 
 **Uniqueness and integrity**
 
-| Table | Constraint |
+| Table | Rule |
 | --- | --- |
 | Client | unique `lower(name)` where `archived_at IS NULL` |
 | Campaign | unique `(client_id, lower(name))` where `archived_at IS NULL` |
-| CampaignProfile | unique `(campaign_id, version)`; CHECK `company_size_min <= company_size_max` |
-| Campaign | `current_profile_id` must belong to the same campaign (as built in #39: NOT NULL, deferred FK so campaign and v1 are inserted together with a pre-generated profile id; on PostgreSQL a deferred composite FK `(id, current_profile_id)` to `(campaign_id, id)` enforces the same-campaign rule in the database; SQLite relies on `create_profile_version`, `Campaign.clean` and tests) |
-| Company | unique `(campaign_id, domain)` where `domain IS NOT NULL` |
+| CampaignProfile | unique `(campaign_id, version)`, version >= 1, CHECK `company_size_min <= company_size_max`, non-empty `offer`; unique `(campaign_id, id)` is the target of the composite FK below |
+| Campaign | `current_profile_id` NOT NULL, a deferred FK so campaign and v1 are inserted together with a pre-generated profile id. On PostgreSQL a deferred composite FK `(id, current_profile_id)` to `(campaign_id, id)` enforces "one of its own versions" in the database; SQLite relies on `create_profile_version`, `Campaign.clean` and tests |
+| Company | unique `(campaign_id, domain)` where `domain IS NOT NULL` (archived rows count); non-empty `name` |
 | Company | non-unique index on `(campaign_id, lower(name))` to warn about likely duplicates with no domain |
-| Signal | `data_source_id` NOT NULL, `event_date` NOT NULL |
-| Contact | unique `(company_id, role)` where `role IN ('primary','secondary') AND archived_at IS NULL` |
-| Contact | unique `(company_id, profile_url)` where `profile_url IS NOT NULL AND archived_at IS NULL`, to stop the same person being added twice |
+| DataSource | CHECK `url` is set unless type is `manual` or `provider` |
+| Signal | `data_source_id` NOT NULL, `event_date` NOT NULL, non-empty `evidence`; `supersedes` is one to one |
+| Contact | unique `(company_id, role)` where `role IN ('primary','secondary') AND archived_at IS NULL`; unique `(company_id, profile_url)` where the URL is set and the row is not archived; rank >= 1; email and status CHECKs |
 | ClientMembership | unique `(user_id, client_id)` |
-| JobItem | unique `(job_id, company_id)` |
+| JobItem | unique `(job_id, subject_type, subject_id)` |
+| Job | CHECK `done_count + failed_count <= total_count`; `finished_at` is set exactly when the status is terminal |
+| ICPAssessment, AIRecommendation | `model_name`, `prompt_version`, `schema_version` non-empty; `AIRecommendation.explanation` non-empty |
+| Message | CHECKs: approved or exported needs `approved_by` and `approved_at`; exported needs `exported_at`; `subject` for email only; non-empty body and language |
+| Evidence link tables | unique per (angle or message, signal or data source) |
 | All enums | CHECK constraint with the exact values listed above |
-| Message | CHECK `status = 'draft' OR approved_by_id IS NOT NULL` |
+
+**Lookups (latest-per-company)**
+
+Each append-only table that has a "current" row has a descending index that serves it:
+`CompanyResearch (company, -researched_at, -created_at, -id)`, `ICPAssessment` and
+`AIRecommendation (company, -created_at, -id)`, `HumanDecision (company, -decided_at, -created_at,
+-id)` plus `(ai_recommendation)`, `OutreachAngle (company, -created_at)`, `Signal (company,
+expires_at)`, `Activity (company, -created_at)` and `(campaign, type, -created_at)`,
+`Message (company, status)`, `(angle)`, `(contact)`, `ICPAssessment (campaign_profile)`.
+
+**Tenancy and dashboard**
+
+Every tenant table has an index on `client_id` (or `(client, ...)` for the large ones), and
+`Company (campaign, status)`, `Company (campaign, archived_at)`, `Job (campaign, -created_at)`,
+`Job (status)`, `AuditLog (object_type, object_id, -created_at)` and `(client, -created_at)`.
 
 **Company dedupe by normalized domain, per campaign.** This is #40's rule,
 kept. What happens on a duplicate:
@@ -884,179 +1015,250 @@ latest-per-company columns. Do not add materialized views until measured.
   query excludes them unless asked for. A campaign under an archived client
   cannot be set active. Restoring is clearing `archived_at` and setting status
   back.
-- **Archived campaigns are read-only**: no new companies, no new jobs, no new
-  decisions. Existing data stays viewable to people with access.
+- **Archived campaigns are read-only**: `create_company` and job creation refuse them, and the
+  research and outreach services refuse an archived company or contact. Existing data stays
+  viewable to people with access.
 - **Append-only records are never soft-deleted.** They have no `archived_at`.
   A bad one is corrected with a newer record (ADR 0007), a bad signal with a
   superseding row.
-- **Hard delete** is allowed only for privacy or legal requests, and only
-  through a documented admin procedure, never through the normal API. It must
-  write an AuditLog entry that holds no personal data (type, id, reason, who).
-  Deleting a Contact for privacy should erase the personal fields (name,
-  title, email, profile URL) and keep the row's id so Messages and Activities
-  that reference it still resolve. This is how PROTECT FKs keep working.
-- **Archiving a Client** requires an active-job check: no running Jobs.
+- **Hard delete** is allowed only for privacy or legal requests, never through the normal
+  API or the Django admin (no model there has a delete button). A privacy request on a Contact
+  uses `Contact.erase_personal_data()`: it blanks name, title, email, profile URL and reason,
+  archives the row and sets `erased_at`, keeping the id so Messages and Activities that reference
+  it still resolve (this is how PROTECT FKs keep working). The caller writes an AuditLog entry
+  that holds no personal data (type, id, reason, who). There is no admin or API action for it
+  yet, and no retention schedule (decision 14).
+- **Archiving a Client** is refused while it has queued or running Jobs
+  (`ClientHasActiveJobsError`).
 - **Users** are deactivated, never deleted, so `created_by` and `decided_by`
   history stays intact.
 
-## Where the sibling issues need adjusting
+## Decisions and deviations
 
-The issue bodies are good starting points. These are the differences and
-proposed changes. Each should be applied when someone picks the issue up.
+What changed between the design in #38 and the schema that was built, so nobody has to compare
+the old issue bodies. The generated [reference](data-model-reference.md) is the source of truth
+for columns.
 
-**#39 (Client, Campaign, CampaignProfile)**
-- Make CampaignProfile explicitly immutable (no UPDATE), with `version`, unique
-  on `(campaign_id, version)`, plus `created_by` and an optional `change_note`.
-- `Campaign.current_profile` is a deferrable FK so a campaign and its v1 can be
-  created in one transaction, and must be validated as one of its own versions.
-- Add `archived_at` next to `status` for Client and Campaign, and a unique name
-  rule per client.
-- Give CampaignProfile a `client_id` column (tenancy, see above).
-- Decide enum values for Client status (`active`, `archived`).
-- Use ISO country codes in `countries`.
+| Area | Proposed in #38 | As built |
+| --- | --- | --- |
+| Global admin | `User.is_admin` | `User.is_superuser` (Django's flag). `is_staff` only controls the Django admin. Client roles live on `ClientMembership` (#45, #46). |
+| Email | `citext` unique | `text(254)` unique, stored lower-case with a CHECK (`accounts_user_email_lowercase`), so it works on SQLite and Postgres alike. |
+| Optional text | `text, null` | NOT NULL with an empty string (Django convention), shown as `text, blank` below. Only research facts, `jsonb` outputs and dates use NULL, because there "not found" must differ from "empty". |
+| `Campaign.current_profile` | deferrable FK, validated in code | NOT NULL, deferred FK; on PostgreSQL a deferred composite FK `(id, current_profile_id)` to `(campaign_id, id)` makes the database enforce "one of its own versions". SQLite relies on the services, `Campaign.clean` and tests (#39). |
+| `Company.created_by_job_id` | FK to Job | still a plain nullable UUID (no FK), because jobs are generic. |
+| `DataSource` | no evidence date | `evidence_date` (the date the source itself states) next to `retrieved_at` (#40). |
+| `Contact` | mutable enrichment | adds `erased_at` and `erase_personal_data()` for privacy requests, plus CHECKs tying `email_status` to `email` (#41). |
+| `ICPAssessment`, `AIRecommendation` | `reasons`, `raw_output` | `raw_output` is on both; `model_name`, `prompt_version`, `schema_version` and `explanation` are non-empty by CHECK; services refuse a `raw_output` with a key containing "score" (#42). |
+| `Message` evidence | `OutreachAngle` cites signals and sources | messages cite them too, through `MessageSignal` and `MessageSource`; all four link tables are append-only and tenant scoped (#43). |
+| `JobItem` | `company_id` FK | generic `subject_type` + `subject_id` and an optional JSON `result`; unique per job and subject. A retry waiting for backoff is `queued` again (there is no `retrying` status), and `Job.attempts` counts runs (#44). |
+| `AuditLog` | no request id | stores `request_id`; diffs are redacted when written and again when shown in the admin (#44, #54). |
+| Admin | "append-only models read-only, with an add form where it makes sense" | no add form anywhere for history or service-owned rows: they are created through services, which keep the invariants (#54, [admin.md](admin.md)). |
 
-**#40 (Company, CompanyResearch)**
-- Replace "an `is_current` marker or latest-by-date" with latest-by-timestamp
-  only (ADR 0009). No `is_current` column.
-- Add `client_id` to Company and CompanyResearch.
-- Specify the domain normalization function (above) and the partial unique
-  index `(campaign_id, domain) WHERE domain IS NOT NULL`. "Soft handling for
-  missing domains" means a warning on same-name companies, nothing automatic.
-- Add `archived_at` to Company and a nullable `created_by_job_id`.
-- Spell out the department headcount columns and the 3/6/12 month changes as
-  percent numerics.
-- State that `researched_at` is when the data was retrieved, and that the
-  "current" snapshot is ordered by it.
-- Duplicate handling: reject at the database, restore if archived, report as
-  duplicate in the import.
+## Decisions on the open questions
 
-**#41 (Signal, Contact, DataSource)**
-- **Drop the Signal `active flag`.** It conflicts with append-only and with
-  freshness evaluated at read time. Replace it with `supersedes_id`. Fresh =
-  `expires_at` null or in the future and not superseded.
-- Use the Brief §7 type list: the issue's "funding, hiring, leadership,
-  expansion, new product, partnership" collapses the four hiring kinds and
-  headcount growth into one. Use the thirteen values in Signal above.
-- `event_date` NOT NULL, `data_source_id` NOT NULL. Both are enforced by the
-  database, not just validators.
-- DataSource gets `client_id`, is append-only, and `retrieved_at` NOT NULL.
-- Contact needs `client_id`, a `data_source_id` FK, `archived_at`, and the
-  partial unique indexes for one primary and one secondary.
-- Define `email_status` values (proposal above).
+The numbered questions of the first draft, with the answer that was built. Number 14 is the only
+one still open.
 
-**#42 (ICPAssessment, AIRecommendation, HumanDecision)**
-- Add `company_research_id` to ICPAssessment, so an assessment says which
-  facts it judged, as well as which rules.
-- AIRecommendation links to its assessment, NOT NULL, as the issue says.
-- **Add `ai_recommendation_id` to HumanDecision.** The issue omits it, but ADR 0007
-  requires "the human decision references the recommendation it was made
-  against". Without it, agreement cannot be measured.
-- Keep `reasons`, `concerns` as `text[]`. Add `raw_output` jsonb for the
-  validated structured output.
-- Add `client_id`, and `model_name`, `prompt_version`, `schema_version`
-  (ADR 0007) to the AI rows. The issue only names "model/prompt version" on
-  ICPAssessment.
-- Add the recommended latest-per-company indexes.
-- The test "strong fit and no signals is valid" should also check that no
-  database constraint or model validation mentions signals.
+1. **Roles.** A global admin flag on `User` (`is_superuser`) plus per-client roles on
+   `ClientMembership`: `viewer`, `reviewer`, `manager`, `admin`. A person can be `admin` of one
+   client only. Matrix: [permissions.md](permissions.md).
+2. **Client consistency.** Checked in code, not by triggers: `TenantModel.sync_client` copies
+   `client_id` from the parent on every save and refuses a mismatch or a move; the invariants
+   tests walk every foreign key (#53). The only database-level cross-row rule is the composite
+   foreign key behind `Campaign.current_profile` on PostgreSQL.
+3. **Decide before the AI runs?** Yes. `HumanDecision.ai_recommendation` is nullable; such
+   decisions are left out of AI-versus-human agreement figures. A given recommendation must be for
+   the same company.
+4. **Contact history.** Contacts stay mutable (email, rank, role change after enrichment) through
+   `update_contact` and `set_contact_role`. No snapshot or ranking table, and changes are not yet
+   written to Activity; `updated_at` is the only trace. Revisit if the product needs the history.
+5. **Message edits.** Yes: the text and all identifying columns are immutable
+   (`MESSAGE_IMMUTABLE_FIELDS`), `status` moves forward one step (`draft`, `approved`,
+   `exported`), approval cannot be changed, and an edit is a new row with `supersedes`.
+6. **Enum values.** Confirmed as built: `Company.status` (`pending`, `analyzing`, `analyzed`,
+   `failed`), `Contact.email_status` (`unknown`, `not_found`, `unverified`, `verified`,
+   `invalid`). Job `type` names are registered in code with `@tracked_job`.
+7. **Feedback.** An `Activity` of type `feedback` with a validated payload is enough for V1.
+8. **Retiring a wrong signal.** A superseding `other` signal that expires at once
+   (`research.services.retire_signal`). No `SignalRetraction` table.
+9. **Per-field provenance.** Not modeled: one `data_source` per snapshot; the primary provider is
+   recorded.
+10. **Signal dates.** `event_date` is required (NOT NULL), in the database and the service.
+    Where a source only states a posting date (an open job post), use that date. A fact with no
+    date from its source cannot be stored as a signal: nothing is invented.
+11. **Domain rules.** Only `www.` is stripped; other subdomains are kept (`eu.example.com`). A
+    public suffix list is not used.
+12. **Industries and countries.** Industries are free text; countries are ISO 3166-1 alpha-2,
+    upper case, validated.
+13. **Languages.** Lower-case language codes (`en`, `ar`), and a message language must be one of
+    the campaign profile's `outreach_languages`. No dialect field: put dialect guidance in the
+    prompt or `custom_rules`.
+14. **Retention (still open).** How long old research and personal data are kept, and who runs a
+    privacy deletion. `Contact.erase_personal_data()` exists, but there is no admin or API action
+    for it and no retention schedule yet. ADR 0007 flags this.
+15. **Employee ranges.** A single integer `employee_count`. Ranges are not modeled; revisit if a
+    provider only ever gives them.
 
-**#43 (OutreachAngle, Message, Activity)**
-- #38 lists Message as append-only but #43 gives it `status` and
-  `approved_by`. Resolve as: text is immutable, status and approval move
-  forward, an edit is a new row with `supersedes_id`.
-- "Evidence references" on OutreachAngle should be two M2M tables (signals,
-  data sources), not a free JSON list, so foreign keys keep them honest.
-- Message `contact` is NOT NULL, `language` must be one of the campaign
-  profile's languages, and creating or approving a message requires the latest
-  human decision to be `add` (service rule, plus a test).
-- Add `client_id` and `campaign_id` to Activity, and say Activity is
-  append-only. Specify the `feedback` payload shape (above) so Brief §16
-  feedback has a home with no new table.
-- The helper should be one function, for example
-  `log_activity(company, type, actor=None, **payload)`.
-- Add the model fields `model_name`, `prompt_version`, `schema_version` to
-  AI-generated angles and messages.
+## Keeping this doc in sync
 
-**#44 (Job, AuditLog)**
-- Treat JobItem as required for bulk analysis, not optional. "Failed items do
-  not fail the whole job record" and the `partial` status need per-company
-  results.
-- Add `client_id` to Job and JobItem and `client_id` to AuditLog (nullable) so
-  logs can be scoped.
-- AuditLog diffs must never contain secrets (password hashes, tokens, provider
-  keys).
-- Audit CampaignProfile creation as a reference to the new version, not a copy
-  of the whole row, and include ClientMembership changes in the audit scope.
-- Job `type` is a registered name in code, not free user input.
+Three parts of the data model docs are generated from the live models:
 
-**#45 and #46 (user, roles)**
-- #45 puts a `role` on the User, #46 puts a `role` on ClientMembership. Pick
-  one meaning for each: a global admin flag on User (sees every client), and the
-  client-specific role on ClientMembership. See open question 1.
-- Every tenant model (all those above) must use the scoped manager from #46,
-  and the tenant-isolation tests in #53 should enumerate the models so a new
-  table cannot be forgotten.
+| Part | Where | Generated by |
+| --- | --- | --- |
+| ER diagram | [The picture](#the-picture) | `print_schema --block erd` |
+| Entity index (model, app, behaviour, table) | [Entities](#entities) | `print_schema --block index` |
+| Every field, enum, constraint and index | [data-model-reference.md](data-model-reference.md) | `print_schema --block reference` |
 
-**#47 to #54 (API, UI, seed, tests, admin)**
-- Seed (#52): create the SkyLight profile as version 1 and create at least two
-  clients so isolation tests have something to fail on.
-- Tests (#53): add the client-consistency walk, the append-only guard (UPDATE
-  and DELETE on append-only models raise), and the "latest" manager tests.
-- Admin (#54): append-only models should be read-only in the admin, with an
-  "add" form where it makes sense, no edit or delete.
+After any change to a model, run this from `backend/` and commit the result:
 
-## Open questions
+```bash
+python manage.py print_schema --write
+```
 
-Numbered so they can be answered in review.
+`backend/tests/test_data_model_docs.py` fails if a generated block is out of date, if a model is
+missing from the index, or if the per-entity sections of this page no longer cover every model.
+The hand-written sections (rules, rationale, history, tenancy) are reviewed by people: when you add
+or rename an entity, add or update its section, its row in the history table and its
+relationships.
 
-1. **Roles.** Is there a global admin (all clients) plus per-client roles
-   (`manager`, `reviewer`, `viewer`), or can a person also be an admin of one
-   client only? This doc assumes a global admin flag on User and the other
-   roles on ClientMembership.
-2. **Client consistency.** Is a test-and-service-layer check enough to keep
-   `client_id` equal down the chain, or do we want a database trigger as
-   a second line of defense? Django has no composite FKs.
-3. **Can a human decide before the AI has run?** If yes,
-   `HumanDecision.ai_recommendation_id` stays nullable (as written). If every
-   decision must follow a recommendation, make it NOT NULL.
-   *Implemented in #42 as nullable.* A person can decide before the AI has run or
-   on a company never assessed (a manual add). Those decisions are valid, and are
-   left out of the AI-versus-human agreement figures. When a recommendation is
-   given it must be for the same company. Revisit if the product wants every
-   decision to follow a recommendation.
-4. **Contact history.** Contacts are mutable here (email and rank change after
-   enrichment and verification). Is that acceptable, with changes visible via
-   Activity, or do we want ranking and email results stored as history too
-   (which adds a ContactRanking or snapshot table)? Brief §19 only requires
-   research history.
-5. **Message edits.** Is "edited text is a new row, workflow status can move
-   forward" the right reading of "Messages are append-only"?
-6. **Enum values the Brief does not define.** `Company.status`
-   (`pending`, `analyzing`, `analyzed`, `failed`), `Contact.email_status`
-   (`unknown`, `not_found`, `unverified`, `verified`, `invalid`) and
-   Job `type` names are proposals. Confirm or replace them.
-7. **Feedback.** Is an Activity with a `feedback` payload enough for Brief §16,
-   or will rule and prompt tuning need a dedicated Feedback table with its own
-   foreign keys and review state?
-8. **Retiring a wrong signal.** Superseding with an immediately-expired row
-   works but is a little clumsy. Alternative: a small append-only
-   `SignalRetraction` record. Preference?
-9. **Per-field provenance.** One source per research snapshot is simple. If a
-   snapshot mixes several providers, do we need a source per field or a M2M of
-   sources per snapshot?
-10. **Dates for signals.** `event_date` is required. Some evidence (an open job
-    post) has no event date, only a posting date. Do we use the posting date,
-    or allow a null date with a flag? The no-invention rule says the date
-    must come from the source.
-11. **Domain rules.** Do we strip subdomains to the registrable domain
-    (`eu.example.com` to `example.com`)? This doc only strips `www.`. A public
-    suffix list would be needed for the other approach.
-12. **Industries and countries.** Free text or a fixed taxonomy for
-    `industries`, `excluded_industries` and research `industry`? Free text is
-    assumed, with the risk that matching is fuzzy.
-13. **Languages.** Is `ar` enough, or do we need a dialect code for "Saudi
-    conversational Arabic" (Brief §12), for example a separate `dialect` field?
-14. **Retention.** How long do we keep old research and personal data, and who
-    runs a privacy deletion? ADR 0007 flags this as unresolved.
-15. **Missing provider facts.** If a provider returns an employee count as a
-    range, do we store min and max, or only a number? Currently only an int.
+The ER diagram shows relationships, keys and enum columns. It leaves out two kinds of edge that
+would repeat on almost every table: the `client` tenancy column on each tenant model, and
+`created_by` / `approved_by` / `actor` links to User. Both are in the reference.
+
+## How to add a new append-only record type
+
+Use this for anything that is history or evidence: it is inserted once, never edited or deleted,
+and a correction is a new row. (A mutable table is the same minus `AppendOnlyModel`.) The example
+adds `CompanyNote` to the `companies` app. The bases are documented in
+`backend/apps/core/base.py` and `backend/README.md`, "Domain model building blocks".
+
+1. **Model.** In the owning app's `models.py`:
+
+   ```python
+   class CompanyNoteQuerySet(  # type: ignore[override]
+       AppendOnlyQuerySet["CompanyNote"], TenantQuerySet["CompanyNote"]
+   ):
+       pass
+
+
+   class CompanyNote(AppendOnlyModel, TenantModel, UUIDModel):
+       tenant_parent = "company"  # client_id is copied from the company on save
+       company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="notes")
+       body = models.TextField()
+       created_by = models.ForeignKey(
+           settings.AUTH_USER_MODEL, null=True, blank=True,
+           on_delete=models.PROTECT, related_name="+",
+       )
+       created_at = models.DateTimeField(auto_now_add=True)
+
+       objects = CompanyNoteQuerySet.as_manager()
+
+       class Meta:
+           ordering: ClassVar[tuple[str, ...]] = ("-created_at", "-id")
+           indexes: ClassVar[list[models.Index]] = [
+               models.Index(fields=["company", "-created_at"], name="co_note_company_idx")
+           ]
+           constraints: ClassVar[list[models.BaseConstraint]] = [
+               models.CheckConstraint(
+                   condition=~models.Q(body=""), name="companies_companynote_body_not_empty"
+               ),
+           ]
+   ```
+
+   Rules: `PROTECT` on every foreign key; no `updated_at` or `archived_at`; enums as
+   `TextChoices` with a CHECK constraint; constraint names `<app>_<model>_<what>`; index names at
+   most 30 characters. If the row points at another tenant row (a data source, say), override
+   `sync_client` to refuse a different client, as `CompanyResearch` does. If it needs a "latest"
+   lookup, add a manager method (`latest_for`) and a matching descending index. Never add an
+   `is_current` column ([History](#history-append-only-and-current)).
+2. **Service.** Write the only creation path in the app's `services.py`: validate, create inside
+   a transaction, return the row. There is no update function. Call
+   `apps.core.audit.record_change` only if the row is configuration; research history keeps its own
+   history.
+3. **Migration.** `python manage.py makemigrations companies`, read the generated file, run
+   `ruff format` on it (CI checks the migration too), then `python manage.py migrate`.
+   `tests/test_migrations.py` fails if a migration is missing. Keep the migration backend
+   neutral (it must run on SQLite and PostgreSQL).
+4. **Admin, read only.** In the app's `admin.py`:
+
+   ```python
+   @admin.register(CompanyNote)
+   class CompanyNoteAdmin(ReadOnlyAdmin):  # from apps.core.admin_base
+       list_display = ("company", "created_by", "created_at")
+       list_filter = ("client",)
+       list_select_related = ("company", "created_by")
+       search_fields = ("company__name", "body")
+       date_hierarchy = "created_at"
+   ```
+
+   `ReadOnlyAdmin` removes add, change and delete for everyone. `tests/test_admin.py` fails until
+   the model is registered (or listed with a reason in `ADMIN_EXCLUDED_MODELS`), checks that every
+   `AppendOnlyModel` is read only, and, once you add a row to its `CHANGELISTS` table, that the
+   changelist runs a constant number of queries. Personal data needs masking: see
+   [admin.md](admin.md).
+5. **Factory.** Add a factory or `make_*` helper in `backend/tests/factories.py` that goes through
+   the service, so tests build rows the way production does.
+6. **Tests.** At minimum: `save()` on an existing row, `delete()` and queryset `update` / `delete`
+   raise `ImmutableRecordError`; `client_id` is copied and a mismatch raises
+   `TenantMismatchError`; each constraint rejects bad data; the service's rules. Copy the shape of
+   `tests/test_company_models.py`.
+7. **Invariants.** The invariants suite (`backend/tests/invariants/`, issue #53) walks the model
+   registry for tenant consistency, append-only behaviour and the other cross-cutting rules. Run
+   it and add any model-specific setup it asks for.
+8. **API (if exposed).** Follow [How to add a permission-safe endpoint](#how-to-add-a-permission-safe-endpoint).
+9. **Docs.** Run `python manage.py print_schema --write`, then add the entity's section above, its
+   row in the history table and its relationships. Commit the regenerated files.
+
+## How to add a permission-safe endpoint
+
+The full rules and the role matrix are in [permissions.md](permissions.md). The short version:
+an endpoint is safe when it cannot return or change another client's data, and when the caller's
+role has been checked against the action, and neither depends on remembering to write a filter.
+
+1. The model is a `TenantModel` with a `TenantQuerySet` manager (see above).
+2. The view subclasses `ClientScopedModelViewSet`, `ClientScopedReadOnlyModelViewSet` or
+   `ClientScopedViewSet` from `apps/core/permissions.py` and sets `queryset = Model.objects.all()`.
+   The base class scopes it with `for_user(request.user)`, so another client's id is a 404, never a
+   403.
+3. Every write and every custom `@action` is declared in `action_levels` with `Level.DECIDE`,
+   `EDIT` or `MANAGE`. An action nobody declared needs MANAGE, so forgetting fails closed.
+4. A client taken from the body or URL goes through `self.resolve_client(id, Level.EDIT)`; the
+   serializer never trusts a `client` field.
+5. Writes call the app's service functions, not `serializer.save()` on the model, so invariants
+   and audit logging hold.
+
+Worked example, a read-and-record endpoint for company notes:
+
+```python
+class CompanyNoteViewSet(ClientScopedModelViewSet):
+    queryset = CompanyNote.objects.select_related("company")  # scoped with for_user for you
+    serializer_class = CompanyNoteSerializer  # read-only: id, client, company, body, created_at
+    http_method_names = ["get", "post", "head", "options"]  # history: no PUT, PATCH, DELETE
+    action_levels: ClassVar[dict[str, Level]] = {"create": Level.EDIT}
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        try:  # the company id is in the body: look it up through the user's visible rows
+            company = Company.objects.for_user(user).get(pk=self.request.data.get("company"))
+        except (Company.DoesNotExist, ValidationError, ValueError, TypeError):
+            raise Http404 from None  # unknown, malformed or another client's id: all "not found"
+        self.resolve_client(company.client_id, Level.EDIT)  # 403 if the role is too low
+        serializer.instance = services.add_note(company, serializer.validated_data["body"], user)
+```
+
+Tests to write for it (copy `backend/tests/test_permissions.py`, which runs a demo viewset from
+`backend/tests/permissions_demo.py`): one request per role against each action, an id from another
+client (expect 404 for a user who holds an EDIT role elsewhere, 403 for one who holds none), an inactive user, an anonymous request (401), and a list that must not
+include another client's rows.
+
+## Authentication and roles
+
+- **Authentication** is Django users with `djangorestframework-simplejwt`, not Supabase Auth
+  ([ADR 0006](adr/0006-django-jwt-authentication.md)). Users, clients and permissions all live in
+  our own database, so there is one user store and no sync. Access tokens last 15 minutes,
+  refresh tokens 7 days and rotate with a blacklist; the Next.js app keeps the refresh token in an
+  httpOnly cookie. Endpoints and settings: `backend/README.md`, "Authentication".
+- **Authorization** is in the API: a global admin (`User.is_superuser`) or a `ClientMembership`
+  role per client. Matrix and endpoint rules: [permissions.md](permissions.md).
+- **The Django admin** is a separate, session-based door for staff (`User.is_staff`). Client roles
+  never grant it. See [admin.md](admin.md).

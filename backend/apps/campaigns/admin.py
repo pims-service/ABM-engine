@@ -13,6 +13,8 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
+from apps.core.admin_base import ReadOnlyAdmin, ReadOnlyInline, SuperuserOnlyMixin
+
 from . import services
 from .memberships import change_role, grant_membership, revoke_membership
 from .models import Campaign, CampaignProfile, Client, ClientMembership
@@ -27,7 +29,9 @@ class NoDeleteAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
 class ClientAdmin(NoDeleteAdmin):
     list_display = ("name", "status", "created_by", "created_at", "archived_at")
     list_filter = ("status",)
+    list_select_related = ("created_by",)
     search_fields = ("name",)
+    date_hierarchy = "created_at"
     readonly_fields = ("id", "status", "archived_at", "created_at", "updated_at")
     fields = (
         "id",
@@ -65,26 +69,20 @@ class ClientAdmin(NoDeleteAdmin):
             services.restore_client(client, request.user)  # type: ignore[arg-type]
 
 
-class ProfileInline(admin.TabularInline):  # type: ignore[type-arg]
+class ProfileInline(ReadOnlyInline):
     model = CampaignProfile
     fields = ("version", "created_at", "created_by", "change_note")
     readonly_fields = fields
-    extra = 0
-    can_delete = False
     ordering = ("-version",)
-
-    def has_add_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return False
-
-    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return False
 
 
 @admin.register(Campaign)
 class CampaignAdmin(NoDeleteAdmin):
     list_display = ("name", "client", "status", "current_profile", "created_at", "archived_at")
     list_filter = ("status", "client")
+    list_select_related = ("client", "current_profile")
     search_fields = ("name", "client__name")
+    date_hierarchy = "created_at"
     readonly_fields = (
         "id",
         "client",
@@ -117,11 +115,12 @@ class CampaignAdmin(NoDeleteAdmin):
 
 
 @admin.register(ClientMembership)
-class ClientMembershipAdmin(NoDeleteAdmin):
-    """Grant and change roles here (superusers only in practice); revoke = archive."""
+class ClientMembershipAdmin(SuperuserOnlyMixin, NoDeleteAdmin):
+    """Grant and change roles here (superusers only); revoke = archive."""
 
     list_display = ("user", "client", "role", "created_at", "archived_at")
     list_filter = ("role", "client")
+    list_select_related = ("user", "client")
     search_fields = ("user__email", "client__name")
     readonly_fields = ("id", "archived_at", "created_at", "updated_at")
     autocomplete_fields = ("user", "client")
@@ -155,22 +154,12 @@ class ClientMembershipAdmin(NoDeleteAdmin):
 
 
 @admin.register(CampaignProfile)
-class CampaignProfileAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
+class CampaignProfileAdmin(ReadOnlyAdmin):
     """Immutable versions: view only."""
 
     list_display = ("campaign", "version", "client", "created_by", "created_at")
     list_filter = ("client",)
+    list_select_related = ("campaign", "client", "created_by")
     search_fields = ("campaign__name", "offer")
+    date_hierarchy = "created_at"
     ordering = ("campaign", "-version")
-
-    def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> tuple[str, ...]:
-        return tuple(f.name for f in self.model._meta.fields)
-
-    def has_add_permission(self, request: HttpRequest) -> bool:
-        return False
-
-    def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return False
-
-    def has_delete_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        return False
