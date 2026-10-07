@@ -40,6 +40,13 @@ class ClientHasActiveJobsError(ValidationError):
     """A client with queued or running jobs cannot be archived (the API answers 409)."""
 
 
+class CampaignHasActiveJobsError(ValidationError):
+    """A campaign with queued or running jobs cannot be archived (the API answers 409)."""
+
+
+CAMPAIGN_NAME_TAKEN = "This client already has an active campaign with that name."
+
+
 LIST_FIELDS = (
     "countries",
     "industries",
@@ -122,8 +129,13 @@ def create_campaign(
     name: str,
     data: Mapping[str, Any],
     user: User | None = None,
+    *,
+    audit_extra: Mapping[str, Any] | None = None,
 ) -> Campaign:
-    """Create a draft campaign and its version 1 profile in one transaction."""
+    """Create a draft campaign and its version 1 profile in one transaction.
+
+    ``audit_extra`` is merged into the audit entry (``clone_campaign`` records its source).
+    """
     name = name.strip()
     if not name:
         raise ValidationError({"name": "A campaign needs a name."})
@@ -135,9 +147,7 @@ def create_campaign(
         .filter(lowered=name.lower())
         .exists()
     ):
-        raise ValidationError(
-            {"name": "This client already has an active campaign with that name."}
-        )
+        raise ValidationError({"name": CAMPAIGN_NAME_TAKEN})
 
     profile_id = uuid.uuid4()
     campaign = Campaign(client=client, name=name, created_by=user, current_profile_id=profile_id)
@@ -151,9 +161,51 @@ def create_campaign(
         campaign.pk,
         actor=user,
         client=client,
-        after={**snapshot(campaign, CAMPAIGN_AUDIT_FIELDS), "profile_version": 1},
+        after={
+            **snapshot(campaign, CAMPAIGN_AUDIT_FIELDS),
+            "profile_version": 1,
+            **(audit_extra or {}),
+        },
     )
     return campaign
+
+
+def clone_campaign(source: Campaign, user: User | None = None, name: str | None = None) -> Campaign:
+    """Copy ``source`` into an independent draft campaign in the same client (audited).
+
+    The copy gets a version 1 profile holding the source's *current* rules; the source's
+    history, status and jobs are not copied and the two never share rows afterwards. Without a
+    ``name`` the copy is called "<name> (copy)", "<name> (copy 2)", ... Works on an archived
+    source; refused when the client is archived.
+    """
+    current = source.current_profile
+    rules = {field: getattr(current, field) for field in CampaignProfile.RULE_FIELDS}
+    rules["change_note"] = f"Cloned from campaign {source.pk} (version {current.version})."
+    with transaction.atomic():
+        return create_campaign(
+            source.client,
+            _copy_name(source) if name is None else name,
+            rules,
+            user,
+            audit_extra={"cloned_from": str(source.pk), "cloned_from_version": current.version},
+        )
+
+
+def _copy_name(source: Campaign) -> str:
+    taken = {
+        n.lower()
+        for n in Campaign.objects.filter(
+            client_id=source.client_id, archived_at__isnull=True
+        ).values_list("name", flat=True)
+    }
+    limit = Campaign._meta.get_field("name").max_length or 200
+    n = 1
+    while True:
+        suffix = " (copy)" if n == 1 else f" (copy {n})"
+        candidate = source.name[: limit - len(suffix)].rstrip() + suffix
+        if candidate.lower() not in taken:
+            return candidate
+        n += 1
 
 
 @transaction.atomic
@@ -363,9 +415,7 @@ def update_campaign(campaign: Campaign, user: User | None = None, **changes: Any
             locked.name = str(changes["name"]).strip()
         locked.clean_fields(exclude=["current_profile"])
         if _name_taken(Campaign, locked.name, exclude_pk=locked.pk, client_id=locked.client_id):
-            raise ValidationError(
-                {"name": "This client already has an active campaign with that name."}
-            )
+            raise ValidationError({"name": CAMPAIGN_NAME_TAKEN})
         locked.save(update_fields=["name", "updated_at"])
 
     return _change_campaign(campaign, AuditAction.UPDATE, user, mutate)
@@ -381,11 +431,22 @@ def archive_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
 
     def mutate(locked: Campaign) -> None:
         if not locked.is_archived and Job.objects.filter(campaign=locked).active().exists():
-            raise ValidationError("Cannot archive a campaign with queued or running jobs.")
+            raise CampaignHasActiveJobsError(
+                "Cannot archive a campaign with queued or running jobs."
+            )
         locked.archive()
 
     return _change_campaign(campaign, AuditAction.ARCHIVE, user, mutate)
 
 
 def restore_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
-    return _change_campaign(campaign, AuditAction.RESTORE, user, lambda locked: locked.restore())
+    """Restore a campaign to draft (idempotent). Refused if an active one now uses its name."""
+
+    def mutate(locked: Campaign) -> None:
+        if locked.is_archived and _name_taken(
+            Campaign, locked.name, exclude_pk=locked.pk, client_id=locked.client_id
+        ):
+            raise ValidationError({"name": CAMPAIGN_NAME_TAKEN})
+        locked.restore()
+
+    return _change_campaign(campaign, AuditAction.RESTORE, user, mutate)
