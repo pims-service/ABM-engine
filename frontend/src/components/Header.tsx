@@ -17,7 +17,7 @@ export function Header({
 }) {
   return (
     <header className="flex h-header shrink-0 items-center justify-between gap-3 border-b border-line bg-surface-raised px-gutter md:px-6">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <Button
           ref={menuButtonRef}
           variant="secondary"
@@ -31,7 +31,7 @@ export function Header({
         </Button>
         <ContextSwitcher />
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <ThemeToggle />
         <UserMenu />
       </div>

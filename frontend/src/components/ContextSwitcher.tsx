@@ -25,7 +25,7 @@ export function ContextSwitcher() {
         hideLabel
         value={clientId ?? ""}
         onChange={(event) => selection.selectClient(event.target.value || null)}
-        className="w-32 py-1.5 text-xs sm:w-44 sm:text-sm"
+        className="w-28 py-1.5 text-xs lg:w-44 lg:text-sm"
       >
         <option value="">Select client</option>
         {clients.map((client) => (
@@ -44,7 +44,7 @@ export function ContextSwitcher() {
             campaigns.find((item) => item.id === event.target.value) ?? null,
           )
         }
-        className="w-32 py-1.5 text-xs sm:w-44 sm:text-sm"
+        className="w-28 py-1.5 text-xs lg:w-44 lg:text-sm"
       >
         <option value="">{clientId ? "Select campaign" : "No client"}</option>
         {campaigns.map((campaign) => (
