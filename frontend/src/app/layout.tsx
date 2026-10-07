@@ -3,8 +3,9 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { AppShell } from "@/components/AppShell";
+import { AuthFrame } from "@/components/AuthFrame";
 import { SkipLink } from "@/components/SkipLink";
+import { AuthProvider } from "@/lib/auth/AuthProvider";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -21,7 +22,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       </head>
       <body>
         <SkipLink />
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AuthFrame>{children}</AuthFrame>
+        </AuthProvider>
       </body>
     </html>
   );

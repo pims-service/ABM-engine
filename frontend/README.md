@@ -1,6 +1,6 @@
 # ABM Engine frontend
 
-Next.js (App Router) + React + strict TypeScript. The backend is Django/DRF with JWT auth (separate issues; auth is not implemented here yet).
+Next.js (App Router) + React + strict TypeScript. The backend is Django/DRF with JWT auth; sign-in is described under "Authentication" below.
 
 ## Component approach
 
@@ -18,9 +18,10 @@ npm run build
 
 ## Configuration
 
-| Variable                   | Purpose                                                             |
-| -------------------------- | ------------------------------------------------------------------- |
-| `NEXT_PUBLIC_API_BASE_URL` | Base URL of the backend API. Read only through `src/lib/config.ts`. |
+| Variable                   | Purpose                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_API_BASE_URL` | Base URL of the backend API. Read only through `src/lib/config.ts`.                                                                           |
+| `API_INTERNAL_BASE_URL`    | Optional, server only. Where the `/api/auth/*` route handlers reach the API (Docker network address). Defaults to `NEXT_PUBLIC_API_BASE_URL`. |
 
 `NEXT_PUBLIC_*` values are inlined at build time, so for Docker pass it as a build arg.
 
@@ -33,8 +34,10 @@ docker run --rm -p 3000:3000 abm-frontend
 
 ## Layout
 
-- `src/app/layout.tsx` - root layout: skip link, theme init script, `AppShell`
-- `src/components/AppShell.tsx` - sidebar + header + `<main id="main-content">`; owns the small-screen drawer
+- `src/app/layout.tsx` - root layout: skip link, theme init script, `AuthProvider`, `AuthFrame`
+- `src/components/AuthFrame.tsx` - bare frame for `/login`; otherwise `AuthGate` (needs a session) + `AppShell`
+- `src/components/AppShell.tsx` - sidebar + header (theme toggle, current user, sign out) + `<main id="main-content">`; owns the small-screen drawer
+- `src/app/login`, `src/app/api/auth/*`, `src/middleware.ts`, `src/lib/auth/` - authentication (below)
 - `src/app/{dashboard,campaigns,companies}` - placeholder routes (`/` redirects to `/dashboard`)
 - `src/app/error.tsx` - error boundary; `src/app/not-found.tsx` - 404
 - `src/app/globals.css` - design tokens (both themes); `tailwind.config.ts` maps them to utilities
@@ -86,6 +89,56 @@ Light is the default. Dark follows `prefers-color-scheme` unless overridden with
 - `src/lib/api/` - typed API client generated from the OpenAPI schema (see below)
 - `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
 
+## Authentication
+
+Decision: [ADR 0006](../docs/adr/0006-django-jwt-authentication.md). The browser never talks to the
+auth endpoints of the API directly. A small BFF (backend for frontend) in Next.js route handlers does:
+
+| Route (Next.js)          | Calls the API        | What it does                                                                                                |
+| ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/login`   | `POST auth/login/`   | Returns `{access, expires_at}`; stores the **refresh token in an httpOnly cookie** (`abm_bff_refresh`).     |
+| `POST /api/auth/refresh` | `POST auth/refresh/` | Swaps the cookie's refresh token for a new access token and rotates the cookie. A rejected token clears it. |
+| `POST /api/auth/logout`  | `POST auth/logout/`  | Blacklists the refresh token at the API and always clears the cookie.                                       |
+| `GET /api/auth/me`       | `GET auth/me/`       | Proxies the current user, using the caller's `Authorization: Bearer <access>` header.                       |
+
+- **Tokens**: the access token (15 min) lives in memory only (`AuthProvider`), never in `localStorage`,
+  `sessionStorage` or a readable cookie. The refresh cookie is `HttpOnly`, `SameSite=Lax`, path `/`,
+  `Secure` in production builds, and lives as long as the refresh token (7 days). Error responses use the
+  API's standard error envelope, so the browser maps them like any other `ApiError`.
+- **Backend mode**: the BFF needs the API's default refresh-token **body** flow (`AUTH_REFRESH_COOKIE_ENABLED=false`),
+  because it forwards the refresh token itself. If the API runs with `AUTH_REFRESH_COOKIE_ENABLED=true` it
+  never returns the token in the body and login fails with `bff_misconfigured`. That cookie mode is the
+  alternative for a browser that calls the API directly (same site, with CORS and credentials); this app does not
+  use it.
+- **Server address**: the handlers call `API_INTERNAL_BASE_URL` (for example `http://api:8000/api` inside Docker
+  Compose), falling back to `NEXT_PUBLIC_API_BASE_URL`.
+- **Route guard**: `src/middleware.ts` redirects any page request without the refresh cookie to
+  `/login?next=<path+query>`. It only checks that the cookie exists; `AuthGate` handles a cookie the API
+  rejects, and the API is the real gate.
+- **`next` is validated** by `safeNextPath` (`src/lib/auth/redirect.ts`): only same-origin paths are accepted,
+  so `//evil.example`, `https://...`, backslash and control-character tricks, `/login` and `/api/*` fall back to
+  `/dashboard`.
+- **Silent refresh**: `AuthProvider` restores the session on load (a reload calls `refresh`), refreshes
+  60 seconds before the access token expires, and again before a request if a sleeping tab missed the timer.
+  Concurrent refreshes share one request (refresh tokens rotate, so a second one would be rejected). A 401 is
+  re-checked once after a short pause, because another tab may have just rotated the cookie.
+  API/network trouble keeps the session and retries every 15 s.
+- **401 from the API**: `setUnauthorizedHandler` (in `src/lib/api`) makes the typed client refresh once and retry
+  the request with the new token.
+- **Expired session**: when the refresh token is rejected, `AuthGate` sends the user to
+  `/login?next=<current path, query and hash>&reason=expired`; signing in returns them to the same page.
+  An explicit sign-out goes to plain `/login`.
+- **Using it**: `const { status, user, login, logout } = useAuth()` from `@/lib/auth/AuthProvider`. The header
+  shows the current user and a Sign out button. The authorization decisions stay in the API; role-based hiding
+  of actions needs the roles model (issue #46) and is not part of this change. Password reset needs an API
+  endpoint that does not exist yet.
+
+Tests: unit tests next to the code (`redirect`, `login-form`, `AuthProvider`, route handlers, middleware); the
+Playwright spec `e2e/auth.spec.ts` runs against `e2e/mock-api.mjs`, a tiny stand-in for the Django API
+(browser-level route mocking cannot intercept the server-side calls the BFF makes). `playwright.config.ts` starts
+it on port 8999 and points the app's `API_INTERNAL_BASE_URL` at it. Specs that need a signed-in user use the
+`test` from `e2e/fixtures.ts`, which seeds a session; `anonymousTest` starts logged out.
+
 ## Typed API client
 
 `src/lib/api/` holds a typed client for the backend, generated from the committed OpenAPI schema
@@ -101,7 +154,7 @@ Light is the default. Dark follows `prefers-color-scheme` unless overridden with
 ```ts
 import { ApiError, getApiClient, setAccessTokenGetter } from "@/lib/api";
 
-setAccessTokenGetter(() => authState.accessToken); // once, by the login UI (issue #51)
+setAccessTokenGetter(() => authState.accessToken); // done for you by AuthProvider (issue #51)
 
 try {
   const { data } = await getApiClient().GET("/healthz"); // data: { status: "ok" }
@@ -118,8 +171,8 @@ try {
   (`apiServerRoot`), because the health probes live at the server root. Keep the variable ending in
   `/api`.
 - **Auth**: the getter (sync or async) is called before every request; a token becomes
-  `Authorization: Bearer <token>`. With no getter or no token nothing is sent. Token storage,
-  login and refresh-on-401 belong to the login UI (issue #51), not to this client.
+  `Authorization: Bearer <token>`. With no getter or no token nothing is sent. Token storage and
+  login live in `AuthProvider` (see Authentication); `setUnauthorizedHandler` adds one refresh-and-retry on a 401.
 - **Errors**: 2xx calls resolve to `{ data, response }`. Every other outcome rejects with
   `ApiError`: `status`, `code` (stable, e.g. `validation_error`, `not_authenticated`, `throttled`),
   `message` (for people), `details`, `requestId`, plus helpers `fieldErrors`, `retryAfter` and
@@ -135,16 +188,16 @@ try {
 
 ## Tooling and testing
 
-| Command                | What it does                                                                      |
-| ---------------------- | --------------------------------------------------------------------------------- |
-| `npm run lint`         | ESLint (flat config: `next/core-web-vitals`, `typescript-eslint`, import sorting) |
-| `npm run format`       | Prettier, write                                                                   |
-| `npm run format:check` | Prettier, check only (CI)                                                         |
-| `npm run typecheck`    | strict `tsc --noEmit`                                                             |
-| `npm run gen:api`      | Regenerate `src/lib/api/schema.ts` from `../docs/api/openapi.yaml` (offline)      |
-| `npm test`             | Vitest + React Testing Library (jsdom), single run                                |
-| `npm run test:watch`   | Vitest in watch mode                                                              |
-| `npm run test:e2e`     | Playwright (starts `npm run dev` itself unless `E2E_BASE_URL` is set)             |
+| Command                | What it does                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run lint`         | ESLint (flat config: `next/core-web-vitals`, `typescript-eslint`, import sorting)            |
+| `npm run format`       | Prettier, write                                                                              |
+| `npm run format:check` | Prettier, check only (CI)                                                                    |
+| `npm run typecheck`    | strict `tsc --noEmit`                                                                        |
+| `npm run gen:api`      | Regenerate `src/lib/api/schema.ts` from `../docs/api/openapi.yaml` (offline)                 |
+| `npm test`             | Vitest + React Testing Library (jsdom), single run                                           |
+| `npm run test:watch`   | Vitest in watch mode                                                                         |
+| `npm run test:e2e`     | Playwright (builds and starts the app plus the mock API itself unless `E2E_BASE_URL` is set) |
 
 The `prettier` and `eslint` pre-commit hooks in the repo root run these tools on staged `frontend/` files once `npm install` has been done.
 
