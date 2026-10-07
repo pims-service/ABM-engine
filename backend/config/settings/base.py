@@ -114,6 +114,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
+
+# Languages a campaign may send outreach in (campaign profile `outreach_languages`, issue #48).
+# Add a code here once the message engine can write it.
+OUTREACH_LANGUAGES = ["en", "ar"]
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
@@ -166,6 +170,7 @@ SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,  # request bodies get their own component (no readOnly noise)
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
+        {"name": "campaigns", "description": "Campaigns, versioned profiles, rules summary."},
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "meta", "description": "API metadata."},

@@ -64,6 +64,23 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth_refresh": ("POST", "/api/v1/auth/refresh/"),
         "auth_logout": ("POST", "/api/v1/auth/logout/"),
         "auth_me": ("GET", "/api/v1/auth/me/"),
+        "campaigns_list": ("GET", "/api/v1/campaigns/"),
+        "campaigns_create": ("POST", "/api/v1/campaigns/"),
+        "campaigns_retrieve": ("GET", "/api/v1/campaigns/{id}/"),
+        "campaigns_update": ("PUT", "/api/v1/campaigns/{id}/"),
+        "campaigns_partial_update": ("PATCH", "/api/v1/campaigns/{id}/"),
+        "campaigns_activate": ("POST", "/api/v1/campaigns/{id}/activate/"),
+        "campaigns_archive": ("POST", "/api/v1/campaigns/{id}/archive/"),
+        "campaigns_restore": ("POST", "/api/v1/campaigns/{id}/restore/"),
+        "campaigns_clone": ("POST", "/api/v1/campaigns/{id}/clone/"),
+        "campaigns_profile_versions_list": ("GET", "/api/v1/campaigns/{id}/profile-versions/"),
+        "campaigns_profile_versions_retrieve": (
+            "GET",
+            "/api/v1/campaigns/{id}/profile-versions/{version}/",
+        ),
+        "campaigns_rules_summary": ("GET", "/api/v1/campaigns/{id}/rules-summary/"),
+        "client_campaigns_list": ("GET", "/api/v1/clients/{client_pk}/campaigns/"),
+        "client_campaigns_create": ("POST", "/api/v1/clients/{client_pk}/campaigns/"),
         "clients_list": ("GET", "/api/v1/clients/"),
         "clients_create": ("POST", "/api/v1/clients/"),
         "clients_retrieve": ("GET", "/api/v1/clients/{id}/"),
@@ -78,6 +95,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "campaigns"
+            if "/campaigns/" in path
             else "clients"
             if "/clients/" in path
             else "health"
@@ -85,7 +104,13 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             else "meta"
         )
         assert op["tags"] == [expected_tag], op_id
-    assert {t["name"] for t in schema["tags"]} == {"auth", "clients", "health", "meta"}
+    assert {t["name"] for t in schema["tags"]} == {
+        "auth",
+        "campaigns",
+        "clients",
+        "health",
+        "meta",
+    }
 
 
 def test_jwt_bearer_security_scheme(schema: dict[str, Any]) -> None:

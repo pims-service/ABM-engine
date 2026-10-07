@@ -209,6 +209,874 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/:
+    get:
+      operationId: campaigns_list
+      description: 'Campaigns of the clients the user is a member of (all for a global
+        admin), paginated, each with its current profile. Archived campaigns are hidden
+        unless `archived`/`status` ask for them. Filter by `client`, or use `/clients/{client_pk}/campaigns/`.
+        Needs the `READ` level: any member. Others get 403; campaigns of clients you
+        are not a member of give 404.'
+      summary: List campaigns
+      parameters:
+      - in: query
+        name: archived
+        schema:
+          enum:
+          - 'false'
+          - 'true'
+          - all
+          type: string
+          minLength: 1
+        description: |-
+          `false` (default) hides archived campaigns, `true` shows only archived ones, `all` shows both.
+
+          * `false` - false
+          * `true` - true
+          * `all` - all
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only campaigns of this client (ignored on the nested route).
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          enum:
+          - draft
+          - active
+          - archived
+          type: string
+          minLength: 1
+        description: |-
+          Only campaigns with this status. `archived` implies `archived=true` unless `archived` is given.
+
+          * `draft` - Draft
+          * `active` - Active
+          * `archived` - Archived
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCampaignList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    post:
+      operationId: campaigns_create
+      description: 'Creates a draft campaign and its profile version 1 in one transaction.
+        `client` is required. The name must be unique, ignoring case, among the client''s
+        non-archived campaigns. Field errors on rules are nested under `profile`.
+        Unsupported fields (e.g. `structured_rules`) give 400. Needs the `EDIT` level:
+        manager and admin, in the target client. Others get 403; campaigns of clients
+        you are not a member of give 404.'
+      summary: Create a campaign
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/:
+    get:
+      operationId: campaigns_retrieve
+      description: 'The campaign with its current profile. Archived campaigns can
+        be retrieved by id. Needs the `READ` level: any member. Others get 403; campaigns
+        of clients you are not a member of give 404.'
+      summary: Get a campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    put:
+      operationId: campaigns_update
+      description: '`name` and `profile.offer` are required; other rule fields left
+        out keep their current value (send `[]`, `null` or `""` to clear). Changing
+        any rule creates a NEW immutable profile version (the response shows it in
+        `profile_version`); if the rules equal the current version nothing is created
+        and the response is still 200 (see the `X-Profile-Version-Created` header).
+        `name` changes are audited separately. An archived campaign is read-only (400).
+        Rule field errors are nested under `profile`; unsupported fields (e.g. `structured_rules`)
+        give 400. Needs the `EDIT` level: manager and admin, so reviewers cannot edit
+        rules. Others get 403; campaigns of clients you are not a member of give 404.'
+      summary: Replace a campaign's name and rules
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          headers:
+            X-Profile-Version-Created:
+              schema:
+                type: boolean
+              description: '`true` when this request made a new profile version, `false`
+                when the submitted rules equal the current version (nothing was created,
+                status is still 200).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    patch:
+      operationId: campaigns_partial_update
+      description: 'Same as PUT, but every field is optional. Only the rule fields
+        sent are changed; a new profile version is made only if the result differs
+        from the current one. Needs the `EDIT` level: manager and admin, so reviewers
+        cannot edit rules. Others get 403; campaigns of clients you are not a member
+        of give 404.'
+      summary: Edit a campaign's name and/or rules
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCampaignWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          headers:
+            X-Profile-Version-Created:
+              schema:
+                type: boolean
+              description: '`true` when this request made a new profile version, `false`
+                when the submitted rules equal the current version (nothing was created,
+                status is still 200).'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/activate/:
+    post:
+      operationId: campaigns_activate
+      description: 'draft -> active. 400 for an archived campaign or a campaign under
+        an archived client. Needs the `EDIT` level: manager and admin. Others get
+        403; campaigns of clients you are not a member of give 404.'
+      summary: Activate a draft campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/archive/:
+    post:
+      operationId: campaigns_archive
+      description: 'Soft delete: the campaign leaves default lists, all its data and
+        profile versions are kept. Idempotent. 409 `campaign_has_active_jobs` while
+        it has queued or running jobs. Needs the `MANAGE` level: admin. Others get
+        403; campaigns of clients you are not a member of give 404.'
+      summary: Archive a campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Conflict with the current state (e.g. `client_has_active_jobs`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/clone/:
+    post:
+      operationId: campaigns_clone
+      description: 'Creates an independent draft campaign in the same client whose
+        version 1 profile is a copy of the source''s CURRENT rules. Nothing else is
+        copied (no history, companies or jobs) and the two campaigns never share rows.
+        The source may be archived. Audited with the source id. The name defaults
+        to `<name> (copy)`; 400 if a given name is taken or the client is archived.
+        Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients
+        you are not a member of give 404.'
+      summary: Clone a campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignCloneRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/profile-versions/:
+    get:
+      operationId: campaigns_profile_versions_list
+      description: 'Every version of the campaign''s rules, newest first, paginated.
+        Old versions are immutable and stay retrievable. Needs the `READ` level: any
+        member. Others get 403; campaigns of clients you are not a member of give
+        404.'
+      summary: Profile version history
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCampaignProfileList'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/profile-versions/{version}/:
+    get:
+      operationId: campaigns_profile_versions_retrieve
+      description: 'The rules exactly as they were in version `version`. 404 if the
+        campaign has no such version. Needs the `READ` level: any member. Others get
+        403; campaigns of clients you are not a member of give 404.'
+      summary: One profile version
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      - in: path
+        name: version
+        schema:
+          type: integer
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignProfile'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/restore/:
+    post:
+      operationId: campaigns_restore
+      description: 'Back to `draft`. 400 on `name` if another active campaign of the
+        client now uses the name, and 400 while the client is archived. Needs the
+        `MANAGE` level: admin. Others get 403; campaigns of clients you are not a
+        member of give 404.'
+      summary: Restore an archived campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/rules-summary/:
+    get:
+      operationId: campaigns_rules_summary
+      description: 'Read-only. The campaign''s profile in the versioned, structured
+        shape the qualification and message engines read: see the `RulesSummary` schema.
+        Includes `profile_version`. `?version=N` summarises an older version; 404
+        if it does not exist. Needs the `READ` level: any member. Others get 403;
+        campaigns of clients you are not a member of give 404.'
+      summary: Rules summary (the shape AI prompts consume)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      - in: query
+        name: version
+        schema:
+          type: integer
+          maximum: 2147483647
+          minimum: 1
+        description: 'Profile version to summarise. Default: the current version.'
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesSummary'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/clients/:
     get:
       operationId: clients_list
@@ -355,6 +1223,196 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/clients/{client_pk}/campaigns/:
+    get:
+      operationId: client_campaigns_list
+      description: 'Same as `GET /campaigns/?client={client_pk}`, but 404 if the client
+        is not visible to the user. Needs the `READ` level: any member. Others get
+        403; campaigns of clients you are not a member of give 404.'
+      summary: List a client's campaigns
+      parameters:
+      - in: query
+        name: archived
+        schema:
+          enum:
+          - 'false'
+          - 'true'
+          - all
+          type: string
+          minLength: 1
+        description: |-
+          `false` (default) hides archived campaigns, `true` shows only archived ones, `all` shows both.
+
+          * `false` - false
+          * `true` - true
+          * `all` - all
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only campaigns of this client (ignored on the nested route).
+      - in: path
+        name: client_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          enum:
+          - draft
+          - active
+          - archived
+          type: string
+          minLength: 1
+        description: |-
+          Only campaigns with this status. `archived` implies `archived=true` unless `archived` is given.
+
+          * `draft` - Draft
+          * `active` - Active
+          * `archived` - Archived
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCampaignList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    post:
+      operationId: client_campaigns_create
+      description: 'Same as `POST /campaigns/` with the client taken from the URL
+        (`client` in the body is optional and must match). Needs the `EDIT` level:
+        manager and admin. Others get 403; campaigns of clients you are not a member
+        of give 404.'
+      summary: Create a campaign under a client
+      parameters:
+      - in: path
+        name: client_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
         '429':
           content:
             application/json:
@@ -759,6 +1817,299 @@ components:
       - links
       - name
       - version
+    BusinessModelEnum:
+      enum:
+      - b2b
+      - b2c
+      - both
+      type: string
+      description: |-
+        * `b2b` - B2B
+        * `b2c` - B2C
+        * `both` - B2B and B2C
+    Campaign:
+      type: object
+      description: A campaign with its current profile. ``status`` changes only through
+        the actions.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/CampaignStatusEnum'
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        profile_version:
+          type: integer
+          readOnly: true
+        profile:
+          allOf:
+          - $ref: '#/components/schemas/CampaignProfile'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - client
+      - created_at
+      - id
+      - name
+      - profile
+      - profile_version
+      - status
+      - updated_at
+    CampaignCloneRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 'Name of the copy. Default: "<name> (copy)", numbered if that
+            is taken.'
+          maxLength: 200
+    CampaignProfile:
+      type: object
+      description: One immutable profile version (the rules of Brief section 3).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        offer:
+          type: string
+          readOnly: true
+        countries:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        industries:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        company_size_min:
+          type: integer
+          readOnly: true
+          nullable: true
+        company_size_max:
+          type: integer
+          readOnly: true
+          nullable: true
+        business_model:
+          allOf:
+          - $ref: '#/components/schemas/BusinessModelEnum'
+          readOnly: true
+        excluded_industries:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        excluded_company_types:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        target_departments:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        preferred_buyer_titles:
+          type: array
+          items:
+            type: string
+          readOnly: true
+          description: Ordered, most preferred first.
+        outreach_languages:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        custom_rules:
+          type: string
+          readOnly: true
+          description: Free-form qualification notes.
+        change_note:
+          type: string
+          readOnly: true
+          description: Why this version was made.
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - business_model
+      - campaign
+      - change_note
+      - company_size_max
+      - company_size_min
+      - countries
+      - created_at
+      - created_by
+      - custom_rules
+      - excluded_company_types
+      - excluded_industries
+      - id
+      - industries
+      - offer
+      - outreach_languages
+      - preferred_buyer_titles
+      - target_departments
+      - version
+    CampaignProfileInputRequest:
+      type: object
+      description: |-
+        The rule fields of a campaign. Anything not listed is rejected, nothing is dropped.
+
+        On create ``offer`` is required and the rest defaults to empty. On PUT/PATCH a field left out
+        keeps its value from the current version; send ``[]`` / ``null`` / ``""`` to clear it.
+      properties:
+        offer:
+          type: string
+          minLength: 1
+          description: What the client sells, in plain words.
+          maxLength: 5000
+        countries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: ISO 3166-1 alpha-2 codes (case-insensitive input, stored upper
+            case).
+          maxItems: 100
+        industries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          maxItems: 100
+        company_size_min:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        company_size_max:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          description: Must be at least `company_size_min` when both are set.
+        business_model:
+          $ref: '#/components/schemas/BusinessModelEnum'
+        excluded_industries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          maxItems: 100
+        excluded_company_types:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          maxItems: 100
+        target_departments:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          maxItems: 100
+        preferred_buyer_titles:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: Ordered, most preferred first. Duplicates are removed keeping
+            the first.
+          maxItems: 100
+        outreach_languages:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: Supported language codes (`settings.OUTREACH_LANGUAGES`, `en`
+            and `ar`).
+          maxItems: 100
+        custom_rules:
+          type: string
+          description: Free-form notes.
+          maxLength: 10000
+        change_note:
+          type: string
+          description: Why this version is made.
+          maxLength: 1000
+      required:
+      - offer
+    CampaignStatusEnum:
+      enum:
+      - draft
+      - active
+      - archived
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `active` - Active
+        * `archived` - Archived
+    CampaignWriteRequest:
+      type: object
+      description: |-
+        Body of create (POST) and edit (PUT/PATCH).
+
+        ``name`` goes through ``update_campaign``; ``profile`` (the rules) through
+        ``create_profile_version``, which makes a new version only when something changed.
+      properties:
+        client:
+          type: string
+          format: uuid
+          description: Required on `POST /campaigns/`; taken from the URL on the nested
+            route; cannot be changed on edit.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        profile:
+          $ref: '#/components/schemas/CampaignProfileInputRequest'
+      required:
+      - name
     Check:
       type: object
       description: One readiness check; the extra fields depend on the check (documentation
@@ -905,6 +2256,52 @@ components:
       - ok
       type: string
       description: '* `ok` - ok'
+    PaginatedCampaignList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Campaign'
+    PaginatedCampaignProfileList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignProfile'
     PaginatedClientList:
       type: object
       required:
@@ -928,6 +2325,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Client'
+    PatchedCampaignWriteRequest:
+      type: object
+      description: |-
+        Body of create (POST) and edit (PUT/PATCH).
+
+        ``name`` goes through ``update_campaign``; ``profile`` (the rules) through
+        ``create_profile_version``, which makes a new version only when something changed.
+      properties:
+        client:
+          type: string
+          format: uuid
+          description: Required on `POST /campaigns/`; taken from the URL on the nested
+            route; cannot be changed on edit.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        profile:
+          $ref: '#/components/schemas/CampaignProfileInputRequest'
     PatchedClientRequest:
       type: object
       description: |-
@@ -973,6 +2389,133 @@ components:
           type: string
           minLength: 1
           description: Refresh token. May be omitted when the refresh cookie is enabled.
+    RulesSummary:
+      type: object
+      description: |-
+        The profile in the structure the AI prompts consume. Versioned by `schema_version`.
+
+        Built by `apps.campaigns.rules_summary.build_rules_summary`; see that module for the
+        contract. A change to this shape must bump `schema_version`.
+      properties:
+        schema_version:
+          type: integer
+          description: Shape of this document; currently 1.
+        campaign:
+          $ref: '#/components/schemas/RulesSummaryCampaign'
+        profile_version:
+          type: integer
+          description: The CampaignProfile version used.
+        offer:
+          type: string
+        targeting:
+          $ref: '#/components/schemas/RulesSummaryTargeting'
+        exclusions:
+          $ref: '#/components/schemas/RulesSummaryExclusions'
+        buyers:
+          $ref: '#/components/schemas/RulesSummaryBuyers'
+        outreach:
+          $ref: '#/components/schemas/RulesSummaryOutreach'
+        custom_rules:
+          type: string
+        structured_rules:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          description: Reserved for a future machine-readable rule list; always empty
+            in schema_version 1.
+      required:
+      - buyers
+      - campaign
+      - custom_rules
+      - exclusions
+      - offer
+      - outreach
+      - profile_version
+      - schema_version
+      - structured_rules
+      - targeting
+    RulesSummaryBuyers:
+      type: object
+      properties:
+        target_departments:
+          type: array
+          items:
+            type: string
+        preferred_buyer_titles:
+          type: array
+          items:
+            type: string
+          description: Most preferred first.
+      required:
+      - preferred_buyer_titles
+      - target_departments
+    RulesSummaryCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    RulesSummaryCompanySize:
+      type: object
+      properties:
+        min:
+          type: integer
+          nullable: true
+        max:
+          type: integer
+          nullable: true
+      required:
+      - max
+      - min
+    RulesSummaryExclusions:
+      type: object
+      properties:
+        industries:
+          type: array
+          items:
+            type: string
+        company_types:
+          type: array
+          items:
+            type: string
+      required:
+      - company_types
+      - industries
+    RulesSummaryOutreach:
+      type: object
+      properties:
+        languages:
+          type: array
+          items:
+            type: string
+      required:
+      - languages
+    RulesSummaryTargeting:
+      type: object
+      properties:
+        countries:
+          type: array
+          items:
+            type: string
+        industries:
+          type: array
+          items:
+            type: string
+        company_size:
+          $ref: '#/components/schemas/RulesSummaryCompanySize'
+        business_model:
+          $ref: '#/components/schemas/BusinessModelEnum'
+      required:
+      - business_model
+      - company_size
+      - countries
+      - industries
     TokenObtainPairRequest:
       type: object
       properties:
@@ -1043,6 +2586,8 @@ components:
 tags:
 - name: auth
   description: JWT login, refresh, logout and the current user.
+- name: campaigns
+  description: Campaigns, versioned profiles, rules summary.
 - name: clients
   description: 'Clients (tenants): list, create, edit, archive.'
 - name: health
