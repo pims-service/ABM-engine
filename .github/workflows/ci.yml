@@ -25,7 +25,7 @@ jobs:
   backend:
     name: Backend (lint, types, tests)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: backend
@@ -73,10 +73,20 @@ jobs:
       - name: Migrations are up to date
         run: uv run python manage.py makemigrations --check --dry-run
 
+      # Issue #53. The brief's hard rules run first, on their own, so a regression shows up
+      # by name. Their coverage is kept (the 90% gate is applied by the next step, which
+      # runs everything else and appends to the same coverage data).
+      - name: Invariant tests (history, ICP vs trigger, tenant isolation)
+        run: uv run pytest -m invariants --cov-fail-under=0
+
       # DATABASE_URL points at the service container, so the Postgres-only
       # tests (extensions, etc.) run instead of being skipped.
       - name: Pytest (with coverage)
-        run: uv run pytest
+        run: uv run pytest -m "not invariants" --cov-append
+
+      # Issue #53. The overall gate is 90% (pyproject); models and permissions need 85% each.
+      - name: Coverage of models and permissions (85% each)
+        run: uv run python scripts/check_module_coverage.py --floor 85
 
       - name: Upload coverage report
         if: always()

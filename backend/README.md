@@ -724,6 +724,53 @@ factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.djang
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
 
+### Invariant tests (`tests/invariants`, issue #53)
+
+The brief's hard rules live in one named group, marker `invariants` (every test under
+`tests/invariants/` gets it automatically):
+
+```bash
+uv run pytest -m invariants --no-cov     # the whole group (a few minutes; the API part seeds data)
+uv run pytest tests/invariants/test_model_rules.py -k Message   # one file / model
+uv run python scripts/check_module_coverage.py --floor 85       # after a full `pytest`: models and permissions
+```
+
+CI runs it as its own step, "Invariant tests (history, ICP vs trigger, tenant isolation)", in the
+Backend job. Files:
+
+| File | Rule it guards |
+| --- | --- |
+| `test_model_rules.py` | Walks EVERY project model: tenant models have a PROTECT `client` FK and a `tenant_parent` (or are listed roots), a forged or moved `client_id` is refused, every `AppendOnlyModel` refuses save / delete / queryset `update` / `bulk_update` / `delete` / `update_or_create`, every FK is `PROTECT` (and collecting a parent with children raises `ProtectedError`), no model has a score-like column. |
+| `test_history.py` | Research, assessments, recommendations, decisions, signals, angles, messages, activities: creating again adds a row and leaves older rows byte-identical, "latest" returns the newest, a failed update changes nothing. |
+| `test_icp_vs_trigger.py` | A strong-fit company with no signals is valid (trigger No); assessing never queries signals (and the trigger never queries assessments); trigger comes only from fresh, unsuperseded signals, with the boundary at expiry. |
+| `test_ai_vs_human.py` | AI recommendation and human decision are separate tables; a decision never edits the recommendation; agreement summary. |
+| `test_outreach_rule.py` | No message (create, approve, supersede) unless the company's latest human decision is `add`, with the real `HumanDecision`. |
+| `test_tenant_querysets.py` | `for_user` / `for_client` on every `TenantQuerySet` model never leak across clients. |
+| `test_tenant_isolation_api.py` | Every client-data endpoint, found by walking the URLconf: foreign ids answer exactly like missing ones (404, same body), role matrix, 401, inactive users, lists never leak. |
+
+**Adding a model.** Add one row for it to `build_client_rows()` in `tests/invariants/registry.py`
+(use or add a factory). Without it `test_every_model_has_a_builder` fails, which is the point:
+once it is there every generic guard above covers the model with no further work. If the model is
+a tenant root (no parent to copy `client_id` from), add it to `ROOT_TENANT_MODELS` in
+`test_model_rules.py` with a reason; if it blocks bulk writes without being an `AppendOnlyModel`,
+see `GUARDED_NOT_APPEND_ONLY`. If it is history (a new row per change), add a `Kind` to `KINDS` in
+`test_history.py`.
+
+**Adding an endpoint.** Build it on `ClientScopedViewSet` / `ClientScopedModelViewSet`
+(docs/permissions.md). `test_every_endpoint_is_covered` then fails until you add a `Scenario`
+for each method + path to `SCENARIOS` in `tests/invariants/test_tenant_isolation_api.py` (kind,
+level, target object). The same scenario then runs the foreign-id, role matrix, anonymous and
+inactive-user checks. An endpoint that serves no client data goes into `PUBLIC_ENDPOINTS` with a
+reason.
+
+**Adding a rule.** One test file per rule, no marker needed (the package adds it). Prefer
+parametrizing over the app registry (`project_models()`) to naming models.
+
+Coverage floors: the overall gate is 90% (`pyproject.toml`); `scripts/check_module_coverage.py`
+additionally requires every `apps/*/models.py` and the permission modules
+(`core/permissions.py`, `tenancy.py`, `roles.py`) to reach 85% on their own. CI runs it right
+after the full test run.
+
 ## Code quality
 
 All tool config lives in `pyproject.toml`. Run these from `backend/`:
