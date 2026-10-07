@@ -105,8 +105,20 @@ class OutreachAngle(AppendOnlyModel, TenantModel, UUIDModel):
         return self.angle[:60]
 
 
+class EvidenceLinkQuerySet(  # type: ignore[override]
+    AppendOnlyQuerySet["_EvidenceLink"], TenantQuerySet["_EvidenceLink"]
+):
+    pass
+
+
 class _EvidenceLink(AppendOnlyModel, TenantModel, UUIDModel):
-    """Shared by the four M2M through tables. Rows are inserted by services, never edited."""
+    """Shared by the four M2M through tables. Rows are inserted by services, never edited.
+
+    The manager blocks bulk update and delete like every other append-only table, and scopes
+    rows with ``for_user`` / ``for_client``.
+    """
+
+    objects = EvidenceLinkQuerySet.as_manager()
 
     class Meta:
         abstract = True
