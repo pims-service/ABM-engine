@@ -12,6 +12,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
 from apps.campaigns.services import create_campaign
 from apps.companies.models import Company, CompanyResearch, DataSource, DataSourceType
+from apps.research.models import AIRecommendation, HumanDecision, ICPAssessment
 
 DEFAULT_PASSWORD = "test-password-123"
 
@@ -141,6 +142,60 @@ def make_research(**overrides: Any) -> CompanyResearch:
     return cast(CompanyResearch, CompanyResearchFactory(**overrides))
 
 
+# ------------------------------------------------------------------ assessments (issue #42)
+
+
+class ICPAssessmentFactory(factory.django.DjangoModelFactory):
+    """Straight through the model; the profile and research default to the company's own."""
+
+    class Meta:
+        model = ICPAssessment
+
+    company = factory.SubFactory(CompanyFactory)
+    campaign_profile = factory.LazyAttribute(lambda o: o.company.campaign.current_profile)
+    company_research = factory.LazyAttribute(lambda o: make_research(company=o.company))
+    fit = "strong"
+    reasons = factory.LazyFunction(lambda: ["Mid-size logistics company in KSA"])
+    concerns = factory.LazyFunction(list)
+    model_name = "test-model"
+    prompt_version = "icp-v1"
+    schema_version = "1"
+
+
+class AIRecommendationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = AIRecommendation
+
+    icp_assessment = factory.SubFactory(ICPAssessmentFactory)
+    company = factory.LazyAttribute(lambda o: o.icp_assessment.company)
+    status = "add"
+    explanation = "Strong fit, worth adding."
+    model_name = "test-model"
+    prompt_version = "rec-v1"
+    schema_version = "1"
+
+
+class HumanDecisionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = HumanDecision
+
+    company = factory.SubFactory(CompanyFactory)
+    decision = "add"
+    decided_by = factory.SubFactory(UserFactory)
+
+
+def make_icp_assessment(**overrides: Any) -> ICPAssessment:
+    return cast(ICPAssessment, ICPAssessmentFactory(**overrides))
+
+
+def make_ai_recommendation(**overrides: Any) -> AIRecommendation:
+    return cast(AIRecommendation, AIRecommendationFactory(**overrides))
+
+
+def make_human_decision(**overrides: Any) -> HumanDecision:
+    return cast(HumanDecision, HumanDecisionFactory(**overrides))
+
+
 # ------------------------------------------------------------------ signals, contacts (#41)
 
 
@@ -178,3 +233,60 @@ def make_signal(**overrides: Any) -> Any:
 
 def make_contact(**overrides: Any) -> Any:
     return ContactFactory(**overrides)
+
+
+# ------------------------------------------------------------------ outreach (#43)
+
+
+def allow_outreach(company: Company) -> str:
+    """Decision lookup stub for tests: the human said `add` (HumanDecision comes from #42)."""
+    return "add"
+
+
+class OutreachAngleFactory(factory.django.DjangoModelFactory):
+    """Goes through `create_angle`. Pass `signals=[...]` / `data_sources=[...]` to cite evidence."""
+
+    class Meta:
+        model = "outreach.OutreachAngle"
+
+    company = factory.SubFactory(CompanyFactory)
+    angle = "Support the existing business development team"
+    rationale = "The company is hiring sales staff."
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        from apps.outreach.services import create_angle
+
+        company, angle = kwargs.pop("company"), kwargs.pop("angle")
+        return create_angle(company, angle, kwargs.pop("rationale"), **kwargs)
+
+
+class MessageFactory(factory.django.DjangoModelFactory):
+    """A draft email through `create_message`, with the decision lookup stubbed to `add`."""
+
+    class Meta:
+        model = "outreach.Message"
+
+    angle = factory.SubFactory(OutreachAngleFactory)
+    contact = factory.LazyAttribute(lambda o: ContactFactory(company=o.angle.company))
+    channel = "email"
+    language = "en"
+    subject = "Quick question"
+    body = "Hello, we help logistics teams with managed cloud security."
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        from apps.outreach.services import create_message
+
+        kwargs.setdefault("decision_lookup", allow_outreach)
+        angle, contact = kwargs.pop("angle"), kwargs.pop("contact")
+        channel, language = kwargs.pop("channel"), kwargs.pop("language")
+        return create_message(angle, contact, channel, language, kwargs.pop("body"), **kwargs)
+
+
+def make_angle(**overrides: Any) -> Any:
+    return OutreachAngleFactory(**overrides)
+
+
+def make_message(**overrides: Any) -> Any:
+    return MessageFactory(**overrides)

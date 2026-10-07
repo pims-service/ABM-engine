@@ -397,6 +397,30 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
 - Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
   `make_research()`, `make_data_source()` in `tests/factories.py`.
 
+### Assessments and decisions (`apps/research`)
+
+`ICPAssessment` (fit only), `AIRecommendation` and `HumanDecision` are append-only, carry
+`client`, and have no score. AI and human answers are different tables. Use
+`apps/research/services.py`:
+
+- `record_icp_assessment(company, fit, reasons, concerns=(), *, model_name, prompt_version,
+  schema_version, raw_output=None, campaign_profile=None, company_research=None)`: `fit` is
+  `strong` / `medium` / `weak`. The profile defaults to the campaign's current version and the
+  research to the company's latest snapshot (none: `ValidationError`). Both must belong to the
+  company, else `TenantMismatchError`. No signal input: a strong fit with no signals is valid.
+- `record_ai_recommendation(icp_assessment, status, explanation, *, model_name, prompt_version,
+  schema_version, raw_output=None)`: `status` is `add` / `hold` / `skip`.
+- `record_human_decision(company, decision, user, *, ai_recommendation=None, note="",
+  decided_at=None)`: never touches the recommendation. `ai_recommendation` is nullable (a decision
+  with no AI answer is valid and is excluded from agreement).
+- Current row: `Model.objects.latest_for(company)` and `Model.objects.current()` (latest per
+  company; `decided_at` for decisions, `created_at` otherwise, ties by id).
+- Agreement (Brief section 11): `HumanDecision.objects.agreement()` returns an `AgreementSummary`
+  (`compared`, `agreed`, `disagreed`, `without_ai`, `rate`, `pairs`). Chain `.current()` for only
+  each company's latest decision, or `.for_client(client)`. Also `.overrides()`, `.agreeing()`,
+  `.with_ai_status()`.
+- Factories: `make_icp_assessment()`, `make_ai_recommendation()`, `make_human_decision()`.
+
 ### Signals (`apps/research`) and contacts (`apps/companies`)
 
 Placement: `Signal` lives in `apps/research` (timing evidence, used by M4/M5); `Contact` lives in
@@ -426,6 +450,48 @@ Placement: `Signal` lives in `apps/research` (timing evidence, used by M4/M5); `
   company)`, `.for_company()`, `.ranked()`, `.active()`; `contact.erase_personal_data()` blanks
   personal fields, archives and keeps the id.
 - Factories: `SignalFactory`, `ContactFactory`, `make_signal()`, `make_contact()`.
+
+### Outreach angles, messages and activities (`apps/outreach`, issue #43)
+
+`Company` -> `OutreachAngle` (append-only, Brief section 9) -> `Message` (one angle, many messages),
+plus the `Activity` timeline. Use `apps/outreach/services.py`, never raw writes:
+
+- `create_angle(company, angle, rationale, *, signals, data_sources, model_name, ..., user)`:
+  evidence is cited through M2M tables (`AngleSignal`, `AngleSource`), signals must be the
+  company's, sources the client's. Many messages can point at one angle.
+- `create_message(angle, contact, channel, language, body, *, subject, is_followup, signals,
+  data_sources, supersedes, ..., user, decision_lookup)`: a `draft`. `channel` is `linkedin` /
+  `email` / `whatsapp` / `call`; `language` must be one of the campaign profile's
+  `outreach_languages`; an email needs a subject and other channels have none. Cited evidence is
+  stored (`MessageSignal`, `MessageSource`) and must be reachable through the company (angle,
+  its signals, research snapshots, contacts), so a message cannot cite invented evidence.
+- `approve_message(message, user)` (draft -> approved), `mark_exported(message, user=None)`
+  (approved -> exported, logs an `exported` Activity), `supersede_message(old, body, ...)` (the
+  only way to edit: a new draft with `supersedes=old`). Message text, recipient, channel and
+  language never change after the first save (`ImmutableRecordError`); status only moves forward
+  one step; rows are never deleted.
+- **Human decision rule (ADR 0007):** creating, superseding and approving a message need the
+  company's latest human decision to be `add`. This goes through
+  `apps/outreach/decisions.latest_human_decision(company)`, which lazily imports
+  `apps.research.models.HumanDecision` (issue #42). Until #42 is merged the model is missing
+  and the function returns `None`, so those calls raise `HumanDecisionRequired` (fails closed).
+  Once #42 is merged it works with the real model with no change (it uses
+  `HumanDecision.objects.latest_for(company)` if present, else the latest `decided_at`, and reads
+  `.decision`). Tests inject a stub: `decision_lookup=allow_outreach` (`tests/factories.py`).
+- `record_activity(company, type, actor=None, *, created_at=None, **payload)` (alias
+  `log_activity`) inserts one `Activity` (`researched`, `recommended`, `decided`, `contacted`,
+  `replied`, `meeting_booked`, `exported`, `feedback`); client and campaign come from the company.
+- Feedback (Brief section 16) is an Activity of type `feedback`: `record_feedback(company, kind,
+  *, target=None, note="", actor=None)`. Payload: `{"kind": <FeedbackKind>, "target": {"type":
+  company|signal|contact|angle|message, "id": uuid}?, "note": str?}`. Kinds: `wrong_buyer`,
+  `not_b2b`, `unsuitable_industry`, `not_a_trigger`, `ceo_should_be_primary`,
+  `ceo_should_not_be_primary`, `government_company`, `incorrect_company_data`, `other` (needs a
+  note). A target must belong to the company; unknown fields are rejected.
+- Managers: `OutreachAngle.objects.latest_for(company)`; `Message.objects.current()` and
+  `.latest_for(angle, contact, channel, is_followup=False)`; `Activity.objects.timeline(company,
+  types=None)` (newest first), `.for_campaign(campaign, type=None)`, `.feedback()`.
+- Admin is read only. Factories: `OutreachAngleFactory`, `MessageFactory`, `make_angle()`,
+  `make_message()`, `allow_outreach`.
 
 ## Authentication
 
