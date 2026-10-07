@@ -56,6 +56,7 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `LOG_LEVEL` | api, worker | no | `INFO` | `INFO` | root, backend | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 | `DEV_SUPERUSER_EMAIL` | api | no | `admin@example.com` | `YOUR_EMAIL` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_PASSWORD` | api | no | none (no superuser is created) | `YOUR_DEV_ADMIN_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. |
+| `DEV_SEED_USER_PASSWORD` | api | no | none (sample users cannot log in) | `YOUR_DEV_SEED_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. Password for the sample admin/manager/reviewer/viewer users. |
 | `NEXT_PUBLIC_API_BASE_URL` | web | yes | `http://localhost:8000/api` in compose | `http://localhost:8000/api` | root, frontend | Public: shipped to browsers. Never put a secret in a `NEXT_PUBLIC_*` variable. |
 | `API_INTERNAL_BASE_URL` | web | no | `http://api:8000/api` in compose; else `NEXT_PUBLIC_API_BASE_URL` | `http://api:8000/api` | root, frontend | Server only (never sent to browsers). Where the Next.js auth route handlers (`/api/auth/*`) reach the API from inside the web container. Must end in `/api`. |
 | `NEXT_TELEMETRY_DISABLED` | web | no | `1` (set in compose) | `1` | - | Fixed in `docker-compose.yml`; not meant to be changed. |

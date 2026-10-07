@@ -87,16 +87,48 @@ Rules:
 
 ```bash
 export DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
-uv run python manage.py seed_dev_data
+export DEV_SEED_USER_PASSWORD=YOUR_DEV_SEED_PASSWORD   # optional, see below
+uv run python manage.py seed_dev_data      # or `make seed` with Docker Compose
 ```
 
-`seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
-to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
-from the `DEV_SUPERUSER_*` variables (the email defaults to `admin@example.com`; without a password the
-step is skipped, so no account with a known password is ever created; an existing user is left
-untouched, including its password). There are no domain models yet, so there is no sample
-company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
-`apps/core/seeding.py` that is safe to run repeatedly (use `get_or_create` / `update_or_create`).
+`seed_dev_data` is idempotent: a second run creates nothing and never edits rows a developer
+changed. It refuses to run when `DEBUG` is off unless `--force` is passed. It runs the seeders
+listed in `SEEDERS` (`apps/core/seeding.py`) in one transaction, in this order:
+
+1. **Superuser** (`seed_superuser`): from `DEV_SUPERUSER_*` (email defaults to
+   `admin@example.com`; without a password the step is skipped, so no account with a known
+   password is ever created; an existing user is untouched, including its password).
+2. **Sample users** (`apps/core/seed_sample.py`): `seed-<role>@skylight.example.com` for
+   admin, manager, reviewer and viewer, plus `seed-admin@meridian.example.com` and
+   `seed-viewer@meridian.example.com`. The password comes only from `DEV_SEED_USER_PASSWORD`;
+   without it these users get an unusable password and cannot log in.
+3. **Clients, campaigns, memberships**: **SkyLight** with the Brief section 3 campaign (Saudi
+   Arabia; Financial Services, Accounting, SaaS, Technology; size 10-500; B2B; Sales, BD,
+   Commercial, Partnerships; VP BD ... Managing Director; Arabic/English) and **Meridian
+   Labs**, a contrasting client (UAE, Logistics/Retail/Healthcare, size 100-1000, CIO/CISO
+   titles, English, different exclusions) so multi-client rules visibly differ. Created through
+   `create_client`, `create_campaign` (profile version 1), `activate_campaign` and
+   `grant_membership`, so audit entries exist.
+4. **Companies**: three per campaign, each with a research snapshot, data sources, contacts and
+   signals. SkyLight has the Brief's tiqmo example (Riyadh, Financial Services, 155 employees,
+   BD headcount 15, -12% YoY, no trigger), a company with a fresh Sales-hiring signal (source
+   and date) and one with an expired signal. Trigger "No" companies are still eligible.
+
+Everything is flagged as fake: client notes, contact names, data-source names and rule notes
+carry `[SAMPLE DATA]`, company names end in `(sample)`, and websites and emails use
+`example.com`.
+
+**Extension point:** assessments (#42) and outreach (#43) are not seeded yet. Write a function
+with the `Seeder` signature (`(environ) -> SeedResult`, idempotent, built on the services) and
+append it to `SEEDERS` after the sample seeders.
+
+**Test fixture:** `seeded_world` (`tests/fixtures_seed.py`, available in every test) runs all
+seeders and returns a `SeededWorld` with `.users["skylight_admin" | "skylight_manager" |
+"skylight_reviewer" | "skylight_viewer" | "meridian_admin" | "meridian_viewer"]` (password
+`tests.fixtures_seed.SEEDED_PASSWORD`), `.clients["skylight" | "meridian"]`, `.campaigns[...]`
+and `.companies["tiqmo" | "najm" | "rimal" | "gulf_freight" | "oasis_retail" | "dune_health"]`.
+`run_all_seeders()` runs the seeders without the fixture and `load_seeded_world()` reads the
+handles back. Tests: `tests/test_seed_sample.py`.
 
 ### Reset the local database
 

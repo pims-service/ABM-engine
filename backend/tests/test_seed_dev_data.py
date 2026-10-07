@@ -51,7 +51,7 @@ def test_existing_user_password_is_not_overwritten(seed_env, monkeypatch):
 def test_skips_superuser_without_password(seed_env, monkeypatch):
     monkeypatch.delenv("DEV_SUPERUSER_PASSWORD")
     output = run_seed()
-    assert not User.objects.exists()
+    assert not User.objects.filter(is_superuser=True).exists()
     assert "skipped" in output
 
 
