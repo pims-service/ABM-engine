@@ -136,7 +136,7 @@ auth endpoints of the API directly. A small BFF (backend for frontend) in Next.j
 Tests: unit tests next to the code (`redirect`, `login-form`, `AuthProvider`, route handlers, middleware); the
 Playwright spec `e2e/auth.spec.ts` runs against `e2e/mock-api.mjs`, a tiny stand-in for the Django API
 (browser-level route mocking cannot intercept the server-side calls the BFF makes). `playwright.config.ts` starts
-it on port 8999 and points the app's `API_INTERNAL_BASE_URL` at it. Specs that need a signed-in user use the
+it on port 8999 and points the app's `API_INTERNAL_BASE_URL` at it. `e2e/mock-campaigns.mjs` adds the clients and campaigns endpoints (with CORS, validation like the real API, and one view-only client) used by `e2e/campaign-form.spec.ts`; `GET /__campaigns` and `POST /__campaigns/reset` are its test controls. Specs that need a signed-in user use the
 `test` from `e2e/fixtures.ts`, which seeds a session; `anonymousTest` starts logged out.
 
 ## Typed API client
@@ -185,6 +185,30 @@ try {
   `schema.ts` is stale; add it to the CI frontend job (workflows are issue #32).
 - **Tests**: Vitest with a mocked `fetch` passed to `createApiClient` (see `client.test.ts`); no
   network, no backend.
+
+## Campaign form (create / edit)
+
+Routes: `/campaigns/new` (optionally `?client=<id>` to preselect the client) and `/campaigns/[id]/edit`.
+Everything lives in `src/features/campaigns/form/`; the route files only pass URL params in.
+
+| File                        | What                                                                                                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CampaignFormPages.tsx`     | `NewCampaignPage` / `EditCampaignPage`: load clients or the campaign (+ profile versions), then show loading, error (with retry), not-found, no-access or empty states.     |
+| `CampaignForm.tsx`          | The multi-section form (Client and offer, Targeting, Exclusions, Buyers, Language, Custom rules; edit adds the version panel and the "What changed" note).                  |
+| `values.ts`                 | Form state (API field names), `toCreateBody`, `toPatchBody` (only changed rule fields; `change_note` only when filled in), `isDirty`.                                       |
+| `validation.ts`             | Client-side checks mirroring the API: client, name and offer required, size min <= max, whole numbers, 100 items x 200 characters per list, ISO countries, `en`/`ar`.       |
+| `serverErrors.ts`           | Maps `error.details` (`name`, `client` and `profile.<field>`, list-item errors flattened) to form fields; anything unmapped (e.g. `structured_rules`) stays in the summary. |
+| `reference.ts`              | The ISO 3166-1 alpha-2 list and languages as typed constants mirroring `backend/apps/campaigns/reference.py` (names come from `Intl.DisplayNames`). Keep them in step.      |
+| `api.ts`                    | Small typed helpers over `getApiClient()`; `updateCampaign` also returns `X-Profile-Version-Created`.                                                                       |
+| `useUnsavedChangesGuard.ts` | `beforeunload`, a capture-phase click guard for in-app links (the App Router has no route-change events) and a Back-button guard; uses `window.confirm`.                    |
+
+Behaviour worth knowing:
+
+- **Validation**: on submit and when leaving name, offer and the size fields; an error clears when the field is edited. A summary (`role="alert"`) lists every problem with links, and focus goes to the first invalid field. API errors use the same fields and the same summary.
+- **Edit**: shows "Version N", the note of the current version and the version history. PATCH sends only changed fields. The message follows `X-Profile-Version-Created`: "Saved as version N", "No changes. The rules are identical to version N", or (name only) "the rules are unchanged". With nothing changed no request is made. After a create the user lands on the edit page with "Campaign created as version 1."
+- **Permissions**: the API does not tell the client its role, so a 403 on save turns the form read-only with an explanation (viewers and reviewers cannot create or edit). A 403 on load shows a "no access" state.
+- **Cross-origin note**: the browser calls the API directly. If the API is on another origin it must allow the `Authorization` header and expose `X-Profile-Version-Created` (`Access-Control-Expose-Headers`); otherwise the form falls back to comparing `profile_version` before and after.
+- **New primitives** in `src/components/ui/`: `Field`, `Textarea`, `SelectField`, `ChoiceGroup` (radios/checkboxes), `TagInput` (Enter or comma adds, Backspace removes, text is kept on blur), `MultiSelect` (searchable ARIA combobox), `OrderedList` (Move up/down buttons with focus following the item and a live-region announcement; native HTML5 drag as an extra). `TextField` accepts an `id` and `markRequired`.
 
 ## Tooling and testing
 
