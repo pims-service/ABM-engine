@@ -95,6 +95,10 @@ module = "tests.factories_core"
 ignore_errors = true  # same reason as tests.factories
 
 [[tool.mypy.overrides]]
+module = "tests.factories_imports"
+ignore_errors = true  # same reason as tests.factories
+
+[[tool.mypy.overrides]]
 module = "tests.test_campaign_audit"
 # AuditLog.before / after are nullable JSON; the tests assert they are set, then index them.
 disable_error_code = ["index"]
