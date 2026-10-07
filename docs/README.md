@@ -30,12 +30,18 @@ Project documentation lives here. If you are new, start with onboarding.
   to add one. Currently covers the adapter pattern, structured LLM output, the
   Django/Next.js/Postgres stack, the Postgres-backed queue, JWT auth, history
   keeping, the ICP fit versus trigger split and data model conventions.
-- [Data model and entity relationships](data-model.md): every core object with
-  fields and enums, the ER diagram, tenancy and history rules, indexes and
-  open questions.
-- [Roles and permissions](permissions.md): the role matrix (viewer, reviewer,
-  manager, admin, global admin), per-client isolation (404, not 403) and the
-  guide every new endpoint must follow.
+- [Data model and entity relationships](data-model.md): the ER diagram, every
+  core object, tenancy and history rules, the decisions taken while building,
+  and the developer guides: how to add a new append-only record type and how to
+  add a permission-safe endpoint.
+- [Data model field reference](data-model-reference.md): every field, enum,
+  constraint and index, generated from the models
+  (`python manage.py print_schema --write`).
+- [Roles and permissions](permissions.md): the authentication choice, the role
+  matrix (viewer, reviewer, manager, admin, global admin), per-client isolation
+  (404, not 403) and the guide every new endpoint must follow.
+- [Django admin](admin.md): who can sign in (staff only), what is read only,
+  what is masked and how to register a new model.
 
 ## Reference for each part of the repo
 

@@ -7,6 +7,8 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
+import { handleCampaignApi } from "./mock-campaigns.mjs";
+
 const PORT = Number(process.env.MOCK_API_PORT ?? 8999);
 const ACCESS_TTL_SECONDS = Number(process.env.MOCK_ACCESS_TTL ?? 900);
 
@@ -74,6 +76,17 @@ async function readJson(req) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://mock");
   const route = `${req.method} ${url.pathname}`;
+  // Campaign endpoints live in ./mock-campaigns.mjs (issue #49).
+  if (
+    await handleCampaignApi(req, res, url, {
+      send,
+      fail,
+      readJson,
+      isValidAccess: (token) => validAccess.has(token),
+    })
+  ) {
+    return;
+  }
 
   switch (route) {
     case "POST /api/v1/auth/login/": {

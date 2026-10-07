@@ -274,7 +274,8 @@ request-id contextvar), `created_at`.
   become `[REDACTED]` at any depth in both `before` and `after`, and strings are scrubbed for
   `key=value` secrets. The diff is computed first, so a changed secret still shows as changed.
   ClientMembership changes (issue #46) should use the same `record_change` calls.
-- The admin shows Job, JobItem and AuditLog read-only. Test factories: `tests/factories_core.py`
+- The admin shows Job, JobItem and AuditLog read-only (AuditLog diffs are redacted again on
+  display, see [docs/admin.md](../docs/admin.md)). Test factories: `tests/factories_core.py`
   (`make_job`, `make_job_item`, `make_audit_log`).
 
 ## Domain model building blocks (`apps/core`)
@@ -309,6 +310,19 @@ tenant data through `Model.objects.for_user(user)` (views and services) or
 `for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
 superusers) see everything, everyone else sees the clients where they have an active
 `ClientMembership`, and anonymous or inactive users see nothing.
+
+### Django admin and data model docs (issue #54)
+
+Every model is registered in its app's `admin.py` or listed with a reason in
+`ADMIN_EXCLUDED_MODELS` (`apps/core/admin_base.py`); history rows are view only through
+`ReadOnlyAdmin`, and sensitive data is hidden or masked. Rules and how to register a model:
+[docs/admin.md](../docs/admin.md); tests: `tests/test_admin.py`.
+
+The ER diagram, entity index and field reference in `docs/data-model.md` and
+`docs/data-model-reference.md` are generated from the models. After changing a model run
+`python manage.py print_schema --write` and commit the docs; `tests/test_data_model_docs.py`
+fails when they are stale. Step-by-step guides: how to add an append-only record type and a
+permission-safe endpoint, in [docs/data-model.md](../docs/data-model.md).
 
 ### Roles and permissions (issue #46)
 

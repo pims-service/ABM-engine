@@ -5,6 +5,18 @@ clients' campaigns, companies and contacts never show up for someone who is not 
 client. Design background: [data-model.md](data-model.md#tenancy-how-data-stays-inside-a-client)
 and [ADR 0009](adr/0009-data-model-conventions.md).
 
+## Authentication choice
+
+Users sign in with Django accounts and `djangorestframework-simplejwt`, not Supabase Auth
+([ADR 0006](adr/0006-django-jwt-authentication.md)): users, clients and memberships live in
+one database, so there is no second user store to keep in sync, and the API checks roles
+itself. Access tokens last 15 minutes, refresh tokens 7 days and rotate with a blacklist.
+Endpoints and settings are in `backend/README.md`, "Authentication". The Django admin is a
+separate session login for `is_staff` users; client roles never grant it ([admin.md](admin.md)).
+
+A worked example of a new endpoint for a new record type is in
+[data-model.md](data-model.md#how-to-add-a-permission-safe-endpoint).
+
 ## Who can do what
 
 There are two kinds of power:
@@ -73,7 +85,8 @@ Other rules:
 - Creating something needs an EDIT role in the **target** client, which is looked up through the
   user's visible clients (`resolve_client`): another client's id gives 404, a client you can only
   view gives 403.
-- Audit logging of membership changes arrives with issue #44.
+- Membership changes are written to the audit log (`grant_membership`, `change_role` and
+  `revoke_membership` call `record_change`).
 
 ## How it works
 
@@ -86,7 +99,8 @@ Other rules:
 | `ClientRolePermission`, `ClientScopedMixin`, `ClientScoped*ViewSet` | `apps/core/permissions.py` | the DRF layer. |
 | `grant_membership`, `change_role`, `revoke_membership` | `apps/campaigns/memberships.py` | the only write path for memberships. |
 
-Memberships are managed in the Django admin (`Client memberships`) or through the services.
+Memberships are managed in the Django admin (`Client memberships`, superusers only) or through
+the services.
 
 ## How to protect a new endpoint
 
