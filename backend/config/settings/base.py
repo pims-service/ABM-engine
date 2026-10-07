@@ -44,6 +44,7 @@ LOCAL_APPS = [
     "apps.accounts.apps.AccountsConfig",
     "apps.campaigns.apps.CampaignsConfig",
     "apps.companies.apps.CompaniesConfig",
+    "apps.imports.apps.ImportsConfig",
     "apps.research.apps.ResearchConfig",
     "apps.outreach.apps.OutreachConfig",
     "apps.integrations.apps.IntegrationsConfig",
