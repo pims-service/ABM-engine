@@ -28,6 +28,7 @@ INT_VARIABLES: dict[str, int] = {
     "SECURE_HSTS_SECONDS": 3600,
     "JWT_ACCESS_LIFETIME_MINUTES": 15,
     "JWT_REFRESH_LIFETIME_DAYS": 7,
+    "CORS_PREFLIGHT_MAX_AGE": 600,
 }
 #: Optional boolean variables.
 BOOL_VARIABLES = (
@@ -41,6 +42,24 @@ BOOL_VARIABLES = (
 
 def _is_placeholder(value: str) -> bool:
     return value.strip().upper().startswith(PLACEHOLDER_PREFIX)
+
+
+def _cors_origin_problem(origin: str) -> str | None:
+    """Why ``origin`` is not a plain ``scheme://host[:port]`` origin, or ``None`` when it is."""
+    if "*" in origin:
+        return "wildcards are not allowed, list each origin"
+    try:
+        parts = urlsplit(origin)
+        port = parts.port
+    except ValueError:
+        return "not a valid origin"
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return "must look like https://host[:port]"
+    if parts.path or parts.query or parts.fragment or parts.username or origin.endswith("/"):
+        return "must be scheme and host only (no path, trailing slash, query or credentials)"
+    if port == 0:
+        return "invalid port"
+    return None
 
 
 def _parse_int(value: str) -> int | None:
@@ -73,6 +92,16 @@ def validate_environment(environ: Mapping[str, str], *, settings_module: str) ->
 
     if is_prod and not [h for h in environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]:
         problems.append("ALLOWED_HOSTS: missing (required in production, comma-separated)")
+
+    cors_origins = [o.strip() for o in environ.get("CORS_ALLOWED_ORIGINS", "").split(",")]
+    cors_origins = [o for o in cors_origins if o]
+    if is_prod and not cors_origins:
+        problems.append("CORS_ALLOWED_ORIGINS: missing (required in production, comma-separated)")
+    for origin in cors_origins:
+        # Report the rule, never the value (it may be a typo containing something sensitive).
+        if (reason := _cors_origin_problem(origin)) is not None:
+            problems.append(f"CORS_ALLOWED_ORIGINS: invalid entry, {reason}")
+            break
 
     ints: dict[str, int] = {}
     for name, default in INT_VARIABLES.items():

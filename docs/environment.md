@@ -36,6 +36,8 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `DEBUG` | api, worker | no | `True` in dev, forced `False` in prod | `True` | root, backend | `true`/`false`. |
 | `ALLOWED_HOSTS` | api | prod only | `localhost,127.0.0.1,[::1]` in dev | `localhost,127.0.0.1` | root, backend | Comma-separated host names. |
 | `API_DOCS_ENABLED` | api | no | `true` in dev, `false` everywhere else | `false` | backend | `true`/`false`. Serves the OpenAPI schema and Swagger UI/ReDoc at `/api/v1/schema/`, `/docs/`, `/redoc/` (404 when off). Keep off in production. |
+| `CORS_ALLOWED_ORIGINS` | api | prod only | `http://localhost:3000,http://127.0.0.1:3000` in dev (compose follows `WEB_PORT`) | `http://localhost:3000` | root, backend | Comma-separated frontend origins the browser may call the API from, for `/api/` only. Each entry is `scheme://host[:port]`: no wildcard, no trailing slash or path. Required and non-empty in production. Credentials are never allowed (the API uses Bearer tokens). See [ADR 0010](adr/0010-direct-browser-to-api-with-cors-allowlist.md). |
+| `CORS_PREFLIGHT_MAX_AGE` | api | no | `600` | `600` | backend | Seconds a browser may cache a CORS preflight answer. Integer. Browsers cap it (Chrome 2 hours). |
 | `CSRF_TRUSTED_ORIGINS` | api | no | empty | `https://YOUR_DOMAIN` | backend | Production only, comma-separated origins. |
 | `SECURE_SSL_REDIRECT` | api | no | `True` in prod | `True` | backend | Production only. |
 | `SECURE_HSTS_SECONDS` | api | no | `3600` | `3600` | backend | Production only. Integer. |
