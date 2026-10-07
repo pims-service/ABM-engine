@@ -44,5 +44,9 @@ def seed_superuser(environ: Mapping[str, str]) -> SeedResult:
     return SeedResult("superuser", created=1, detail=email)
 
 
-# Sample domain data (companies, campaigns, ...) is added here once those models exist.
-SEEDERS: tuple[Seeder, ...] = (seed_superuser,)
+from apps.core.seed_sample import SAMPLE_SEEDERS  # noqa: E402  (needs SeedResult defined above)
+
+# Run in order. Sample data (users, clients, campaigns, companies) lives in
+# ``apps/core/seed_sample.py``. EXTENSION POINT: seed assessments (#42) and outreach (#43) by
+# appending a seeder after the sample ones once those models are on main.
+SEEDERS: tuple[Seeder, ...] = (seed_superuser, *SAMPLE_SEEDERS)

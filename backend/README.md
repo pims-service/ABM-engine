@@ -87,16 +87,48 @@ Rules:
 
 ```bash
 export DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
-uv run python manage.py seed_dev_data
+export DEV_SEED_USER_PASSWORD=YOUR_DEV_SEED_PASSWORD   # optional, see below
+uv run python manage.py seed_dev_data      # or `make seed` with Docker Compose
 ```
 
-`seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
-to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
-from the `DEV_SUPERUSER_*` variables (the email defaults to `admin@example.com`; without a password the
-step is skipped, so no account with a known password is ever created; an existing user is left
-untouched, including its password). There are no domain models yet, so there is no sample
-company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
-`apps/core/seeding.py` that is safe to run repeatedly (use `get_or_create` / `update_or_create`).
+`seed_dev_data` is idempotent: a second run creates nothing and never edits rows a developer
+changed. It refuses to run when `DEBUG` is off unless `--force` is passed. It runs the seeders
+listed in `SEEDERS` (`apps/core/seeding.py`) in one transaction, in this order:
+
+1. **Superuser** (`seed_superuser`): from `DEV_SUPERUSER_*` (email defaults to
+   `admin@example.com`; without a password the step is skipped, so no account with a known
+   password is ever created; an existing user is untouched, including its password).
+2. **Sample users** (`apps/core/seed_sample.py`): `seed-<role>@skylight.example.com` for
+   admin, manager, reviewer and viewer, plus `seed-admin@meridian.example.com` and
+   `seed-viewer@meridian.example.com`. The password comes only from `DEV_SEED_USER_PASSWORD`;
+   without it these users get an unusable password and cannot log in.
+3. **Clients, campaigns, memberships**: **SkyLight** with the Brief section 3 campaign (Saudi
+   Arabia; Financial Services, Accounting, SaaS, Technology; size 10-500; B2B; Sales, BD,
+   Commercial, Partnerships; VP BD ... Managing Director; Arabic/English) and **Meridian
+   Labs**, a contrasting client (UAE, Logistics/Retail/Healthcare, size 100-1000, CIO/CISO
+   titles, English, different exclusions) so multi-client rules visibly differ. Created through
+   `create_client`, `create_campaign` (profile version 1), `activate_campaign` and
+   `grant_membership`, so audit entries exist.
+4. **Companies**: three per campaign, each with a research snapshot, data sources, contacts and
+   signals. SkyLight has the Brief's tiqmo example (Riyadh, Financial Services, 155 employees,
+   BD headcount 15, -12% YoY, no trigger), a company with a fresh Sales-hiring signal (source
+   and date) and one with an expired signal. Trigger "No" companies are still eligible.
+
+Everything is flagged as fake: client notes, contact names, data-source names and rule notes
+carry `[SAMPLE DATA]`, company names end in `(sample)`, and websites and emails use
+`example.com`.
+
+**Extension point:** assessments (#42) and outreach (#43) are not seeded yet. Write a function
+with the `Seeder` signature (`(environ) -> SeedResult`, idempotent, built on the services) and
+append it to `SEEDERS` after the sample seeders.
+
+**Test fixture:** `seeded_world` (`tests/fixtures_seed.py`, available in every test) runs all
+seeders and returns a `SeededWorld` with `.users["skylight_admin" | "skylight_manager" |
+"skylight_reviewer" | "skylight_viewer" | "meridian_admin" | "meridian_viewer"]` (password
+`tests.fixtures_seed.SEEDED_PASSWORD`), `.clients["skylight" | "meridian"]`, `.campaigns[...]`
+and `.companies["tiqmo" | "najm" | "rimal" | "gulf_freight" | "oasis_retail" | "dune_health"]`.
+`run_all_seeders()` runs the seeders without the fixture and `load_seeded_world()` reads the
+handles back. Tests: `tests/test_seed_sample.py`.
 
 ### Reset the local database
 
@@ -242,7 +274,8 @@ request-id contextvar), `created_at`.
   become `[REDACTED]` at any depth in both `before` and `after`, and strings are scrubbed for
   `key=value` secrets. The diff is computed first, so a changed secret still shows as changed.
   ClientMembership changes (issue #46) should use the same `record_change` calls.
-- The admin shows Job, JobItem and AuditLog read-only. Test factories: `tests/factories_core.py`
+- The admin shows Job, JobItem and AuditLog read-only (AuditLog diffs are redacted again on
+  display, see [docs/admin.md](../docs/admin.md)). Test factories: `tests/factories_core.py`
   (`make_job`, `make_job_item`, `make_audit_log`).
 
 ## Domain model building blocks (`apps/core`)
@@ -277,6 +310,19 @@ tenant data through `Model.objects.for_user(user)` (views and services) or
 `for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
 superusers) see everything, everyone else sees the clients where they have an active
 `ClientMembership`, and anonymous or inactive users see nothing.
+
+### Django admin and data model docs (issue #54)
+
+Every model is registered in its app's `admin.py` or listed with a reason in
+`ADMIN_EXCLUDED_MODELS` (`apps/core/admin_base.py`); history rows are view only through
+`ReadOnlyAdmin`, and sensitive data is hidden or masked. Rules and how to register a model:
+[docs/admin.md](../docs/admin.md); tests: `tests/test_admin.py`.
+
+The ER diagram, entity index and field reference in `docs/data-model.md` and
+`docs/data-model-reference.md` are generated from the models. After changing a model run
+`python manage.py print_schema --write` and commit the docs; `tests/test_data_model_docs.py`
+fails when they are stale. Step-by-step guides: how to add an append-only record type and a
+permission-safe endpoint, in [docs/data-model.md](../docs/data-model.md).
 
 ### Roles and permissions (issue #46)
 

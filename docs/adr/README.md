@@ -15,7 +15,7 @@ decided, what else we considered and what it costs us. See
 | [0006](0006-django-jwt-authentication.md) | Authentication with Django JWT (SimpleJWT) | Accepted |
 | [0007](0007-keep-history-and-separate-ai-from-human-decisions.md) | Keep history, and store AI recommendations apart from human decisions | Accepted |
 | [0008](0008-icp-fit-and-trigger-are-separate.md) | ICP Fit and Trigger are separate concepts | Accepted |
-| [0009](0009-data-model-conventions.md) | Data model conventions: tenant column, latest-row lookups, immutable history | Proposed |
+| [0009](0009-data-model-conventions.md) | Data model conventions: tenant column, latest-row lookups, immutable history | Accepted |
 
 ## Adding a new ADR
 
