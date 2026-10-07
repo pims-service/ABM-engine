@@ -16,3 +16,5 @@ CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=3600)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+# Explicit frontend origins (comma-separated, no wildcard). No dev default in production.
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS")

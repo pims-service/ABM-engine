@@ -33,6 +33,19 @@ be run alone with `npm run gen:api` in `frontend/`; it reads this file offline.
   `frontend/src/lib/api/schema.ts`; wire it into the frontend CI job (the CI workflows are owned
   by issue #32).
 
+## Calling the API from a browser (CORS)
+
+The frontend calls `NEXT_PUBLIC_API_BASE_URL` straight from the browser, so the API answers CORS
+for `/api/` paths (see [ADR 0010](../adr/0010-direct-browser-to-api-with-cors-allowlist.md)):
+
+- Only origins in `CORS_ALLOWED_ORIGINS` get `Access-Control-Allow-Origin`; there is no wildcard
+  and no credentials mode. Send the access token in `Authorization: Bearer ...`.
+- Allowed request headers: `Authorization`, `Content-Type`, `Accept`, `X-Request-ID`.
+- Readable response headers: `X-Profile-Version-Created` (campaign create and update),
+  `X-Request-ID` and `Retry-After` (429).
+
+CORS is not part of the OpenAPI schema, so `openapi.yaml` does not change with it.
+
 ## Live docs
 
 `/api/v1/schema/`, `/api/v1/docs/` (Swagger UI) and `/api/v1/redoc/` are served only when

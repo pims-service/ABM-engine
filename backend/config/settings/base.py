@@ -39,6 +39,7 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "django_q",
     "drf_spectacular",
+    "corsheaders",
 ]
 LOCAL_APPS = [
     "apps.accounts.apps.AccountsConfig",
@@ -54,6 +55,9 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "apps.core.middleware.RequestIDMiddleware",  # first: every response gets X-Request-ID
+    # CORS before anything that can answer or redirect (Security, Common), so preflights and
+    # error responses carry the headers; after the request ID so they are still tagged.
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -218,3 +222,19 @@ AUTH_REFRESH_COOKIE_NAME = env("AUTH_REFRESH_COOKIE_NAME", default="abm_refresh"
 AUTH_REFRESH_COOKIE_PATH = "/api/v1/auth/"  # only sent to the auth endpoints
 AUTH_REFRESH_COOKIE_SECURE = env.bool("AUTH_REFRESH_COOKIE_SECURE", default=True)
 AUTH_REFRESH_COOKIE_SAMESITE = env("AUTH_REFRESH_COOKIE_SAMESITE", default="Lax")
+
+# CORS (ADR 0010): the browser calls the API directly from the frontend origin. Explicit origin
+# allowlist (never a wildcard); Bearer tokens travel in the Authorization header, not cookies,
+# so credentials stay off. The dev default is the local frontend; production must set it
+# (config/env_validation.py, prod.py). Only /api/ is affected: /admin/ and the probes get no
+# CORS headers.
+CORS_ALLOWED_ORIGINS = env.list(
+    "CORS_ALLOWED_ORIGINS", default=["http://localhost:3000", "http://127.0.0.1:3000"]
+)
+CORS_ALLOW_CREDENTIALS = False
+CORS_URLS_REGEX = r"^/api/"
+CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH"]  # no DELETE endpoints
+CORS_ALLOW_HEADERS = ["authorization", "content-type", "accept", "x-request-id"]
+# Response headers the browser may read from fetch(); all others are hidden from page code.
+CORS_EXPOSE_HEADERS = ["X-Profile-Version-Created", "X-Request-ID", "Retry-After"]
+CORS_PREFLIGHT_MAX_AGE = env.int("CORS_PREFLIGHT_MAX_AGE", default=600)  # seconds

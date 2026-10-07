@@ -612,6 +612,25 @@ cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the brows
 state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
 can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
 
+## CORS (issue #228, [ADR 0010](../docs/adr/0010-direct-browser-to-api-with-cors-allowlist.md))
+
+The browser calls the API directly (typed client, `Authorization: Bearer` header); only sign-in
+goes through the Next.js server. `django-cors-headers` makes that possible, for `/api/` paths only
+(`CORS_URLS_REGEX`), so `/admin/` and the probes get no CORS headers.
+
+| Setting | Value |
+| --- | --- |
+| `CORS_ALLOWED_ORIGINS` (env) | explicit origins, comma-separated, e.g. `https://app.example.com`. Dev default `http://localhost:3000,http://127.0.0.1:3000`; **required in production**. No wildcard; no path or trailing slash (startup validation) |
+| `CORS_ALLOW_CREDENTIALS` | `False`: Bearer tokens in a header need no cookies, so no cross-origin credentials |
+| `CORS_ALLOW_METHODS` | `GET, HEAD, OPTIONS, POST, PUT, PATCH` |
+| `CORS_ALLOW_HEADERS` | `authorization, content-type, accept, x-request-id` |
+| `CORS_EXPOSE_HEADERS` | `X-Profile-Version-Created, X-Request-ID, Retry-After` (browsers hide other response headers from page code) |
+| `CORS_PREFLIGHT_MAX_AGE` (env) | `600` seconds |
+
+`CorsMiddleware` is listed right after `RequestIDMiddleware` and before `SecurityMiddleware` and
+`CommonMiddleware`. A browser CORS failure looks like a network error, not an API error: first
+check that the frontend's origin is in `CORS_ALLOWED_ORIGINS`. Tests: `tests/test_cors.py`.
+
 ## Health and readiness
 
 Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
@@ -878,7 +897,7 @@ variables take precedence.
 On startup (every settings module except `config.settings.test`) `config/env_validation.py`
 checks the environment and refuses to start, naming every missing or invalid variable in one
 error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
-`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+`ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` are required in production. Logs pass through a redaction filter that masks
 password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults

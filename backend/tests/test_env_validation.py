@@ -14,6 +14,7 @@ GOOD = {
     "SECRET_KEY": GOOD_KEY,
     "DATABASE_URL": "postgres://u:p@localhost:5432/db",  # pragma: allowlist secret
     "ALLOWED_HOSTS": "example.test",
+    "CORS_ALLOWED_ORIGINS": "https://app.example.test",
 }
 
 
@@ -60,6 +61,56 @@ def test_allowed_hosts_required_in_production_only() -> None:
     assert validate_environment(_env(ALLOWED_HOSTS=None), settings_module=DEV) == []
     problems = validate_environment(_env(ALLOWED_HOSTS=" , "), settings_module=PROD)
     assert [p.split(":")[0] for p in problems] == ["ALLOWED_HOSTS"]
+
+
+def test_cors_origins_required_in_production_only() -> None:
+    assert validate_environment(_env(CORS_ALLOWED_ORIGINS=None), settings_module=DEV) == []
+    for blank in (None, "", " , "):
+        problems = validate_environment(_env(CORS_ALLOWED_ORIGINS=blank), settings_module=PROD)
+        assert [p.split(":")[0] for p in problems] == ["CORS_ALLOWED_ORIGINS"]
+        assert "missing" in problems[0]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "*",
+        "https://*.example.test",
+        "https://app.example.test/",
+        "https://app.example.test/path",
+        "https://app.example.test?x=1",
+        "app.example.test",
+        "ftp://app.example.test",
+        "https://user@app.example.test",
+        "http://localhost:notaport",
+        "null",
+        "https://ok.example.test,https://bad.example.test/",
+    ],
+)
+def test_cors_origins_must_be_plain_origins(value: str) -> None:
+    for module in (DEV, PROD):
+        problems = validate_environment(_env(CORS_ALLOWED_ORIGINS=value), settings_module=module)
+        assert [p.split(":")[0] for p in problems] == ["CORS_ALLOWED_ORIGINS"]
+        assert "bad.example" not in problems[0]  # rules only, never values
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://app.example.test",
+        "http://localhost:3000,http://127.0.0.1:3000",
+        " https://a.example.test , https://b.example.test:8443 ",
+        "http://[::1]:3000",
+    ],
+)
+def test_valid_cors_origins_pass(value: str) -> None:
+    for module in (DEV, PROD):
+        assert validate_environment(_env(CORS_ALLOWED_ORIGINS=value), settings_module=module) == []
+
+
+def test_cors_preflight_max_age_must_be_an_integer() -> None:
+    problems = validate_environment(_env(CORS_PREFLIGHT_MAX_AGE="soon"), settings_module=DEV)
+    assert problems == ["CORS_PREFLIGHT_MAX_AGE: invalid, must be an integer"]
 
 
 def test_invalid_optional_values_are_named() -> None:
