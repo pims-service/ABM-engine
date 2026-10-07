@@ -309,6 +309,19 @@ functions in `apps/campaigns/services.py`, never raw writes:
 - The admin shows profile versions read-only, has no delete buttons (archive actions instead) and
   campaigns are created through the service, not the admin add form.
 
+### Client API (`/api/v1/clients/`, issue #47)
+
+`apps/campaigns/api/clients.py` (`ClientViewSet`, a `ClientScopedViewSet`): list, create, retrieve,
+PUT/PATCH (name, notes), `POST {id}/archive/` and `POST {id}/restore/`. No DELETE. `status` is
+read-only (changed only by archive/restore). List query params: `status` (`active`|`archived`),
+`archived` (`false` default, `true`, `all`), `search` (name), `ordering` (`name`, `status`,
+`created_at`, `updated_at`, prefix `-`), plus `page`/`page_size`. Names are unique ignoring case
+among non-archived clients: a duplicate gives 400 `validation_error` with `details.name`. Writes
+go through `create_client_with_admin` (creator becomes admin, audited), `update_client`,
+`archive_client`, `restore_client` in `services.py`, so every change writes an `AuditLog` row with
+the actor and diff. Archiving a client with queued or running jobs gives 409
+`client_has_active_jobs`; an archived client is read-only (400). Per-action levels: [docs/permissions.md](../docs/permissions.md#client-endpoints-apiv1clients-issue-47).
+
 Tests: `tests/factories.py` has `ClientFactory`, `CampaignFactory` (goes through
 `create_campaign`; override rules with `profile__offer="..."`), `make_client()` and
 `make_campaign()`. The concurrency test (`tests/test_profile_concurrency.py`) only runs on
@@ -342,6 +355,30 @@ PostgreSQL.
   that reference a source must have the same `client_id` (see `CompanyResearch.sync_client`).
 - Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
   `make_research()`, `make_data_source()` in `tests/factories.py`.
+
+### Assessments and decisions (`apps/research`)
+
+`ICPAssessment` (fit only), `AIRecommendation` and `HumanDecision` are append-only, carry
+`client`, and have no score. AI and human answers are different tables. Use
+`apps/research/services.py`:
+
+- `record_icp_assessment(company, fit, reasons, concerns=(), *, model_name, prompt_version,
+  schema_version, raw_output=None, campaign_profile=None, company_research=None)`: `fit` is
+  `strong` / `medium` / `weak`. The profile defaults to the campaign's current version and the
+  research to the company's latest snapshot (none: `ValidationError`). Both must belong to the
+  company, else `TenantMismatchError`. No signal input: a strong fit with no signals is valid.
+- `record_ai_recommendation(icp_assessment, status, explanation, *, model_name, prompt_version,
+  schema_version, raw_output=None)`: `status` is `add` / `hold` / `skip`.
+- `record_human_decision(company, decision, user, *, ai_recommendation=None, note="",
+  decided_at=None)`: never touches the recommendation. `ai_recommendation` is nullable (a decision
+  with no AI answer is valid and is excluded from agreement).
+- Current row: `Model.objects.latest_for(company)` and `Model.objects.current()` (latest per
+  company; `decided_at` for decisions, `created_at` otherwise, ties by id).
+- Agreement (Brief section 11): `HumanDecision.objects.agreement()` returns an `AgreementSummary`
+  (`compared`, `agreed`, `disagreed`, `without_ai`, `rate`, `pairs`). Chain `.current()` for only
+  each company's latest decision, or `.for_client(client)`. Also `.overrides()`, `.agreeing()`,
+  `.with_ai_status()`.
+- Factories: `make_icp_assessment()`, `make_ai_recommendation()`, `make_human_decision()`.
 
 ### Signals (`apps/research`) and contacts (`apps/companies`)
 
