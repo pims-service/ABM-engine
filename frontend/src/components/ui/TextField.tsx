@@ -8,6 +8,8 @@ export type TextFieldProps = ComponentProps<"input"> & {
   error?: string;
   hint?: string;
   inputRef?: Ref<HTMLInputElement>;
+  /** Show a "*" after the label of a `required` field. */
+  markRequired?: boolean;
 };
 
 /** A labelled text input with an optional hint and error, wired up for assistive tech. */
@@ -17,6 +19,7 @@ export function TextField({
   error,
   hint,
   inputRef,
+  markRequired,
   className,
   ...props
 }: TextFieldProps) {
@@ -32,7 +35,7 @@ export function TextField({
     <div className="flex flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium text-fg">
         {label}
-        {props.required ? (
+        {markRequired && props.required ? (
           <span aria-hidden="true" className="text-danger-fg">
             {" "}
             *

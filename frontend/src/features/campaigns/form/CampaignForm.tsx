@@ -403,6 +403,7 @@ export function CampaignForm({
             id={fieldId("name")}
             label="Campaign name"
             required
+            markRequired
             maxLength={LIMITS.name}
             value={values.name}
             error={errors.name}
