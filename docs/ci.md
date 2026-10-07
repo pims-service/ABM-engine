@@ -21,6 +21,20 @@ is not configured by the workflow):
 | `Docker images build` | Builds the backend and frontend images. Nothing is pushed. | see below |
 | `Secret scan (gitleaks)` | gitleaks over the full git history. | see below |
 
+### Backend steps worth knowing by name (issue #53)
+
+Inside the `Backend (lint, types, tests)` job (the job name is unchanged, it is the required
+check):
+
+| Step | What it does | Run it locally |
+| --- | --- | --- |
+| `Invariant tests (history, ICP vs trigger, tenant isolation)` | `pytest -m invariants`: the brief's hard rules (append-only history, ICP fit vs trigger, AI vs human, no outreach without an `add` decision, tenant isolation on every model and endpoint). Runs before the main suite so a regression is visible by name. | `uv run pytest -m invariants --no-cov` |
+| `Pytest (with coverage)` | Everything else (`-m "not invariants" --cov-append`), applying the 90% gate to both runs together. | `uv run pytest` |
+| `Coverage of models and permissions (85% each)` | `scripts/check_module_coverage.py`: every `apps/*/models.py` and `core/permissions.py`, `tenancy.py`, `roles.py` must reach 85% by itself. | after `uv run pytest`: `uv run python scripts/check_module_coverage.py` |
+
+How to extend the group (new model, new endpoint): [backend/README.md](../backend/README.md#invariant-tests-testsinvariants-issue-53).
+The job timeout is 25 minutes because the isolation tests seed data per test.
+
 Dependencies are cached (uv cache keyed on `backend/uv.lock`, npm cache keyed
 on `frontend/package-lock.json`, Playwright browsers keyed on the Playwright
 version, pre-commit environments, Docker layers), so a typical run should stay
