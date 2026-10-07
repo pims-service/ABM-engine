@@ -89,6 +89,8 @@ Source in `backend/` and `frontend/` is bind-mounted, so edits hot-reload. Data 
 
 New to the project? Follow [docs/onboarding.md](docs/onboarding.md) (setup, Windows notes, troubleshooting) and then the [smoke-test checklist](docs/smoke-test.md). The reasoning behind the stack is in the [architecture decision records](docs/adr/README.md), and commit, branch and PR rules are in [docs/conventions.md](docs/conventions.md).
 
+Working on the data layer? [docs/data-model.md](docs/data-model.md) has the ER diagram, the history and tenancy rules, how to add a new append-only record type and how to write a permission-safe endpoint (field-level reference: [docs/data-model-reference.md](docs/data-model-reference.md)). Roles and the authentication choice are in [docs/permissions.md](docs/permissions.md), and what the Django admin shows and hides is in [docs/admin.md](docs/admin.md).
+
 ## Repository layout
 
 ```

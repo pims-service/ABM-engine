@@ -1,6 +1,6 @@
 # 0009. Data model conventions: tenant column, latest-row lookups, immutable history
 
-- Status: Proposed
+- Status: Accepted (implemented in issues #39 to #46, #52 and #54)
 - Date: 2026-10-06
 
 ## Context
