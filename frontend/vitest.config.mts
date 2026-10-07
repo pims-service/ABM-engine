@@ -13,5 +13,7 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Modules that import `@/lib/api` read this at load time.
+    env: { NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000/api" },
   },
 });

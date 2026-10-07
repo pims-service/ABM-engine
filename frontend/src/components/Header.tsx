@@ -3,6 +3,7 @@ import type { Ref } from "react";
 import { SIDEBAR_ID } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
+import { UserMenu } from "@/components/UserMenu";
 
 export function Header({
   menuOpen = false,
@@ -33,7 +34,7 @@ export function Header({
       </div>
       <div className="flex items-center gap-2">
         <ThemeToggle />
-        {/* Placeholder for user menu (auth lands in a later issue). */}
+        <UserMenu />
       </div>
     </header>
   );

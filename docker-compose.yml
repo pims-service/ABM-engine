@@ -98,6 +98,8 @@ services:
     command: npm run dev -- --hostname 0.0.0.0 --port 3000
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api}
+      # Server-side address of the API for the Next.js auth route handlers (BFF).
+      API_INTERNAL_BASE_URL: ${API_INTERNAL_BASE_URL:-http://api:8000/api}
       NEXT_TELEMETRY_DISABLED: "1"
       # File watching is unreliable on bind mounts from Windows/macOS hosts.
       WATCHPACK_POLLING: "true"
