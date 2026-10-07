@@ -64,15 +64,28 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth_refresh": ("POST", "/api/v1/auth/refresh/"),
         "auth_logout": ("POST", "/api/v1/auth/logout/"),
         "auth_me": ("GET", "/api/v1/auth/me/"),
+        "clients_list": ("GET", "/api/v1/clients/"),
+        "clients_create": ("POST", "/api/v1/clients/"),
+        "clients_retrieve": ("GET", "/api/v1/clients/{id}/"),
+        "clients_update": ("PUT", "/api/v1/clients/{id}/"),
+        "clients_partial_update": ("PATCH", "/api/v1/clients/{id}/"),
+        "clients_archive": ("POST", "/api/v1/clients/{id}/archive/"),
+        "clients_restore": ("POST", "/api/v1/clients/{id}/restore/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
     for op_id, (_, path, op) in ops.items():
         expected_tag = (
-            "auth" if "/auth/" in path else "health" if op_id.startswith("health") else "meta"
+            "auth"
+            if "/auth/" in path
+            else "clients"
+            if "/clients/" in path
+            else "health"
+            if op_id.startswith("health")
+            else "meta"
         )
         assert op["tags"] == [expected_tag], op_id
-    assert {t["name"] for t in schema["tags"]} == {"auth", "health", "meta"}
+    assert {t["name"] for t in schema["tags"]} == {"auth", "clients", "health", "meta"}
 
 
 def test_jwt_bearer_security_scheme(schema: dict[str, Any]) -> None:
