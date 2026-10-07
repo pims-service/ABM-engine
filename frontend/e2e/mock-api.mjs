@@ -7,6 +7,8 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
+import { handleData } from "./mock-data.mjs";
+
 const PORT = Number(process.env.MOCK_API_PORT ?? 8999);
 const ACCESS_TTL_SECONDS = Number(process.env.MOCK_ACCESS_TTL ?? 900);
 
@@ -47,10 +49,17 @@ function issuePair() {
   return { access, refresh };
 }
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Expose-Headers": "X-Request-ID",
+};
+
 function send(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json",
     "X-Request-ID": "mock-request-id",
+    // The browser calls the clients/campaigns endpoints directly (cross-origin).
+    ...CORS_HEADERS,
   });
   res.end(status === 204 ? undefined : JSON.stringify(body));
 }
@@ -74,6 +83,33 @@ async function readJson(req) {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://mock");
   const route = `${req.method} ${url.pathname}`;
+
+  if (req.method === "OPTIONS") {
+    // CORS preflight for the browser's direct API calls.
+    res.writeHead(204, {
+      ...CORS_HEADERS,
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "authorization, content-type",
+    });
+    return res.end();
+  }
+
+  if (
+    url.pathname.startsWith("/__data/") ||
+    url.pathname.startsWith("/api/v1/clients/") ||
+    url.pathname.startsWith("/api/v1/campaigns/")
+  ) {
+    const handled = await handleData(req, res, url, {
+      send,
+      fail,
+      readJson,
+      authed: (request) =>
+        validAccess.has(
+          (request.headers.authorization ?? "").replace(/^Bearer /, ""),
+        ),
+    });
+    if (handled !== false) return;
+  }
 
   switch (route) {
     case "POST /api/v1/auth/login/": {
