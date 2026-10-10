@@ -154,6 +154,13 @@ inside the container, then `docker cp` it out). Restore into an empty database; 
 the dev database, run `reset_local_db --no-migrate` first. Dumps contain real data, so keep them
 out of git.
 
+## Provider integrations
+
+External data, email, LLM and CRM providers are reached through adapters (ADR 0002). The provider
+shortlist, licensing notes and the requirements every adapter must meet are in
+[docs/integrations/](../docs/integrations/README.md); the first-provider choice is a proposed
+decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No adapter code exists yet.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
