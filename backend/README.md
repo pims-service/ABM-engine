@@ -895,6 +895,74 @@ Example Trading Co,example.com,https://www.linkedin.com/company/example-trading,
 - **Formula injection**: raw values are stored as typed (`=cmd|' /C calc'!A0` stays as is). Every
   value written to a CSV or XLSX export must go through `safe_cell(value)` (or `safe_row`), which
   prefixes `'` to values starting with `=`, `+`, `-`, `@`, tab or CR.
+### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
+
+What a company data provider adapter implements, so M2 imports (#67, #68) and M3 adapters meet
+in the middle. Pure Python: no models, no API, no network, no vendor SDK. Importing the package
+registers nothing. Tests: `tests/test_provider_contract.py`.
+
+```python
+from apps.imports.providers import (
+    CompanySearchRequest,
+    FakeCompanyProvider,
+    ProviderRegistry,
+    execute_search,
+    ProviderError,
+)
+
+request = CompanySearchRequest.from_campaign_rules(build_rules_summary(campaign), page_size=25)
+provider = FakeCompanyProvider()  # or get_provider("<name>") for a registered one
+while True:
+    page = execute_search(provider, request)  # never call provider.search directly
+    for company in page.items:
+        result = company.to_company_input()  # CompanyInput | InputErrors (never raises)
+        raw = company.to_raw_data(page.provider_name)  # for ImportRow.raw_data, has provider_key
+    if page.next_cursor is None:
+        break
+    request = request.with_cursor(page.next_cursor)
+```
+
+- **Request** `CompanySearchRequest` (frozen, validated on construction; bad input raises
+  `ProviderBadRequest(field)`): `query`, `countries` (ISO alpha-2), `industries`,
+  `employee_min/max`, `business_model` (`b2b|b2c|both|""`), `excluded_industries`,
+  `excluded_company_types`, `cursor`, `page_size` (1-100, default 25), `sort` (`relevance`,
+  `name`, `employee_count_asc`, `employee_count_desc`), `limit` (1-1000 total, default 100).
+  `from_campaign_rules(rules_summary, query=, page_size=, limit=, sort=, cursor=)` reads rules
+  summary schema version 1 (`targeting.*`, `exclusions.*`); other versions are refused.
+- **Result** `CompanySearchResult`: `items` (tuple of `ProviderCompany`), `provider_name`,
+  `retrieved_at` (timezone aware), `total_estimate`, `next_cursor` (`None` is the last page),
+  `raw_ref`, `credits_used`, `warnings` (partial page).
+- **`ProviderCompany`**: `name`, `website`, `domain_hint`, `profile_url`, `country` (ISO alpha-2
+  or it becomes an error), `industry`, `employee_count`, `employee_range`, `headquarters`,
+  `description`, `provider_id`, `provider_url`, `confidence`, `extra` (scalars only, at most 20
+  keys and 4 KiB, credentials scrubbed). `to_company_input(require_identifier=False)` uses the
+  same `validate_company_input` as manual and CSV rows; the website falls back to `domain_hint`.
+- **Interface** `CompanySearchProvider` (Protocol): `name`, `capabilities`
+  (`ProviderCapabilities(terms, supports_search, supports_filters=FilterSupport(countries,
+  industries, size, business_model), max_page_size, requires_credentials)`) and
+  `search(request) -> CompanySearchResult`. `execute_search(provider, request)` caps the page
+  size, wraps unexpected exceptions as `ProviderUnavailable` and checks the result.
+- **Errors** (`ProviderError` and subclasses, each with `code`, `retryable`, `as_dict()`):
+  `ProviderAuthError` (`provider_auth`), `ProviderRateLimited(retry_after)`
+  (`provider_rate_limited`, retryable), `ProviderUnavailable` (`provider_unavailable`,
+  retryable), `ProviderBadRequest` (`provider_bad_request`), `ProviderQuotaExceeded`
+  (`provider_quota_exceeded`). Messages are fixed per class: never credentials, never upstream
+  bodies. Chain the vendor exception with `raise ... from exc`.
+- **Registry**: `ProviderRegistry()` (`register(provider, replace=False)`, `get`, `list`,
+  `unregister`, `clear`) and the module default via `register_provider`, `get_provider`,
+  `list_providers`. Refusals raise `ProviderRegistryError` with a `code`: `invalid_provider`,
+  `invalid_name`, `terms_missing`, `terms_forbidden`, `terms_unknown`, `duplicate_name`,
+  `provider_not_found` (on `get`).
+- **Compliance (Brief 4, 17)**: `capabilities.terms` must be `licensed_api`, `public_data` or
+  `manual`. Scraping-style terms are refused at registration. Profile URLs (LinkedIn included)
+  are identifiers only: never fetched.
+- **Idempotent identity**: `provider_company_key(provider_name, provider_id)` ->
+  `"<name>:<id>"` (maps to `DataSource.name` and `DataSource.provider_reference`);
+  `ProviderCompany.provider_key(name)` is `None` without an id. Same key, same company.
+- **`FakeCompanyProvider(name="fake", fail_with=None, max_page_size=50)`**: 25 placeholder
+  companies on `example.com` (some Arabic names), every filter, sort, cursor paging and `limit`.
+  Errors on demand: `fail_with=` an error instance, or the queries `!auth`, `!rate_limited`,
+  `!unavailable`, `!bad_request`, `!quota`. `calls` records requests. Not registered by default.
 
 ### Invariant tests (`tests/invariants`, issue #53)
 
