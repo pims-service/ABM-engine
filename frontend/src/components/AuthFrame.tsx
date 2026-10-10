@@ -4,6 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { AccessProvider } from "@/features/access/AccessProvider";
+import { SelectionProvider } from "@/features/selection/SelectionProvider";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LOGIN_PATH } from "@/lib/auth/constants";
 import { isPublicPath, loginUrl } from "@/lib/auth/redirect";
@@ -25,7 +27,11 @@ export function AuthFrame({ children }: { children: ReactNode }) {
   }
   return (
     <AuthGate>
-      <AppShell>{children}</AppShell>
+      <AccessProvider>
+        <SelectionProvider>
+          <AppShell>{children}</AppShell>
+        </SelectionProvider>
+      </AccessProvider>
     </AuthGate>
   );
 }

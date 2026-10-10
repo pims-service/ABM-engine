@@ -1,17 +1,5 @@
-import { EmptyState } from "@/components/ui/EmptyState";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { CampaignsPage } from "@/features/campaigns/CampaignsPage";
 
-export default function CampaignsPage() {
-  return (
-    <>
-      <PageHeader
-        title="Campaigns"
-        description="Create and manage ABM campaigns. Content coming soon."
-      />
-      <EmptyState
-        title="No campaigns yet"
-        description="Campaigns you create will be listed here."
-      />
-    </>
-  );
+export default function Page() {
+  return <CampaignsPage />;
 }
