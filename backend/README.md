@@ -443,6 +443,47 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
 - Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
   `make_research()`, `make_data_source()` in `tests/factories.py`.
 
+### Normalization utilities (`apps/companies/normalize.py`, issue #57)
+
+Pure functions (no DB, no network, no extra dependency) that never raise on any input:
+unusable input gives `None` or an `invalid` classification, so an import records a warning
+for the row instead of failing the batch. Profile URLs are parsed as identifiers only; nothing
+is ever fetched.
+
+- `normalize_website(raw) -> NormalizedWebsite | None` (`url`, `domain`, `registrable_domain`,
+  `warnings`): canonical `https://host[:port][/path][?query]`. Scheme added or `http` upgraded,
+  host lowercased and punycoded, one `www.` and ports 80/443 dropped, fragment and tracking
+  params (`utm_*`, `gclid`, `fbclid`, `ref`, ...) removed, query sorted, trailing slash removed.
+  `None` for `javascript:`/`data:`/`file:`/`mailto:`/`ftp:`, credentials, IPs, single labels,
+  whitespace or control characters, and over-long input (2048 in, 2000 out).
+- `normalize_profile_url(raw) -> NormalizedProfileUrl | None` (`provider`, `slug`, `url`, `kind`,
+  `identity`, `is_numeric_id`): LinkedIn `company`/`showcase`/`school` (country, `m.` and
+  `mobile.` subdomains, locale prefixes, `/about`, `/posts`, query, numeric ids) becomes
+  `https://www.linkedin.com/company/<lowercase slug>`; Crunchbase `/organization/<slug>` too;
+  other http(s) URLs return `provider="generic"` with the canonical website URL. Personal
+  LinkedIn profiles (`/in/...`) give `None`.
+- `normalize_company_name(raw) -> NormalizedName | None` (`display`, `key`, `warnings`):
+  display is NFKC and whitespace-cleaned; the key is casefolded, accent/diacritic/tatweel-free,
+  Arabic letter variants folded, digits ASCII, punctuation removed, and legal suffixes (LLC, Ltd,
+  Inc, Co., PJSC, FZE, ذ.م.م, ش.م.ع, ...) and leading `the`/`شركة` dropped. The last remaining
+  word is never dropped.
+- `company_match_keys(name, website, profile_url) -> tuple[MatchKey, ...]`: ordered identity
+  keys, `MatchKey("domain", "acme.com")`, `MatchKey("profile", "linkedin:acme")`,
+  `MatchKey("name", "acme")` (`str(key)` gives `domain:acme.com`). Domain is exactly what
+  `Company.domain` stores. The name key is a weak match: combine with country (#58).
+- `normalize_company_input(name, website, profile_url) -> NormalizedCompanyInput`: all of the
+  above for one row with `domain`, `profile_url_canonical`, `name_normalized`, `warnings`
+  (`website_unparseable`, `website:tracking_params_removed`, ...) and `match_keys`.
+- `classify_input(raw) -> ClassifiedInput(kind, value)` for the manual form's single box:
+  `empty`, `url`, `domain`, `profile_url`, `name` or `invalid`.
+
+`normalize_domain` (`apps/companies/domain.py`) is unchanged and still what `Company.save`
+uses. `registrable_domain(host)` (`apps/companies/public_suffix.py`) uses a small embedded,
+versioned list (`SUFFIX_LIST_VERSION`) of multi-part suffixes such as `co.uk`, `com.sa`,
+`com.au`, `co.in` instead of `tldextract` (no cache directory, no network, no dependency). The
+tradeoff: a suffix not in the list gives a shorter registrable domain; add it to
+`MULTI_PART_SUFFIXES` and bump the version. Tests: `tests/test_company_normalize.py`.
+
 ### Assessments and decisions (`apps/research`)
 
 `ICPAssessment` (fit only), `AIRecommendation` and `HumanDecision` are append-only, carry
@@ -611,6 +652,25 @@ The cookie is always `HttpOnly`. CSRF: the auth endpoints accept JSON only (not 
 cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the browser send it with a
 state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
 can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
+
+## CORS (issue #228, [ADR 0010](../docs/adr/0010-direct-browser-to-api-with-cors-allowlist.md))
+
+The browser calls the API directly (typed client, `Authorization: Bearer` header); only sign-in
+goes through the Next.js server. `django-cors-headers` makes that possible, for `/api/` paths only
+(`CORS_URLS_REGEX`), so `/admin/` and the probes get no CORS headers.
+
+| Setting | Value |
+| --- | --- |
+| `CORS_ALLOWED_ORIGINS` (env) | explicit origins, comma-separated, e.g. `https://app.example.com`. Dev default `http://localhost:3000,http://127.0.0.1:3000`; **required in production**. No wildcard; no path or trailing slash (startup validation) |
+| `CORS_ALLOW_CREDENTIALS` | `False`: Bearer tokens in a header need no cookies, so no cross-origin credentials |
+| `CORS_ALLOW_METHODS` | `GET, HEAD, OPTIONS, POST, PUT, PATCH` |
+| `CORS_ALLOW_HEADERS` | `authorization, content-type, accept, x-request-id` |
+| `CORS_EXPOSE_HEADERS` | `X-Profile-Version-Created, X-Request-ID, Retry-After` (browsers hide other response headers from page code) |
+| `CORS_PREFLIGHT_MAX_AGE` (env) | `600` seconds |
+
+`CorsMiddleware` is listed right after `RequestIDMiddleware` and before `SecurityMiddleware` and
+`CommonMiddleware`. A browser CORS failure looks like a network error, not an API error: first
+check that the frontend's origin is in `CORS_ALLOWED_ORIGINS`. Tests: `tests/test_cors.py`.
 
 ## Health and readiness
 
@@ -905,7 +965,7 @@ variables take precedence.
 On startup (every settings module except `config.settings.test`) `config/env_validation.py`
 checks the environment and refuses to start, naming every missing or invalid variable in one
 error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
-`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+`ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` are required in production. Logs pass through a redaction filter that masks
 password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults

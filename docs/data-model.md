@@ -1176,8 +1176,14 @@ one still open.
 10. **Signal dates.** `event_date` is required (NOT NULL), in the database and the service.
     Where a source only states a posting date (an open job post), use that date. A fact with no
     date from its source cannot be stored as a signal: nothing is invented.
-11. **Domain rules.** Only `www.` is stripped; other subdomains are kept (`eu.example.com`). A
-    public suffix list is not used.
+11. **Domain rules.** Only `www.` is stripped; other subdomains are kept (`eu.example.com`), so
+    the stored `Company.domain` and the `(campaign, domain)` constraint do not depend on a public
+    suffix list. For callers that need the registrable domain (`example.co.uk`, `acme.com.sa`)
+    there is `registrable_domain()` in `apps/companies/public_suffix.py`, backed by a small,
+    versioned, embedded list of multi-part suffixes (no `tldextract`, no network); a suffix
+    missing from it errs towards a shorter result and is fixed by adding one line. Website,
+    profile-URL and name normalization for matching live in `apps/companies/normalize.py`
+    (issue #57); they build on, and do not change, `normalize_domain`.
 12. **Industries and countries.** Industries are free text; countries are ISO 3166-1 alpha-2,
     upper case, validated.
 13. **Languages.** Lower-case language codes (`en`, `ar`), and a message language must be one of
