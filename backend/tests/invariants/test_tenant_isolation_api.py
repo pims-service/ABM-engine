@@ -35,7 +35,10 @@ from apps.core.models import AuditLog
 from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
 from apps.core.seed_sample import SeededWorld, load_seeded_world
+from apps.integrations import services as services_integrations
+from apps.integrations.models import IntegrationConnection
 from tests.factories import make_campaign, make_client, make_user
+from tests.factories_integrations import make_connection
 from tests.fixtures_seed import run_all_seeders
 from tests.invariants.conftest import shared_db
 
@@ -104,6 +107,11 @@ class Ctx:
     b_archived_campaign: Campaign
     b_archived_client: Client
     extra_campaign: Campaign
+    a_connection: IntegrationConnection
+    a_archived_connection: IntegrationConnection
+    b_connection: IntegrationConnection
+    b_archived_connection: IntegrationConnection
+    extra_connection: IntegrationConnection
     outsider: User = field(default=None)  # type: ignore[assignment]
 
     def api(self, user: User | None) -> APIClient:
@@ -143,6 +151,10 @@ def build_ctx(world: SeededWorld) -> Ctx:
     services.archive_client(b_arch_client)
 
     extra = make_client(name="Extra Co")
+    a_conn_archived = make_connection(a, name="A archived connection")
+    services_integrations.archive_connection(a_conn_archived)
+    b_conn_archived = make_connection(b, name="B archived connection")
+    services_integrations.archive_connection(b_conn_archived)
     return Ctx(
         world=world,
         extra=extra,
@@ -156,6 +168,11 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
         extra_campaign=make_campaign(client=extra, name="Extra campaign"),
+        a_connection=make_connection(a, name="A connection"),
+        a_archived_connection=a_conn_archived,
+        b_connection=make_connection(b, name="B connection"),
+        b_archived_connection=b_conn_archived,
+        extra_connection=make_connection(extra, name="Extra connection"),
         outsider=make_user(),
     )
 
@@ -185,7 +202,8 @@ class Scenario:
     ``kind``: ``list`` (collection read), ``item`` (``{pk}`` in the path), ``nested``
     (``{client_pk}``
     in the path), ``create`` (client id in the body), ``client_create`` (no client involved).
-    ``target`` picks the object family for ``{pk}``: ``client`` or ``campaign``. ``archived`` says
+    ``target`` picks the object family for ``{pk}``: ``client``, ``campaign`` or ``connection``.
+    ``archived`` says
     the target must be archived (restore). ``level`` is what docs/permissions.md demands.
     """
 
@@ -266,6 +284,62 @@ def _scenarios() -> dict[str, Scenario]:
             "GET /api/v1/campaigns/{pk}/profile-versions/{version}/", "item", Level.READ, "campaign"
         ),
         Scenario("GET /api/v1/campaigns/{pk}/rules-summary/", "item", Level.READ, "campaign"),
+        # Integration connections (issue #76): credentials are sensitive, so reading needs EDIT
+        # (manager, admin) and every write needs MANAGE (admin).
+        Scenario("GET /api/v1/integrations/connections/", "list", Level.EDIT),
+        Scenario(
+            "POST /api/v1/integrations/connections/",
+            "create",
+            Level.MANAGE,
+            body=lambda: {
+                "category": "llm",
+                "provider": "fake",
+                "name": unique("Conn"),
+                "credentials": {
+                    "api_key": "ISOLATIONPROBESECRET1234567"
+                },  # pragma: allowlist secret
+            },
+        ),
+        Scenario("GET /api/v1/integrations/connections/{pk}/", "item", Level.EDIT, "connection"),
+        Scenario(
+            "PUT /api/v1/integrations/connections/{pk}/",
+            "item",
+            Level.MANAGE,
+            "connection",
+            body=lambda: {"name": unique("Put")},
+        ),
+        Scenario(
+            "PATCH /api/v1/integrations/connections/{pk}/",
+            "item",
+            Level.MANAGE,
+            "connection",
+            body=lambda: {"name": unique("Patch")},
+        ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/enable/",
+            "item",
+            Level.MANAGE,
+            "connection",
+        ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/disable/",
+            "item",
+            Level.MANAGE,
+            "connection",
+        ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/archive/",
+            "item",
+            Level.MANAGE,
+            "connection",
+        ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/restore/",
+            "item",
+            Level.MANAGE,
+            "connection",
+            archived=True,
+        ),
     ]
     return {s.key: s for s in items}
 
@@ -284,12 +358,16 @@ def fill(path: str, **values: str) -> str:
 def own_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.a_archived_client if s.archived else ctx.a_client).pk)
+    if s.target == "connection":
+        return str((ctx.a_archived_connection if s.archived else ctx.a_connection).pk)
     return str((ctx.a_archived_campaign if s.archived else ctx.a_campaign).pk)
 
 
 def foreign_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.b_archived_client if s.archived else ctx.b_client).pk)
+    if s.target == "connection":
+        return str((ctx.b_archived_connection if s.archived else ctx.b_connection).pk)
     return str((ctx.b_archived_campaign if s.archived else ctx.b_campaign).pk)
 
 
@@ -307,6 +385,8 @@ def request_for(
         return method, fill(template, client_pk=str(cid)), body
     if s.kind == "create":
         cid = client_id or (ctx.b_client.pk if foreign else ctx.a_client.pk)
+        if s.body:
+            return method, template, {**s.body(), "client": str(cid)}
         return method, template, {"client": str(cid), "name": unique("New"), "profile": PROFILE}
     return method, template, body
 
@@ -340,6 +420,14 @@ def tenant_state(*clients: Client) -> dict[str, Any]:
             ),
             "profiles": CampaignProfile.objects.filter(client=client).count(),
             "audit": AuditLog.objects.filter(client=client).count(),
+            "connections": sorted(
+                map(
+                    str,
+                    IntegrationConnection.objects.filter(client=client).values_list(
+                        "pk", "name", "status", "archived_at", "credentials_updated_at"
+                    ),
+                )
+            ),
         }
     return state
 
@@ -438,9 +526,17 @@ def test_a_third_clients_object_is_not_found_either(ctx, key) -> None:
     """A user of client A cannot reach a client they have never heard of (not only Meridian)."""
     s = SCENARIOS[key]
     api = ctx.api(ctx.users["admin"])
-    target = ctx.extra if s.target == "client" else ctx.extra_campaign
+    target: Any = {
+        "client": ctx.extra,
+        "campaign": ctx.extra_campaign,
+        "connection": ctx.extra_connection,
+    }[s.target]
     if s.archived:
-        archive = services.archive_client if s.target == "client" else services.archive_campaign
+        archive: Any = {
+            "client": services.archive_client,
+            "campaign": services.archive_campaign,
+            "connection": services_integrations.archive_connection,
+        }[s.target]
         archive(target)
     method, template = key.split(" ", 1)
     url = fill(template, pk=str(target.pk))
