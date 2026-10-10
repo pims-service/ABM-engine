@@ -143,6 +143,9 @@ Constraints:
 | website | text(2000) | no |  |
 | domain | text(253) | yes |  |
 | profile_url | text(2000) | no |  |
+| profile_key | text(520) | yes |  |
+| name_key | text(300) | no |  |
+| possible_duplicate_of_id | uuid | yes | FK to companies.Company |
 | country | text(2) | no |  |
 | input_source | text(16) | no | one of: `manual`, `csv`, `provider` |
 | status | text(16) | no | one of: `pending`, `analyzing`, `analyzed`, `failed` |
@@ -154,12 +157,15 @@ Constraints:
 - `companies_company_domain_unique_per_campaign`: unique (campaign, domain) (partial)
 - `companies_company_input_source_valid`: check
 - `companies_company_name_not_empty`: check
+- `companies_company_not_duplicate_of_itself`: check
+- `companies_company_profile_key_unique_per_campaign`: unique (campaign, profile_key) (partial)
 - `companies_company_status_valid`: check
 
 Indexes:
 
 - `co_company_camp_arch_idx`: (campaign, archived_at)
 - `co_company_camp_lname_idx`: (Lower(name), campaign)
+- `co_company_camp_namekey_idx`: (campaign, name_key)
 - `co_company_camp_status_idx`: (campaign, status)
 - `co_company_client_domain_idx`: (client, domain)
 
@@ -423,12 +429,16 @@ Indexes:
 | error_code | text(64) | no |  |
 | error_message | text | no |  |
 | company_id | uuid | yes | FK to companies.Company |
+| match_strength | text(8) | no | one of: `strong`, `weak` |
+| matched_on | text(16) | no |  |
+| candidate_id | uuid | yes | FK to companies.Company |
 | created_at | timestamptz | no |  |
 
 Constraints:
 
 - `imports_row_company_for_outcome`: check
 - `imports_row_failed_has_code`: check
+- `imports_row_match_complete`: check
 - `imports_row_number_positive`: check
 - `imports_row_number_unique_per_batch`: unique (batch, row_number)
 - `imports_row_outcome_valid`: check

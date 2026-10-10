@@ -423,11 +423,25 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
   credentials, port, path, a leading `www.` and trailing dots; IDN becomes punycode; IPs,
   single labels and junk give `None`. `Company.save()` always derives `domain` from `website`.
 - `create_company(campaign, name, website="", *, profile_url, country, input_source, user,
-  created_by_job_id)` returns a `CompanyResult`. Same normalized domain already in the campaign:
-  nothing is inserted, `duplicate=True`, and an archived one is restored (`restored=True`). No
-  domain: created, with `similar` / `warnings` listing active same-name companies (never
-  auto-merged). Unique `(campaign, domain)` where domain is not null is also a database
-  constraint (archived rows count).
+  created_by_job_id)` returns a `CompanyResult` and is the merge-safe upsert (issue #58, rules
+  in `docs/data-model.md`, "Company duplicate detection"). A **strong** match (same normalized
+  domain, then same canonical profile URL, inside the campaign) inserts nothing and never edits
+  the existing company: `duplicate=True`, `company` is the existing row, an archived one is
+  restored (`restored=True`). A **weak** match (same name key and compatible country) creates
+  the company flagged `possible_duplicate_of` the oldest candidate (written once, never
+  edited), with `similar` / `warnings` listing the candidates (never auto-merged).
+  `result.match` is the `DuplicateMatch`. Unique `(campaign, domain)` and `(campaign,
+  profile_key)` are also database constraints (archived rows count); a lost race (`IntegrityError`)
+  is caught and returned as `duplicate=True`, so concurrent submissions yield one company.
+- **`find_duplicate(campaign, name, website="", profile_url="", country="", *, exclude=None)`**
+  (`apps/companies/dedupe.py`) is read-only and returns `DuplicateMatch(strength, company,
+  matched_on, candidates)`: `strength` is `MatchStrength.STRONG` / `WEAK` / `NONE`, `matched_on`
+  is `domain`, `profile` or `name_country`. At most two queries. Same name in another country
+  is not a match; the same domain in another campaign or client is not a match.
+- Company columns for it: `profile_key` and `name_key` (derived on save from `profile_url` and
+  `name`, never typed), `possible_duplicate_of` (nullable self FK, PROTECT), the derived
+  `Company.possible_duplicate` and `Company.objects.possible_duplicates()`. Human resolution of
+  a flag is a later issue; it must not clear `possible_duplicate_of`.
 - `add_research_snapshot(company, data_source, *, researched_at=None, **facts)` appends a
   snapshot (facts: `RESEARCH_FIELDS`; omitted means null = not found). The source must belong to
   the company's client. `researched_at` defaults to the source's `retrieved_at`.
@@ -470,7 +484,9 @@ is ever fetched.
 - `company_match_keys(name, website, profile_url) -> tuple[MatchKey, ...]`: ordered identity
   keys, `MatchKey("domain", "acme.com")`, `MatchKey("profile", "linkedin:acme")`,
   `MatchKey("name", "acme")` (`str(key)` gives `domain:acme.com`). Domain is exactly what
-  `Company.domain` stores. The name key is a weak match: combine with country (#58).
+  `Company.domain` stores. The name key is a weak match: `find_duplicate` combines it with
+  country (#58). `profile_key(raw)` and `name_match_key(raw)` give the values stored in
+  `Company.profile_key` / `Company.name_key`.
 - `normalize_company_input(name, website, profile_url) -> NormalizedCompanyInput`: all of the
   above for one row with `domain`, `profile_url_canonical`, `name_normalized`, `warnings`
   (`website_unparseable`, `website:tracking_params_removed`, ...) and `match_keys`.
@@ -805,6 +821,10 @@ schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (s
   Lower level: `record_row_outcome`, `start_batch`, `attach_job`, `fail_batch`, `cancel_batch`.
   Counters change under a row lock, rows are written once (a redelivered task is safe), and
   `BatchStateError` signals a finished batch or counts beyond `total_count`.
+- **Match info on rows** (issue #58): `ImportRow.match_strength` (`strong` for `duplicate` and
+  `restored`, `weak` for a flagged `created` row, blank otherwise), `matched_on` and `candidate`
+  (the matched company) come from `CompanyResult.match`; `record_row_outcome(..., match=)`.
+  The outcome enum is unchanged. An import never modifies an existing company's fields.
 - **Rows are append-only**; the batch is mutable only in status, counters, timestamps and
   `error_summary`. `ImportRow.raw_data` is scrubbed of credentials and capped (2000 characters per
   value, 16 KiB total) on every save (`apps/imports/rawdata.py`).
