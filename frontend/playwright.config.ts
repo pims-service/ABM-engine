@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const MOCK_API_PORT = Number(process.env.MOCK_API_PORT ?? 8999);
+const DATA_SPECS = /(clients|campaign-form)\.spec\.ts/;
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -14,7 +15,27 @@ export default defineConfig({
     baseURL,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The client/campaign specs share (and reset) the mock API's in-memory data, so each of those
+  // files runs alone, one project after the other; everything else runs in parallel first.
+  projects: [
+    {
+      name: "chromium",
+      testIgnore: DATA_SPECS,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "lists",
+      testMatch: /clients\.spec\.ts/,
+      dependencies: ["chromium"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "campaign-form",
+      testMatch: /campaign-form\.spec\.ts/,
+      dependencies: ["lists"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+  ],
   webServer: [
     // A stand-in for the Django auth API (the Next.js route handlers call it server side).
     {
