@@ -1,3 +1,5 @@
 # Makefile recipes and shell scripts must keep LF line endings.
 Makefile text eol=lf
 *.sh text eol=lf
+# The CSV sample is compared byte for byte with build_template_csv() (BOM, CRLF).
+docs/samples/*.csv -text
