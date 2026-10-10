@@ -65,7 +65,7 @@ def test_concurrent_creates_of_one_profile_give_one_company():
     urls = [
         "https://www.linkedin.com/company/acme",
         "https://uk.linkedin.com/company/ACME/about/",
-        "linkedin.com/company/acme?trk=x",
+        "https://linkedin.com/company/acme?trk=x",
         "https://m.linkedin.com/company/acme/posts",
     ]
     results = _race(
