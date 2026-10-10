@@ -784,6 +784,33 @@ factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.djang
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
 
+### Company input and import batches (`apps/imports`, issue #56)
+
+Manual entry, CSV upload and provider import all land in the same two tables and the same input
+schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (see #59, #62, #63).
+
+- **Input schema** (`apps/imports/schema.py`): `validate_company_input(raw, *,
+  require_identifier=False)` returns a `CompanyInput` (`name`, `website`, `profile_url`,
+  `country`, `domain`) or an `InputErrors` (`.errors`, `.codes`, `.first_code`, `.as_dict()` ->
+  `{field: [{code, message}]}`, `.message()`). Test with `isinstance(result, InputErrors)`. Name
+  is required; website, profile URL and country are optional; `require_identifier=True` (the
+  manual entry rule, Brief 4A) also needs a website or profile URL. Codes are the constants in
+  the module (`ERROR_CODES`), for example `name_required`, `website_invalid`,
+  `profile_url_invalid_scheme`, `country_unknown`.
+- **Batches** (`apps/imports/services.py`): `create_batch(campaign, source, *, user,
+  original_filename, file_size, file_sha256, column_mapping, total_count, job)` ->
+  `set_total` -> `process_row(batch, row_number, raw, user=)` for each row (validate, dedupe via
+  `create_company`, record the outcome; a bad row is a failed row, it never raises) ->
+  `finalize_batch(batch)` (`completed`, `partial` when some rows fail, `failed` when all do).
+  Lower level: `record_row_outcome`, `start_batch`, `attach_job`, `fail_batch`, `cancel_batch`.
+  Counters change under a row lock, rows are written once (a redelivered task is safe), and
+  `BatchStateError` signals a finished batch or counts beyond `total_count`.
+- **Rows are append-only**; the batch is mutable only in status, counters, timestamps and
+  `error_summary`. `ImportRow.raw_data` is scrubbed of credentials and capped (2000 characters per
+  value, 16 KiB total) on every save (`apps/imports/rawdata.py`).
+- Factories: `tests/factories_imports.py` (`make_import_batch`, `make_import_row`; they do not
+  bump counters). The admin is view only.
+
 ### Invariant tests (`tests/invariants`, issue #53)
 
 The brief's hard rules live in one named group, marker `invariants` (every test under
