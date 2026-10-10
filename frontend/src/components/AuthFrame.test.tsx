@@ -21,6 +21,12 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
   useOptionalAuth: () => auth,
 }));
 
+// The real provider fetches clients; it has its own tests.
+vi.mock("@/features/selection/SelectionProvider", () => ({
+  SelectionProvider: ({ children }: { children: unknown }) => children,
+  useOptionalSelection: () => null,
+}));
+
 beforeEach(() => {
   nav.pathname = "/campaigns";
   nav.replace.mockReset();

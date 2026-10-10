@@ -2,8 +2,10 @@
 
 Permission checks belong to the API layer (issue #46); these functions enforce data rules.
 
-* ``create_company``: dedupe by normalized domain per campaign, restore an archived duplicate,
-  warn (never block) on a same-name company when there is no domain.
+* ``create_company``: merge-safe upsert. A strong match (domain, then canonical profile URL)
+  links to the existing company without editing it and restores it if archived; a weak match
+  (name and country) creates the company flagged ``possible_duplicate_of`` the candidate.
+  Race-safe through the unique indexes.
 * ``add_research_snapshot``: append a new ``CompanyResearch`` row. Never edits an old one.
 * ``create_data_source``: record one retrieval of evidence for a client.
 """
@@ -20,6 +22,7 @@ from django.db import IntegrityError, transaction
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
 
+from .dedupe import NO_MATCH, DuplicateMatch, find_duplicate
 from .domain import normalize_domain
 from .models import (
     Company,
@@ -31,13 +34,16 @@ from .models import (
     EmailStatus,
     InputSource,
 )
+from .normalize import profile_key
 
 __all__ = [
     "CompanyResult",
+    "DuplicateMatch",
     "add_research_snapshot",
     "create_company",
     "create_contact",
     "create_data_source",
+    "find_duplicate",
     "normalize_domain",
     "restore_contact",
     "set_contact_role",
@@ -68,10 +74,13 @@ RESEARCH_FIELDS = (
 class CompanyResult:
     """Outcome of ``create_company``.
 
-    ``created`` is True for a new row. A duplicate (same normalized domain in the campaign)
-    returns the existing company with ``duplicate`` True and ``restored`` True when it had been
-    archived. ``similar`` lists active same-name companies when the new one has no domain
-    (a warning for a person to decide on; nothing is merged automatically).
+    ``created`` is True for a new row. A strong duplicate (same normalized domain or canonical
+    profile URL in the campaign) returns the existing company, untouched, with ``duplicate``
+    True and ``restored`` True when it had been archived. ``match`` is what
+    ``dedupe.find_duplicate`` found (``strength`` strong, weak or none, ``matched_on``,
+    ``candidates``). On a weak match the company is created and flagged
+    (``company.possible_duplicate_of`` is the candidate); ``similar`` lists the candidates (a
+    warning for a person to decide on; nothing is merged automatically).
     """
 
     company: Company
@@ -79,6 +88,11 @@ class CompanyResult:
     duplicate: bool = False
     restored: bool = False
     similar: list[Company] = field(default_factory=list)
+    match: DuplicateMatch = NO_MATCH
+
+    @property
+    def possible_duplicate(self) -> bool:
+        return self.created and self.match.is_weak
 
     @property
     def warnings(self) -> list[str]:
@@ -117,15 +131,13 @@ def create_data_source(
     return source
 
 
-def _find_by_domain(campaign: Campaign, domain: str) -> Company | None:
-    return Company.objects.filter(campaign=campaign, domain=domain).first()
-
-
-def _duplicate_result(company: Company) -> CompanyResult:
+def _duplicate_result(match: DuplicateMatch) -> CompanyResult:
+    company = match.company
+    assert company is not None  # noqa: S101 - a strong match always has a company
     restored = company.is_archived
     if restored:
         company.restore()
-    return CompanyResult(company=company, duplicate=True, restored=restored)
+    return CompanyResult(company=company, duplicate=True, restored=restored, match=match)
 
 
 def create_company(
@@ -139,13 +151,22 @@ def create_company(
     user: User | None = None,
     created_by_job_id: Any = None,
 ) -> CompanyResult:
-    """Add a company to a campaign, or report the one that is already there.
+    """Add a company to a campaign, or report the one that is already there (merge-safe).
 
-    * Same normalized domain already in the campaign (archived or not): nothing is inserted
-      (the database also forbids it). The existing company is returned with ``duplicate=True``
-      and, if it was archived, restored (``restored=True``).
-    * No domain: the company is created, and ``similar`` lists active companies of the same
-      name (case-insensitive) as a warning.
+    Matching is ``dedupe.find_duplicate`` (domain, then canonical profile URL, then name and
+    country), inside this campaign only.
+
+    * Strong match (same normalized domain or profile URL, archived or not): nothing is
+      inserted and the existing company is **never edited**: none of the submitted values
+      (name, website, country...) is copied onto it. It is returned with ``duplicate=True``
+      and, if it was archived, restored (``restored=True``, the one change allowed). The
+      database also forbids a second row with the same domain or profile key.
+    * Weak match (same name key, compatible country, no conflicting domain): the company is
+      created with ``possible_duplicate_of`` pointing at the oldest candidate, set once and
+      never edited; ``similar`` lists the candidates. Nothing is merged.
+    * Race: if another writer inserts the same domain or profile between our lookup and our
+      insert, the unique index raises ``IntegrityError``; we look again and return the winner
+      as a duplicate. Exactly one company results.
     * An archived campaign takes no new companies. A website that has no valid domain name is
       a ``ValidationError``.
     """
@@ -159,20 +180,23 @@ def create_company(
     if website and domain is None:
         raise ValidationError({"website": "Enter a website with a valid domain name."})
 
-    if domain is not None:
-        existing = _find_by_domain(campaign, domain)
-        if existing is not None:
-            return _duplicate_result(existing)
+    profile_url = profile_url.strip()
+    country = country.strip().upper()
+
+    match = find_duplicate(campaign, name, website, profile_url, country)
+    if match.is_strong:
+        return _duplicate_result(match)
 
     company = Company(
         campaign=campaign,
         name=name,
         website=website,
-        profile_url=profile_url.strip(),
-        country=country.strip().upper(),
+        profile_url=profile_url,
+        country=country,
         input_source=input_source,
         created_by=user,
         created_by_job_id=created_by_job_id,
+        possible_duplicate_of=match.company if match.is_weak else None,
     )
     company.full_clean(
         exclude=["client", "campaign"], validate_unique=False, validate_constraints=False
@@ -181,19 +205,19 @@ def create_company(
         with transaction.atomic():  # savepoint: a race with another writer must not break ours
             company.save()
     except IntegrityError:
-        if domain is None:
+        if domain is None and not profile_key(profile_url):
             raise
-        existing = _find_by_domain(campaign, domain)
-        if existing is None:
+        winner = find_duplicate(campaign, name, website, profile_url, country)
+        if not winner.is_strong:
             raise
-        return _duplicate_result(existing)
+        return _duplicate_result(winner)
 
-    similar: list[Company] = []
-    if domain is None:
-        similar = list(
-            Company.objects.filter(campaign=campaign).active().named(name).exclude(pk=company.pk)
-        )
-    return CompanyResult(company=company, created=True, similar=similar)
+    return CompanyResult(
+        company=company,
+        created=True,
+        similar=list(match.candidates) if match.is_weak else [],
+        match=match,
+    )
 
 
 @transaction.atomic

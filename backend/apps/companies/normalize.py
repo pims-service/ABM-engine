@@ -21,6 +21,7 @@ whole import.
 
 from __future__ import annotations
 
+import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -351,6 +352,31 @@ def normalize_company_name(raw: object) -> NormalizedName | None:
 
 
 # ------------------------------------------------------------------------------ match keys
+
+MAX_PROFILE_KEY_LENGTH = 500
+"""Longest stored ``Company.profile_key``; a longer identity is stored as a SHA-256 digest."""
+
+
+def profile_key(raw: object) -> str | None:
+    """The stored profile identity of ``raw`` (``Company.profile_key``), or ``None``.
+
+    This is ``normalize_profile_url(raw).identity`` (``linkedin:acme``, ``generic:host/path``),
+    except that an identity longer than ``MAX_PROFILE_KEY_LENGTH`` becomes
+    ``generic#<sha256 of it>`` so the unique index row stays small. Same input, same key.
+    """
+    parsed = normalize_profile_url(raw)
+    if parsed is None:
+        return None
+    identity = parsed.identity
+    if len(identity) > MAX_PROFILE_KEY_LENGTH:
+        return "generic#" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return identity
+
+
+def name_match_key(raw: object) -> str:
+    """The stored name comparison key (``Company.name_key``); ``""`` when there is none."""
+    parsed = normalize_company_name(raw)
+    return parsed.key if parsed else ""
 
 
 class MatchKey(NamedTuple):
