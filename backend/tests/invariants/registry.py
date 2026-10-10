@@ -34,6 +34,7 @@ from tests.factories import (
     make_user,
 )
 from tests.factories_core import make_job, make_job_item
+from tests.factories_imports import make_import_batch, make_import_row
 
 
 def label(model: type[models.Model]) -> str:
@@ -91,6 +92,10 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
     activity = record_activity(company, "researched", user)
     job = make_job(client=client, campaign=campaign)
     item = make_job_item(job=job)
+    import_batch = make_import_batch(campaign=campaign, total_count=1, job=job)
+    import_row = make_import_row(
+        batch=import_batch, outcome="created", company=company, row_number=1
+    )
     membership = grant_membership(client, user, "viewer")
     audit = AuditLog.objects.filter(client=client).first()
     assert audit is not None, "creating a campaign must write an audit row for its client"
@@ -117,6 +122,8 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
         activity._meta.label: activity,
         job._meta.label: job,
         item._meta.label: item,
+        import_batch._meta.label: import_batch,
+        import_row._meta.label: import_row,
         audit._meta.label: audit,
     }
     return rows

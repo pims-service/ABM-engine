@@ -443,6 +443,47 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
 - Tests: `CompanyFactory`, `CompanyResearchFactory`, `DataSourceFactory`, `make_company()`,
   `make_research()`, `make_data_source()` in `tests/factories.py`.
 
+### Normalization utilities (`apps/companies/normalize.py`, issue #57)
+
+Pure functions (no DB, no network, no extra dependency) that never raise on any input:
+unusable input gives `None` or an `invalid` classification, so an import records a warning
+for the row instead of failing the batch. Profile URLs are parsed as identifiers only; nothing
+is ever fetched.
+
+- `normalize_website(raw) -> NormalizedWebsite | None` (`url`, `domain`, `registrable_domain`,
+  `warnings`): canonical `https://host[:port][/path][?query]`. Scheme added or `http` upgraded,
+  host lowercased and punycoded, one `www.` and ports 80/443 dropped, fragment and tracking
+  params (`utm_*`, `gclid`, `fbclid`, `ref`, ...) removed, query sorted, trailing slash removed.
+  `None` for `javascript:`/`data:`/`file:`/`mailto:`/`ftp:`, credentials, IPs, single labels,
+  whitespace or control characters, and over-long input (2048 in, 2000 out).
+- `normalize_profile_url(raw) -> NormalizedProfileUrl | None` (`provider`, `slug`, `url`, `kind`,
+  `identity`, `is_numeric_id`): LinkedIn `company`/`showcase`/`school` (country, `m.` and
+  `mobile.` subdomains, locale prefixes, `/about`, `/posts`, query, numeric ids) becomes
+  `https://www.linkedin.com/company/<lowercase slug>`; Crunchbase `/organization/<slug>` too;
+  other http(s) URLs return `provider="generic"` with the canonical website URL. Personal
+  LinkedIn profiles (`/in/...`) give `None`.
+- `normalize_company_name(raw) -> NormalizedName | None` (`display`, `key`, `warnings`):
+  display is NFKC and whitespace-cleaned; the key is casefolded, accent/diacritic/tatweel-free,
+  Arabic letter variants folded, digits ASCII, punctuation removed, and legal suffixes (LLC, Ltd,
+  Inc, Co., PJSC, FZE, ذ.م.م, ش.م.ع, ...) and leading `the`/`شركة` dropped. The last remaining
+  word is never dropped.
+- `company_match_keys(name, website, profile_url) -> tuple[MatchKey, ...]`: ordered identity
+  keys, `MatchKey("domain", "acme.com")`, `MatchKey("profile", "linkedin:acme")`,
+  `MatchKey("name", "acme")` (`str(key)` gives `domain:acme.com`). Domain is exactly what
+  `Company.domain` stores. The name key is a weak match: combine with country (#58).
+- `normalize_company_input(name, website, profile_url) -> NormalizedCompanyInput`: all of the
+  above for one row with `domain`, `profile_url_canonical`, `name_normalized`, `warnings`
+  (`website_unparseable`, `website:tracking_params_removed`, ...) and `match_keys`.
+- `classify_input(raw) -> ClassifiedInput(kind, value)` for the manual form's single box:
+  `empty`, `url`, `domain`, `profile_url`, `name` or `invalid`.
+
+`normalize_domain` (`apps/companies/domain.py`) is unchanged and still what `Company.save`
+uses. `registrable_domain(host)` (`apps/companies/public_suffix.py`) uses a small embedded,
+versioned list (`SUFFIX_LIST_VERSION`) of multi-part suffixes such as `co.uk`, `com.sa`,
+`com.au`, `co.in` instead of `tldextract` (no cache directory, no network, no dependency). The
+tradeoff: a suffix not in the list gives a shorter registrable domain; add it to
+`MULTI_PART_SUFFIXES` and bump the version. Tests: `tests/test_company_normalize.py`.
+
 ### Assessments and decisions (`apps/research`)
 
 `ICPAssessment` (fit only), `AIRecommendation` and `HumanDecision` are append-only, carry
@@ -742,6 +783,33 @@ Harness (`tests/`): `conftest.py` provides `api_client`, `user` and `auth_client
 factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.django_db` gives a
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
+
+### Company input and import batches (`apps/imports`, issue #56)
+
+Manual entry, CSV upload and provider import all land in the same two tables and the same input
+schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (see #59, #62, #63).
+
+- **Input schema** (`apps/imports/schema.py`): `validate_company_input(raw, *,
+  require_identifier=False)` returns a `CompanyInput` (`name`, `website`, `profile_url`,
+  `country`, `domain`) or an `InputErrors` (`.errors`, `.codes`, `.first_code`, `.as_dict()` ->
+  `{field: [{code, message}]}`, `.message()`). Test with `isinstance(result, InputErrors)`. Name
+  is required; website, profile URL and country are optional; `require_identifier=True` (the
+  manual entry rule, Brief 4A) also needs a website or profile URL. Codes are the constants in
+  the module (`ERROR_CODES`), for example `name_required`, `website_invalid`,
+  `profile_url_invalid_scheme`, `country_unknown`.
+- **Batches** (`apps/imports/services.py`): `create_batch(campaign, source, *, user,
+  original_filename, file_size, file_sha256, column_mapping, total_count, job)` ->
+  `set_total` -> `process_row(batch, row_number, raw, user=)` for each row (validate, dedupe via
+  `create_company`, record the outcome; a bad row is a failed row, it never raises) ->
+  `finalize_batch(batch)` (`completed`, `partial` when some rows fail, `failed` when all do).
+  Lower level: `record_row_outcome`, `start_batch`, `attach_job`, `fail_batch`, `cancel_batch`.
+  Counters change under a row lock, rows are written once (a redelivered task is safe), and
+  `BatchStateError` signals a finished batch or counts beyond `total_count`.
+- **Rows are append-only**; the batch is mutable only in status, counters, timestamps and
+  `error_summary`. `ImportRow.raw_data` is scrubbed of credentials and capped (2000 characters per
+  value, 16 KiB total) on every save (`apps/imports/rawdata.py`).
+- Factories: `tests/factories_imports.py` (`make_import_batch`, `make_import_row`; they do not
+  bump counters). The admin is view only.
 
 ### Invariant tests (`tests/invariants`, issue #53)
 

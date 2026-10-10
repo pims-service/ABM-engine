@@ -359,6 +359,86 @@ Indexes:
 
 - `core_jobitem_job_status`: (job, status)
 
+### ImportBatch
+
+`imports.ImportBatch`, mutable, tenant, table `imports_importbatch`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| created_at | timestamptz | no |  |
+| updated_at | timestamptz | no |  |
+| client_id | uuid | no | FK to campaigns.Client |
+| campaign_id | uuid | no | FK to campaigns.Campaign |
+| source | text(16) | no | one of: `manual`, `csv`, `provider` |
+| status | text(16) | no | one of: `pending`, `processing`, `completed`, `partial`, `failed`, `cancelled` |
+| original_filename | text(255) | no |  |
+| file_size | PositiveBigIntegerField | yes |  |
+| file_sha256 | text(64) | no |  |
+| column_mapping | jsonb | no |  |
+| total_count | int | no |  |
+| created_count | int | no |  |
+| duplicate_count | int | no |  |
+| restored_count | int | no |  |
+| skipped_count | int | no |  |
+| failed_count | int | no |  |
+| error_summary | text | no |  |
+| created_by_id | uuid | yes | FK to accounts.User |
+| job_id | uuid | yes | FK to core.Job |
+| started_at | timestamptz | yes |  |
+| finished_at | timestamptz | yes |  |
+
+Constraints:
+
+- `imports_batch_counts_within_total`: check
+- `imports_batch_csv_has_sha256`: check
+- `imports_batch_finished_matches_status`: check
+- `imports_batch_source_valid`: check
+- `imports_batch_status_valid`: check
+
+Indexes:
+
+- `imp_batch_campaign_created`: (campaign, -created_at)
+- `imp_batch_campaign_sha`: (campaign, file_sha256)
+- `imp_batch_client_created`: (client, -created_at)
+- `imp_batch_status`: (status)
+
+### ImportRow
+
+`imports.ImportRow`, append-only, tenant, table `imports_importrow`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| client_id | uuid | no | FK to campaigns.Client |
+| batch_id | uuid | no | FK to imports.ImportBatch |
+| row_number | int | no |  |
+| raw_data | jsonb | no |  |
+| name | text(300) | no |  |
+| website | text(2000) | no |  |
+| domain | text(253) | yes |  |
+| profile_url | text(2000) | no |  |
+| country | text(2) | no |  |
+| outcome | text(16) | no | one of: `created`, `duplicate`, `restored`, `skipped`, `failed` |
+| error_code | text(64) | no |  |
+| error_message | text | no |  |
+| company_id | uuid | yes | FK to companies.Company |
+| created_at | timestamptz | no |  |
+
+Constraints:
+
+- `imports_row_company_for_outcome`: check
+- `imports_row_failed_has_code`: check
+- `imports_row_number_positive`: check
+- `imports_row_number_unique_per_batch`: unique (batch, row_number)
+- `imports_row_outcome_valid`: check
+
+Indexes:
+
+- `imp_row_batch_outcome`: (batch, outcome, row_number)
+- `imp_row_client`: (client)
+- `imp_row_company`: (company)
+
 ### Activity
 
 `outreach.Activity`, append-only, tenant, table `outreach_activity`.

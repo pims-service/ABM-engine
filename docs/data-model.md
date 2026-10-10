@@ -58,9 +58,11 @@ erDiagram
     Campaign ||--o{ Activity : "campaign"
     Campaign ||--o{ CampaignProfile : "campaign"
     Campaign ||--o{ Company : "campaign"
+    Campaign ||--o{ ImportBatch : "campaign"
     CampaignProfile ||--o{ Campaign : "current_profile"
     CampaignProfile ||--o{ ICPAssessment : "campaign_profile"
     Client |o--o{ AuditLog : "client"
+    Company |o--o{ ImportRow : "company"
     Company ||--o{ AIRecommendation : "company"
     Company ||--o{ Activity : "company"
     Company ||--o{ CompanyResearch : "company"
@@ -78,6 +80,8 @@ erDiagram
     DataSource ||--o{ MessageSource : "data_source"
     DataSource ||--o{ Signal : "data_source"
     ICPAssessment ||--o{ AIRecommendation : "icp_assessment"
+    ImportBatch ||--o{ ImportRow : "batch"
+    Job |o--o{ ImportBatch : "job"
     Job ||--o{ JobItem : "job"
     Message |o--o| Message : "supersedes"
     Message ||--o{ MessageSignal : "message"
@@ -166,6 +170,22 @@ erDiagram
         uuid client_id FK
         uuid job_id FK
         text_16 status
+    }
+    ImportBatch {
+        uuid id PK
+        uuid client_id FK
+        uuid campaign_id FK
+        text_16 source
+        text_16 status
+        uuid created_by_id FK
+        uuid job_id FK
+    }
+    ImportRow {
+        uuid id PK
+        uuid client_id FK
+        uuid batch_id FK
+        text_16 outcome
+        uuid company_id FK
     }
     Activity {
         uuid id PK
@@ -291,7 +311,7 @@ updated or deleted by application code (`apps/core/base.py`; raw SQL is out of i
 ## Entities
 
 These are the 14 objects from Brief §19, plus Job, JobItem, AuditLog and
-ClientMembership (M1) and four evidence link tables (`AngleSignal`, `AngleSource`,
+ClientMembership (M1), ImportBatch and ImportRow (M2) and four evidence link tables (`AngleSignal`, `AngleSource`,
 `MessageSignal`, `MessageSource`, the real tables behind the "cites" relations). Brief §16
 feedback is stored as an Activity (see Activity).
 
@@ -315,6 +335,8 @@ this page and the reference disagree, the reference is right: fix the table.
 | AuditLog | core | append-only | `core_auditlog` |
 | Job | core | mutable, tenant | `core_job` |
 | JobItem | core | mutable, tenant | `core_jobitem` |
+| ImportBatch | imports | mutable, tenant | `imports_importbatch` |
+| ImportRow | imports | append-only, tenant | `imports_importrow` |
 | Activity | outreach | append-only, tenant | `outreach_activity` |
 | AngleSignal | outreach | append-only, tenant | `outreach_angle_signals` |
 | AngleSource | outreach | append-only, tenant | `outreach_angle_sources` |
@@ -719,6 +741,65 @@ Unique on (job_id, subject_type, subject_id). A retry that waits for its backoff
 back to `queued` (there is no `retrying` status), and `Job.attempts` counts the runs. To retry a
 failed subject, start a new job.
 
+### ImportBatch (issue #56)
+
+One submission of companies into a campaign: a manual entry (one row), a CSV upload or a provider
+import (Brief §4, §19). All three open a batch the same way and look the same afterwards.
+Mutable working state while it runs; change it only through `apps/imports/services.py`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | copied from the campaign |
+| campaign_id | FK Campaign | an archived campaign takes no new batch |
+| source | enum | `manual`, `csv`, `provider` (same values as `Company.input_source`) |
+| status | enum | `pending`, `processing`, `completed`, `partial`, `failed`, `cancelled` |
+| original_filename | text, blank | base name only, CSV |
+| file_size | bigint, null | bytes, CSV |
+| file_sha256 | text, blank | hex digest of the uploaded bytes; required (CHECK) when `source` is `csv`. The file itself is not kept |
+| column_mapping | jsonb | free-form: which column fed which company field |
+| total_count | int | rows expected; set when known (a CSV after parsing) |
+| created_count, duplicate_count, restored_count, skipped_count, failed_count | int | one counter per row outcome; disjoint |
+| error_summary | text, blank | first failures, or why the run broke; secrets scrubbed |
+| created_by | FK User, null | |
+| job_id | FK Job, null | the background run, so a screen can show progress; same client |
+| created_at, updated_at, started_at, finished_at | timestamptz, last two null | `finished_at` is set exactly when the status is terminal (CHECK) |
+
+Status moves `pending` -> `processing` -> `completed` / `partial` / `failed` / `cancelled`
+(`pending` may also go straight to `failed` or `cancelled`); terminal states do not change, and
+`save` refuses an illegal move. `finalize_batch` picks the end state from the counters: no failed
+row is `completed`, some failed and some did not is `partial`, every row failed is `failed`.
+CHECK: the five counters add up to at most `total_count`. Counters change only under a row lock
+(`select_for_update`) in `record_row_outcome`, like `Job` counts.
+
+What may change after creation: `status`, the counters, `total_count`, `started_at`,
+`finished_at`, `error_summary`, `job_id` (once), `updated_at`. Everything else is fixed.
+
+### ImportRow (issue #56), append-only
+
+What happened to one submitted company. Written once, with its outcome, in the same transaction
+that bumps the batch counter; never updated or deleted. Re-running a row (a redelivered task)
+finds it and changes nothing. To retry failed rows, import them again as a new batch.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | copied from the batch |
+| batch_id | FK ImportBatch | |
+| row_number | int | 1-based position in the submission (CSV: data rows, header excluded); CHECK `>= 1`; unique per batch |
+| raw_data | jsonb | what was submitted. Credentials are never stored: values under keys such as password, token, api key, secret, cookie are `[REDACTED]`, and embedded secrets (bearer tokens, `user:pw@` URLs, JWTs, `key=value`) are scrubbed. Values are cut at 2000 characters and the whole object at 16 KiB (dropped keys are marked `"_truncated": true`). Applied in `ImportRow.save` |
+| name, website, domain, profile_url, country | text, blank; domain null | the normalized input (`validate_company_input`); blank when the row was too broken to normalize |
+| outcome | enum | `created`, `duplicate`, `restored`, `skipped`, `failed` |
+| error_code | text, blank | stable code, required (CHECK) when `failed` (see `apps/imports/schema.py`, plus `company_rejected`, `internal_error`) |
+| error_message | text, blank | for people; secrets scrubbed |
+| company_id | FK Company, null | the new company, or the existing one for `duplicate` / `restored`; required (CHECK) for those three outcomes; same campaign as the batch |
+| created_at | timestamptz | |
+
+The shared input schema (`apps/imports/schema.py`) is the same for manual, CSV and provider:
+`name` required (300 chars), optional `website` (http/https or no scheme, a real domain, no
+credentials), `profile_url` (absolute http/https, no credentials) and `country` (ISO 3166-1
+alpha-2). Errors are field-level with stable codes. No research is triggered by an import.
+
 ### AuditLog (issue #44), append-only
 
 Who changed Client, Campaign, ClientMembership and similar configuration, and
@@ -763,6 +844,10 @@ used for research data, which keeps its own history.
 | Campaign | Job | 1 to many (0 or more) | a job may have no campaign |
 | Job | JobItem | 1 to many | |
 | Company | JobItem | 1 to many | by `subject_type` + `subject_id`, one per job (not a FK) |
+| Campaign | ImportBatch | 1 to many | every way of adding companies opens a batch |
+| Job | ImportBatch | 1 to many (0 or more) | the background run that processes the batch, for progress |
+| ImportBatch | ImportRow | 1 to many | unique `(batch_id, row_number)` |
+| Company | ImportRow | 1 to many (0 or more) | the company a row created, matched or restored |
 | Message | Signal, DataSource | many to many | evidence the text uses, through `MessageSignal` / `MessageSource` |
 | Signal | Signal (supersedes) | 1 to 0 or 1 | correction chain |
 | Message | Message (supersedes) | 1 to 0 or 1 | edit chain |
@@ -828,7 +913,8 @@ Which things are history and which are working state:
 | Activity | append-only | n/a, it is a timeline |
 | AuditLog | append-only | n/a |
 | Contact | mutable enrichment (decision 4) | non-archived rows |
-| Client, Campaign, Company(status), ClientMembership, Job, JobItem, User | mutable working state | the row itself |
+| ImportRow | append-only | n/a, one row per submitted company per batch |
+| Client, Campaign, Company(status), ClientMembership, Job, JobItem, ImportBatch, User | mutable working state | the row itself |
 
 Decision on the "current" marker (also in ADR 0009): for append-only tables we
 **do not store an `is_current` flag**. We find the latest row with a query,
@@ -941,6 +1027,8 @@ The rules they implement:
 | Contact | unique `(company_id, role)` where `role IN ('primary','secondary') AND archived_at IS NULL`; unique `(company_id, profile_url)` where the URL is set and the row is not archived; rank >= 1; email and status CHECKs |
 | ClientMembership | unique `(user_id, client_id)` |
 | JobItem | unique `(job_id, subject_type, subject_id)` |
+| ImportRow | unique `(batch_id, row_number)`; CHECK `company_id` set for `created` / `duplicate` / `restored`; CHECK `error_code` set when `failed` |
+| ImportBatch | CHECK the five outcome counters add up to at most `total_count`; CHECK a `csv` batch has `file_sha256`; `finished_at` is set exactly when the status is terminal |
 | Job | CHECK `done_count + failed_count <= total_count`; `finished_at` is set exactly when the status is terminal |
 | ICPAssessment, AIRecommendation | `model_name`, `prompt_version`, `schema_version` non-empty; `AIRecommendation.explanation` non-empty |
 | Message | CHECKs: approved or exported needs `approved_by` and `approved_at`; exported needs `exported_at`; `subject` for email only; non-empty body and language |
@@ -998,6 +1086,8 @@ kept. What happens on a duplicate:
 | every tenant table | `(client_id)`, or `(client_id, created_at)` for the large ones |
 | Company | `(campaign_id, status)`, `(campaign_id, archived_at)` |
 | Job | `(campaign_id, created_at desc)`, `(status)` |
+| ImportBatch | `(campaign_id, created_at desc)`, `(client_id, created_at desc)`, `(status)`, `(campaign_id, file_sha256)` |
+| ImportRow | `(batch_id, outcome, row_number)`, `(company_id)`, `(client_id)` |
 | AuditLog | `(object_type, object_id, created_at desc)`, `(client_id, created_at desc)` |
 
 At V1 volume (hundreds to low thousands of companies per campaign) this is
@@ -1086,8 +1176,14 @@ one still open.
 10. **Signal dates.** `event_date` is required (NOT NULL), in the database and the service.
     Where a source only states a posting date (an open job post), use that date. A fact with no
     date from its source cannot be stored as a signal: nothing is invented.
-11. **Domain rules.** Only `www.` is stripped; other subdomains are kept (`eu.example.com`). A
-    public suffix list is not used.
+11. **Domain rules.** Only `www.` is stripped; other subdomains are kept (`eu.example.com`), so
+    the stored `Company.domain` and the `(campaign, domain)` constraint do not depend on a public
+    suffix list. For callers that need the registrable domain (`example.co.uk`, `acme.com.sa`)
+    there is `registrable_domain()` in `apps/companies/public_suffix.py`, backed by a small,
+    versioned, embedded list of multi-part suffixes (no `tldextract`, no network); a suffix
+    missing from it errs towards a shorter result and is fixed by adding one line. Website,
+    profile-URL and name normalization for matching live in `apps/companies/normalize.py`
+    (issue #57); they build on, and do not change, `normalize_domain`.
 12. **Industries and countries.** Industries are free text; countries are ISO 3166-1 alpha-2,
     upper case, validated.
 13. **Languages.** Lower-case language codes (`en`, `ar`), and a message language must be one of
