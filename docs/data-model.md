@@ -62,6 +62,8 @@ erDiagram
     CampaignProfile ||--o{ Campaign : "current_profile"
     CampaignProfile ||--o{ ICPAssessment : "campaign_profile"
     Client |o--o{ AuditLog : "client"
+    Company |o--o{ Company : "possible_duplicate_of"
+    Company |o--o{ ImportRow : "candidate"
     Company |o--o{ ImportRow : "company"
     Company ||--o{ AIRecommendation : "company"
     Company ||--o{ Activity : "company"
@@ -126,6 +128,7 @@ erDiagram
         uuid id PK
         uuid client_id FK
         uuid campaign_id FK
+        uuid possible_duplicate_of_id FK
         text_16 input_source
         text_16 status
         uuid created_by_id FK
@@ -186,6 +189,8 @@ erDiagram
         uuid batch_id FK
         text_16 outcome
         uuid company_id FK
+        text_8 match_strength
+        uuid candidate_id FK
     }
     Activity {
         uuid id PK
@@ -451,7 +456,9 @@ as version 1 of the new campaign.
 
 The identity of one account inside one campaign. It holds what was entered or
 imported. Researched facts live in CompanyResearch, so correcting a fact is a new
-snapshot, not an edit here. Only `status` and `archived_at` change.
+snapshot, not an edit here. Only `status` and `archived_at` change. The derived keys
+(`domain`, `profile_key`, `name_key`) are recomputed on save; `possible_duplicate_of` is written
+once at creation (issue #58) and never edited (`save` raises `ImmutableRecordError`).
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -462,6 +469,9 @@ snapshot, not an edit here. Only `status` and `archived_at` change.
 | website | text, blank | as entered |
 | domain | text, null | normalized, see below |
 | profile_url | text, blank | company profile URL (Brief §4) |
+| profile_key | text, null | canonical profile identity from `normalize_profile_url` (`linkedin:acme` for every LinkedIn URL variant of that slug; `generic:host/path` otherwise; a digest when over 500 characters); unique per campaign when set |
+| name_key | text, blank | the normalized name comparison key (`acme trading` for `ACME  Trading L.L.C.`); feeds the weak match |
+| possible_duplicate_of_id | FK Company, null, PROTECT | set once at creation when a weak match was found (same campaign, CHECK not itself); `Company.possible_duplicate` is derived from it |
 | country | text(2), blank | ISO alpha-2, upper case |
 | input_source | enum | `manual`, `csv`, `provider` |
 | status | enum | `pending`, `analyzing`, `analyzed`, `failed` |
@@ -793,6 +803,9 @@ finds it and changes nothing. To retry failed rows, import them again as a new b
 | error_code | text, blank | stable code, required (CHECK) when `failed` (see `apps/imports/schema.py`, plus `company_rejected`, `internal_error`) |
 | error_message | text, blank | for people; secrets scrubbed |
 | company_id | FK Company, null | the new company, or the existing one for `duplicate` / `restored`; required (CHECK) for those three outcomes; same campaign as the batch |
+| match_strength | text, blank | `strong` (a `duplicate` / `restored` row), `weak` (a `created` row flagged as a possible duplicate), blank when nothing matched (issue #58) |
+| matched_on | text, blank | `domain`, `profile` or `name_country` |
+| candidate_id | FK Company, null | the matched company: the existing one (strong) or the possible duplicate (weak); same campaign as the batch. CHECK: the three match columns are all set or all empty |
 | created_at | timestamptz | |
 
 The shared input schema (`apps/imports/schema.py`) is the same for manual, CSV and provider:
@@ -1021,13 +1034,14 @@ The rules they implement:
 | CampaignProfile | unique `(campaign_id, version)`, version >= 1, CHECK `company_size_min <= company_size_max`, non-empty `offer`; unique `(campaign_id, id)` is the target of the composite FK below |
 | Campaign | `current_profile_id` NOT NULL, a deferred FK so campaign and v1 are inserted together with a pre-generated profile id. On PostgreSQL a deferred composite FK `(id, current_profile_id)` to `(campaign_id, id)` enforces "one of its own versions" in the database; SQLite relies on `create_profile_version`, `Campaign.clean` and tests |
 | Company | unique `(campaign_id, domain)` where `domain IS NOT NULL` (archived rows count); non-empty `name` |
-| Company | non-unique index on `(campaign_id, lower(name))` to warn about likely duplicates with no domain |
+| Company | unique `(campaign_id, profile_key)` where `profile_key IS NOT NULL` (archived rows count); CHECK `possible_duplicate_of_id` is not the row itself |
+| Company | non-unique indexes on `(campaign_id, lower(name))` and `(campaign_id, name_key)` for the weak name match |
 | DataSource | CHECK `url` is set unless type is `manual` or `provider` |
 | Signal | `data_source_id` NOT NULL, `event_date` NOT NULL, non-empty `evidence`; `supersedes` is one to one |
 | Contact | unique `(company_id, role)` where `role IN ('primary','secondary') AND archived_at IS NULL`; unique `(company_id, profile_url)` where the URL is set and the row is not archived; rank >= 1; email and status CHECKs |
 | ClientMembership | unique `(user_id, client_id)` |
 | JobItem | unique `(job_id, subject_type, subject_id)` |
-| ImportRow | unique `(batch_id, row_number)`; CHECK `company_id` set for `created` / `duplicate` / `restored`; CHECK `error_code` set when `failed` |
+| ImportRow | unique `(batch_id, row_number)`; CHECK `company_id` set for `created` / `duplicate` / `restored`; CHECK `error_code` set when `failed`; CHECK `match_strength`, `matched_on` and `candidate_id` are all set or all empty |
 | ImportBatch | CHECK the five outcome counters add up to at most `total_count`; CHECK a `csv` batch has `file_sha256`; `finished_at` is set exactly when the status is terminal |
 | Job | CHECK `done_count + failed_count <= total_count`; `finished_at` is set exactly when the status is terminal |
 | ICPAssessment, AIRecommendation | `model_name`, `prompt_version`, `schema_version` non-empty; `AIRecommendation.explanation` non-empty |
@@ -1050,20 +1064,53 @@ Every tenant table has an index on `client_id` (or `(client, ...)` for the large
 `Company (campaign, status)`, `Company (campaign, archived_at)`, `Job (campaign, -created_at)`,
 `Job (status)`, `AuditLog (object_type, object_id, -created_at)` and `(client, -created_at)`.
 
-**Company dedupe by normalized domain, per campaign.** This is #40's rule,
-kept. What happens on a duplicate:
+**Company duplicate detection and merge-safe upsert, per campaign (issue #58).** #40's
+domain rule is kept and extended. `apps.companies.dedupe.find_duplicate` checks, in this
+order, inside one campaign only:
 
-- CSV or API import: the import code looks up `(campaign_id, domain)` first. If
-  found, it does not insert, it records the row as "duplicate" in the job
-  result, and if that existing company is archived it restores it.
-- Manual entry: the UI says "this company is already in this campaign" and links
-  to it.
-- No domain (only a name or profile URL): the row is allowed, the app warns
-  when a same-name company exists, a person decides. We do not auto-merge by
-  name, because names collide.
-- The same domain in a different campaign of the same client is allowed
-  (different ICP rules, different assessments), and the UI can show "also in
-  campaign X" from the non-unique index `(client_id, domain)`.
+1. **Domain** (`normalize_domain`, exactly `Company.domain`): strong.
+2. **Canonical profile URL** (`Company.profile_key`; `linkedin.com/company/Acme/about`,
+   `uk.linkedin.com/company/acme?trk=x` and `/company/acme/` are all `linkedin:acme`): strong.
+3. **Normalized name plus country** (`Company.name_key`, `country`): weak, active companies
+   only. Countries must be equal, or one side blank (an unknown country cannot rule a match
+   out). `Acme` in `SA` and `Acme` in `AE` are different companies. A weak match is also
+   dropped when the two companies carry conflicting strong identifiers (two different
+   domains, or two different profile keys): a company that clearly has another website is not a
+   possible duplicate on its name alone.
+
+What `create_company` (and so every import channel) does:
+
+- **Strong match: link, never edit.** Nothing is inserted. The existing company comes back
+  untouched (none of the submitted name, website, country is copied onto it) and the import
+  row is `duplicate` with `match_strength=strong`, `matched_on`, `candidate`. The only change
+  allowed is restoring an archived company (outcome `restored`). Manual entry: the UI says
+  "this company is already in this campaign" and links to it.
+- **Weak match: create and flag.** The company is created and `possible_duplicate_of` points at
+  the oldest candidate. The flag is written once, at creation, in the same insert, and is
+  never edited (the model refuses), so it records what we knew then. The import row is
+  `created` with `match_strength=weak`, `candidate`. We never auto-merge by name, because
+  names collide.
+- **Resolving a flag is a human decision and is out of scope here.** The hook: flagged rows are
+  `Company.objects.possible_duplicates()`; a later issue adds a review action that records the
+  decision (confirm duplicate and archive the new row, or dismiss) as new columns or a
+  decision record next to `possible_duplicate_of`, never by clearing it.
+- **Race safety.** The unique indexes on `(campaign, domain)` and `(campaign, profile_key)`
+  decide. A writer that loses the race gets `IntegrityError`, looks again, and returns the winner
+  as a duplicate: exactly one company exists for a domain or profile. Weak flags are not
+  race-protected on purpose (two concurrent same-name creates both succeed, and the second
+  may miss the first).
+- **Existing rows when #58 was introduced.** The migration backfilled `profile_key` and
+  `name_key`. If two rows of one campaign already shared a profile identity, the oldest kept
+  the key and the later ones have `profile_key` null (their `profile_url` is untouched).
+
+**Across campaigns (decision).** One Company row per campaign, never shared. The same domain in
+a different campaign of the same client is a separate company with its own research and
+assessments (different ICP rules), and the same domain in another client is a separate company
+too (decision 7 of Tenancy: no cross-client dedupe, ever). Duplicate detection therefore never
+looks outside the campaign. The UI can show "also in campaign X" for the same client from the
+non-unique index `(client_id, domain)`. This keeps the earlier ADR 0009 decision, so no new ADR.
+If it is ever wanted, a cheap future "company group" would be a nullable `group_id` UUID on
+Company shared by rows of one client that a person linked; it is not built.
 
 **Lookups (latest-per-company)**
 

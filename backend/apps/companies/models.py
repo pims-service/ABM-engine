@@ -20,7 +20,8 @@ Design: ``docs/data-model.md`` and ADR 0009.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from collections.abc import Collection
+from typing import Any, ClassVar, Self
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -34,6 +35,7 @@ from apps.core.base import (
     ArchivableModel,
     ArchivableQuerySet,
     BaseModel,
+    ImmutableRecordError,
     TenantMismatchError,
     TenantModel,
     TenantQuerySet,
@@ -41,6 +43,7 @@ from apps.core.base import (
 )
 
 from .domain import normalize_domain
+from .normalize import name_match_key, profile_key
 
 
 class DataSourceType(models.TextChoices):
@@ -151,17 +154,29 @@ class CompanyQuerySet(ArchivableQuerySet["Company"], TenantQuerySet["Company"]):
         """Case-insensitive exact name match (the same-name warning when there is no domain)."""
         return self.annotate(_lowered_name=Lower("name")).filter(_lowered_name=name.strip().lower())
 
+    def possible_duplicates(self) -> CompanyQuerySet:
+        """Companies flagged at creation as a possible duplicate of another (issue #58)."""
+        return self.filter(possible_duplicate_of__isnull=False)
+
+
+_UNSET: Any = object()
+
 
 class Company(ArchivableModel, TenantModel, BaseModel):
     """The identity of one account inside one campaign.
 
     ``client`` is copied from the campaign. ``domain`` is derived from ``website`` by
     ``normalize_domain`` on every save and is unique per campaign when set (archived rows
-    count: a duplicate import restores the archived row instead of inserting). Researched facts
-    live in ``CompanyResearch``; correcting a fact is a new snapshot, not an edit here.
+    count: a duplicate import restores the archived row instead of inserting). ``profile_key``
+    (from ``profile_url``) is derived and unique per campaign the same way, and ``name_key``
+    (from ``name``) feeds the weak name match; all three are derived on save, never typed.
+    ``possible_duplicate_of`` is set once, at creation, when a weak match was found (see
+    ``apps.companies.dedupe``); it is never edited afterwards. Researched facts live in
+    ``CompanyResearch``; correcting a fact is a new snapshot, not an edit here.
     """
 
     tenant_parent = "campaign"
+    _loaded_possible_duplicate_of_id: Any = _UNSET
 
     campaign = models.ForeignKey(
         "campaigns.Campaign", on_delete=models.PROTECT, related_name="companies"
@@ -172,6 +187,29 @@ class Company(ArchivableModel, TenantModel, BaseModel):
         max_length=253, null=True, blank=True, editable=False, help_text="Normalized, or null."
     )
     profile_url = models.URLField(max_length=2000, blank=True)
+    profile_key = models.CharField(
+        max_length=520,
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="Canonical profile identity (linkedin:acme), or null.",
+    )
+    name_key = models.CharField(
+        max_length=300,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Normalized name used for the weak duplicate match.",
+    )
+    possible_duplicate_of = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        editable=False,
+        on_delete=models.PROTECT,
+        related_name="possible_duplicates",
+        help_text="Set once at creation when a weak (name and country) match was found.",
+    )
     country = models.CharField(max_length=2, blank=True, help_text="ISO 3166-1 alpha-2, upper.")
     input_source = models.CharField(
         max_length=16, choices=InputSource.choices, default=InputSource.MANUAL
@@ -199,12 +237,22 @@ class Company(ArchivableModel, TenantModel, BaseModel):
             models.Index(fields=["campaign", "status"], name="co_company_camp_status_idx"),
             models.Index(fields=["campaign", "archived_at"], name="co_company_camp_arch_idx"),
             models.Index(Lower("name"), "campaign", name="co_company_camp_lname_idx"),
+            models.Index(fields=["campaign", "name_key"], name="co_company_camp_namekey_idx"),
         ]
         constraints: ClassVar[list[models.BaseConstraint]] = [
             models.UniqueConstraint(
                 fields=["campaign", "domain"],
                 condition=models.Q(domain__isnull=False),
                 name="companies_company_domain_unique_per_campaign",
+            ),
+            models.UniqueConstraint(
+                fields=["campaign", "profile_key"],
+                condition=models.Q(profile_key__isnull=False),
+                name="companies_company_profile_key_unique_per_campaign",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(possible_duplicate_of=models.F("id")),
+                name="companies_company_not_duplicate_of_itself",
             ),
             models.CheckConstraint(
                 condition=_in("status", CompanyStatus), name="companies_company_status_valid"
@@ -230,12 +278,51 @@ class Company(ArchivableModel, TenantModel, BaseModel):
         ):
             raise ValidationError({"country": "Use an ISO 3166-1 alpha-2 code in upper case."})
 
+    @classmethod
+    def from_db(
+        cls, db: str | None, field_names: Collection[str], values: Collection[Any], **kwargs: Any
+    ) -> Self:
+        instance = super().from_db(db, field_names, values, **kwargs)
+        if "possible_duplicate_of_id" in instance.__dict__:
+            instance._loaded_possible_duplicate_of_id = instance.possible_duplicate_of_id
+        return instance
+
+    @property
+    def possible_duplicate(self) -> bool:
+        """True when it was created next to a weak match (see ``possible_duplicate_of``)."""
+        return self.possible_duplicate_of_id is not None
+
+    def _check_possible_duplicate_of(self) -> None:
+        """The flag is written once, at creation, and never edited (issue #58)."""
+        target = self.possible_duplicate_of_id
+        if self._state.adding:
+            if target is None:
+                return
+            if target == self.pk:
+                raise ValidationError("A company cannot be a possible duplicate of itself.")
+            if self.possible_duplicate_of.campaign_id != self.campaign_id:  # type: ignore[union-attr]
+                raise TenantMismatchError("possible_duplicate_of belongs to a different campaign.")
+            return
+        loaded = self._loaded_possible_duplicate_of_id
+        if loaded is not _UNSET and target != loaded:
+            raise ImmutableRecordError(
+                "Company.possible_duplicate_of is set at creation and cannot be changed."
+            )
+
     def save(self, *args: Any, **kwargs: Any) -> None:
+        self._check_possible_duplicate_of()
         self.domain = normalize_domain(self.website)
+        self.profile_key = profile_key(self.profile_url)
+        self.name_key = name_match_key(self.name)
         update_fields = kwargs.get("update_fields")
-        if update_fields is not None and "website" in update_fields:
-            kwargs["update_fields"] = {*update_fields, "domain"}
+        if update_fields is not None:
+            derived = {"website": "domain", "profile_url": "profile_key", "name": "name_key"}
+            kwargs["update_fields"] = {
+                *update_fields,
+                *(col for src, col in derived.items() if src in update_fields),
+            }
         super().save(*args, **kwargs)
+        self._loaded_possible_duplicate_of_id = self.possible_duplicate_of_id
 
     @property
     def latest_research(self) -> CompanyResearch | None:
