@@ -51,7 +51,7 @@ function issuePair() {
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Expose-Headers": "X-Request-ID",
+  "Access-Control-Expose-Headers": "X-Profile-Version-Created, X-Request-ID",
 };
 
 function send(res, status, body) {
@@ -96,6 +96,7 @@ const server = createServer(async (req, res) => {
 
   if (
     url.pathname.startsWith("/__data/") ||
+    url.pathname.startsWith("/__campaigns") ||
     url.pathname.startsWith("/api/v1/clients/") ||
     url.pathname.startsWith("/api/v1/campaigns/")
   ) {

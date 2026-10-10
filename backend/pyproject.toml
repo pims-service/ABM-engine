@@ -12,6 +12,7 @@ dependencies = [
     "django-q2>=1.8",
     "djangorestframework-simplejwt>=5.5",
     "drf-spectacular>=0.30.0",
+    "django-cors-headers>=4.9.0",
 ]
 
 [dependency-groups]
@@ -113,6 +114,7 @@ addopts = "--strict-markers --strict-config --cov --cov-report=term-missing:skip
 markers = [
     "unit: fast tests with no I/O beyond the test database",
     "api: tests that go through the DRF request/response cycle",
+    "invariants: brief rules that must never break (history, ICP vs trigger, tenant isolation); tests/invariants",
 ]
 
 # ---------------------------------------------------------------- coverage

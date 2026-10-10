@@ -93,8 +93,8 @@ docker compose exec -e DEV_SUPERUSER_EMAIL=YOUR_EMAIL \
   api python manage.py seed_dev_data
 ```
 
-It is safe to run twice. There is no sample company or campaign data yet; that
-comes with the product models in M1.
+It is safe to run twice. Only staff can sign in to the admin, and client roles do not
+grant that; see [admin.md](admin.md) for what it shows and hides.
 
 ## 5. Run the tests and checks
 

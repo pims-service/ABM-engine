@@ -20,6 +20,11 @@ test.beforeEach(async () => {
   ids = ((await response.json()) as { ids: Ids }).ids;
 });
 
+test.afterAll(async () => {
+  // Leave the seed (and the admin role) behind for whatever runs next.
+  await fetch(`${MOCK_API}/__data/reset`, { method: "POST" });
+});
+
 async function setRole(role: "admin" | "manager" | "viewer") {
   await fetch(`${MOCK_API}/__data/role`, {
     method: "POST",
@@ -290,13 +295,32 @@ test.describe("campaigns list", () => {
     expect(await writes()).toEqual([
       `POST /api/v1/campaigns/${ids.dach}/clone/`,
     ]);
+    // The edit form really loads, showing the copy.
+    await expect(page.getByLabel(/^Campaign name/)).toHaveValue(
+      "DACH SaaS (copy)",
+    );
+    await expect(page.getByLabel(/^Offer/)).toHaveValue("Payroll software");
   });
 
-  test("edit links to the edit route", async ({ page }) => {
+  test("edit opens the campaign form", async ({ page }) => {
     await page.goto("/campaigns");
+    const edit = page.getByRole("link", { name: "Edit DACH SaaS" });
+    await expect(edit).toHaveAttribute("href", `/campaigns/${ids.dach}/edit`);
+    await edit.click();
+    await expect(page).toHaveURL(new RegExp(`/campaigns/${ids.dach}/edit$`));
+    await expect(page.getByLabel(/^Campaign name/)).toHaveValue("DACH SaaS");
+  });
+
+  test("New campaign opens the form for the client", async ({ page }) => {
+    await page.goto(`/clients/${ids.acme}`);
+    await page.getByRole("link", { name: "New campaign" }).first().click();
+    await expect(page).toHaveURL(
+      new RegExp(`/campaigns/new\\?client=${ids.acme}$`),
+    );
     await expect(
-      page.getByRole("link", { name: "Edit DACH SaaS" }),
-    ).toHaveAttribute("href", `/campaigns/${ids.dach}/edit`);
+      page.getByRole("heading", { name: "New campaign" }),
+    ).toBeVisible();
+    await expect(page.getByLabel(/^Client/)).toHaveValue(ids.acme);
   });
 
   test("activates a draft and archives with confirmation", async ({ page }) => {

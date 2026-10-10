@@ -87,16 +87,48 @@ Rules:
 
 ```bash
 export DEV_SUPERUSER_EMAIL=YOUR_EMAIL DEV_SUPERUSER_PASSWORD=YOUR_PASSWORD
-uv run python manage.py seed_dev_data
+export DEV_SEED_USER_PASSWORD=YOUR_DEV_SEED_PASSWORD   # optional, see below
+uv run python manage.py seed_dev_data      # or `make seed` with Docker Compose
 ```
 
-`seed_dev_data` is idempotent: running it twice changes nothing the second time. It refuses
-to run when `DEBUG` is off unless `--force` is passed. Today it only creates the dev superuser
-from the `DEV_SUPERUSER_*` variables (the email defaults to `admin@example.com`; without a password the
-step is skipped, so no account with a known password is ever created; an existing user is left
-untouched, including its password). There are no domain models yet, so there is no sample
-company/campaign data. It is a skeleton to be filled in during M1: add a function to `SEEDERS` in
-`apps/core/seeding.py` that is safe to run repeatedly (use `get_or_create` / `update_or_create`).
+`seed_dev_data` is idempotent: a second run creates nothing and never edits rows a developer
+changed. It refuses to run when `DEBUG` is off unless `--force` is passed. It runs the seeders
+listed in `SEEDERS` (`apps/core/seeding.py`) in one transaction, in this order:
+
+1. **Superuser** (`seed_superuser`): from `DEV_SUPERUSER_*` (email defaults to
+   `admin@example.com`; without a password the step is skipped, so no account with a known
+   password is ever created; an existing user is untouched, including its password).
+2. **Sample users** (`apps/core/seed_sample.py`): `seed-<role>@skylight.example.com` for
+   admin, manager, reviewer and viewer, plus `seed-admin@meridian.example.com` and
+   `seed-viewer@meridian.example.com`. The password comes only from `DEV_SEED_USER_PASSWORD`;
+   without it these users get an unusable password and cannot log in.
+3. **Clients, campaigns, memberships**: **SkyLight** with the Brief section 3 campaign (Saudi
+   Arabia; Financial Services, Accounting, SaaS, Technology; size 10-500; B2B; Sales, BD,
+   Commercial, Partnerships; VP BD ... Managing Director; Arabic/English) and **Meridian
+   Labs**, a contrasting client (UAE, Logistics/Retail/Healthcare, size 100-1000, CIO/CISO
+   titles, English, different exclusions) so multi-client rules visibly differ. Created through
+   `create_client`, `create_campaign` (profile version 1), `activate_campaign` and
+   `grant_membership`, so audit entries exist.
+4. **Companies**: three per campaign, each with a research snapshot, data sources, contacts and
+   signals. SkyLight has the Brief's tiqmo example (Riyadh, Financial Services, 155 employees,
+   BD headcount 15, -12% YoY, no trigger), a company with a fresh Sales-hiring signal (source
+   and date) and one with an expired signal. Trigger "No" companies are still eligible.
+
+Everything is flagged as fake: client notes, contact names, data-source names and rule notes
+carry `[SAMPLE DATA]`, company names end in `(sample)`, and websites and emails use
+`example.com`.
+
+**Extension point:** assessments (#42) and outreach (#43) are not seeded yet. Write a function
+with the `Seeder` signature (`(environ) -> SeedResult`, idempotent, built on the services) and
+append it to `SEEDERS` after the sample seeders.
+
+**Test fixture:** `seeded_world` (`tests/fixtures_seed.py`, available in every test) runs all
+seeders and returns a `SeededWorld` with `.users["skylight_admin" | "skylight_manager" |
+"skylight_reviewer" | "skylight_viewer" | "meridian_admin" | "meridian_viewer"]` (password
+`tests.fixtures_seed.SEEDED_PASSWORD`), `.clients["skylight" | "meridian"]`, `.campaigns[...]`
+and `.companies["tiqmo" | "najm" | "rimal" | "gulf_freight" | "oasis_retail" | "dune_health"]`.
+`run_all_seeders()` runs the seeders without the fixture and `load_seeded_world()` reads the
+handles back. Tests: `tests/test_seed_sample.py`.
 
 ### Reset the local database
 
@@ -242,7 +274,8 @@ request-id contextvar), `created_at`.
   become `[REDACTED]` at any depth in both `before` and `after`, and strings are scrubbed for
   `key=value` secrets. The diff is computed first, so a changed secret still shows as changed.
   ClientMembership changes (issue #46) should use the same `record_change` calls.
-- The admin shows Job, JobItem and AuditLog read-only. Test factories: `tests/factories_core.py`
+- The admin shows Job, JobItem and AuditLog read-only (AuditLog diffs are redacted again on
+  display, see [docs/admin.md](../docs/admin.md)). Test factories: `tests/factories_core.py`
   (`make_job`, `make_job_item`, `make_audit_log`).
 
 ## Domain model building blocks (`apps/core`)
@@ -277,6 +310,19 @@ tenant data through `Model.objects.for_user(user)` (views and services) or
 `for_user` asks `apps/core/tenancy.accessible_client_ids(user)`: global admins (active
 superusers) see everything, everyone else sees the clients where they have an active
 `ClientMembership`, and anonymous or inactive users see nothing.
+
+### Django admin and data model docs (issue #54)
+
+Every model is registered in its app's `admin.py` or listed with a reason in
+`ADMIN_EXCLUDED_MODELS` (`apps/core/admin_base.py`); history rows are view only through
+`ReadOnlyAdmin`, and sensitive data is hidden or masked. Rules and how to register a model:
+[docs/admin.md](../docs/admin.md); tests: `tests/test_admin.py`.
+
+The ER diagram, entity index and field reference in `docs/data-model.md` and
+`docs/data-model-reference.md` are generated from the models. After changing a model run
+`python manage.py print_schema --write` and commit the docs; `tests/test_data_model_docs.py`
+fails when they are stale. Step-by-step guides: how to add an append-only record type and a
+permission-safe endpoint, in [docs/data-model.md](../docs/data-model.md).
 
 ### Roles and permissions (issue #46)
 
@@ -566,6 +612,25 @@ cookie is `SameSite=Lax` or stricter, so a cross-site page cannot make the brows
 state-changing request; keep the BFF and API on the same site, and use `Strict` if the BFF
 can tolerate it. The BFF should keep the access token in memory and call `refresh/` on page load.
 
+## CORS (issue #228, [ADR 0010](../docs/adr/0010-direct-browser-to-api-with-cors-allowlist.md))
+
+The browser calls the API directly (typed client, `Authorization: Bearer` header); only sign-in
+goes through the Next.js server. `django-cors-headers` makes that possible, for `/api/` paths only
+(`CORS_URLS_REGEX`), so `/admin/` and the probes get no CORS headers.
+
+| Setting | Value |
+| --- | --- |
+| `CORS_ALLOWED_ORIGINS` (env) | explicit origins, comma-separated, e.g. `https://app.example.com`. Dev default `http://localhost:3000,http://127.0.0.1:3000`; **required in production**. No wildcard; no path or trailing slash (startup validation) |
+| `CORS_ALLOW_CREDENTIALS` | `False`: Bearer tokens in a header need no cookies, so no cross-origin credentials |
+| `CORS_ALLOW_METHODS` | `GET, HEAD, OPTIONS, POST, PUT, PATCH` |
+| `CORS_ALLOW_HEADERS` | `authorization, content-type, accept, x-request-id` |
+| `CORS_EXPOSE_HEADERS` | `X-Profile-Version-Created, X-Request-ID, Retry-After` (browsers hide other response headers from page code) |
+| `CORS_PREFLIGHT_MAX_AGE` (env) | `600` seconds |
+
+`CorsMiddleware` is listed right after `RequestIDMiddleware` and before `SecurityMiddleware` and
+`CommonMiddleware`. A browser CORS failure looks like a network error, not an API error: first
+check that the frontend's origin is in `CORS_ALLOWED_ORIGINS`. Tests: `tests/test_cors.py`.
+
 ## Health and readiness
 
 Two probe endpoints at the site root (not under `/api/v1/`), implemented in `apps/core/health.py`.
@@ -678,6 +743,53 @@ factories (`UserFactory`, `make_user()`); the `db` fixture / `@pytest.mark.djang
 test database. `tests/examples/` has one example per layer to copy from: model, serializer,
 view, task. The task example uses Django-Q2 in sync mode (see "Background jobs").
 
+### Invariant tests (`tests/invariants`, issue #53)
+
+The brief's hard rules live in one named group, marker `invariants` (every test under
+`tests/invariants/` gets it automatically):
+
+```bash
+uv run pytest -m invariants --no-cov     # the whole group (a few minutes; the API part seeds data)
+uv run pytest tests/invariants/test_model_rules.py -k Message   # one file / model
+uv run python scripts/check_module_coverage.py --floor 85       # after a full `pytest`: models and permissions
+```
+
+CI runs it as its own step, "Invariant tests (history, ICP vs trigger, tenant isolation)", in the
+Backend job. Files:
+
+| File | Rule it guards |
+| --- | --- |
+| `test_model_rules.py` | Walks EVERY project model: tenant models have a PROTECT `client` FK and a `tenant_parent` (or are listed roots), a forged or moved `client_id` is refused, every `AppendOnlyModel` refuses save / delete / queryset `update` / `bulk_update` / `delete` / `update_or_create`, every FK is `PROTECT` (and collecting a parent with children raises `ProtectedError`), no model has a score-like column. |
+| `test_history.py` | Research, assessments, recommendations, decisions, signals, angles, messages, activities: creating again adds a row and leaves older rows byte-identical, "latest" returns the newest, a failed update changes nothing. |
+| `test_icp_vs_trigger.py` | A strong-fit company with no signals is valid (trigger No); assessing never queries signals (and the trigger never queries assessments); trigger comes only from fresh, unsuperseded signals, with the boundary at expiry. |
+| `test_ai_vs_human.py` | AI recommendation and human decision are separate tables; a decision never edits the recommendation; agreement summary. |
+| `test_outreach_rule.py` | No message (create, approve, supersede) unless the company's latest human decision is `add`, with the real `HumanDecision`. |
+| `test_tenant_querysets.py` | `for_user` / `for_client` on every `TenantQuerySet` model never leak across clients. |
+| `test_tenant_isolation_api.py` | Every client-data endpoint, found by walking the URLconf: foreign ids answer exactly like missing ones (404, same body), role matrix, 401, inactive users, lists never leak. |
+
+**Adding a model.** Add one row for it to `build_client_rows()` in `tests/invariants/registry.py`
+(use or add a factory). Without it `test_every_model_has_a_builder` fails, which is the point:
+once it is there every generic guard above covers the model with no further work. If the model is
+a tenant root (no parent to copy `client_id` from), add it to `ROOT_TENANT_MODELS` in
+`test_model_rules.py` with a reason; if it blocks bulk writes without being an `AppendOnlyModel`,
+see `GUARDED_NOT_APPEND_ONLY`. If it is history (a new row per change), add a `Kind` to `KINDS` in
+`test_history.py`.
+
+**Adding an endpoint.** Build it on `ClientScopedViewSet` / `ClientScopedModelViewSet`
+(docs/permissions.md). `test_every_endpoint_is_covered` then fails until you add a `Scenario`
+for each method + path to `SCENARIOS` in `tests/invariants/test_tenant_isolation_api.py` (kind,
+level, target object). The same scenario then runs the foreign-id, role matrix, anonymous and
+inactive-user checks. An endpoint that serves no client data goes into `PUBLIC_ENDPOINTS` with a
+reason.
+
+**Adding a rule.** One test file per rule, no marker needed (the package adds it). Prefer
+parametrizing over the app registry (`project_models()`) to naming models.
+
+Coverage floors: the overall gate is 90% (`pyproject.toml`); `scripts/check_module_coverage.py`
+additionally requires every `apps/*/models.py` and the permission modules
+(`core/permissions.py`, `tenancy.py`, `roles.py`) to reach 85% on their own. CI runs it right
+after the full test run.
+
 ## Code quality
 
 All tool config lives in `pyproject.toml`. Run these from `backend/`:
@@ -785,7 +897,7 @@ variables take precedence.
 On startup (every settings module except `config.settings.test`) `config/env_validation.py`
 checks the environment and refuses to start, naming every missing or invalid variable in one
 error. It never prints values. `SECRET_KEY` and `DATABASE_URL` are always required, and
-`ALLOWED_HOSTS` is required in production. Logs pass through a redaction filter that masks
+`ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` are required in production. Logs pass through a redaction filter that masks
 password, token and API-key values (`apps/core/logging.py`).
 
 ## DRF defaults

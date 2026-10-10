@@ -7,7 +7,7 @@ import { Checkbox } from "./Checkbox";
 import { Pagination } from "./Pagination";
 import { Select } from "./Select";
 import { Table, Td, Th } from "./Table";
-import { TextArea } from "./TextArea";
+import { Textarea } from "./Textarea";
 
 describe("Select", () => {
   it("is labelled and reports changes", async () => {
@@ -38,9 +38,9 @@ describe("Select", () => {
   });
 });
 
-describe("TextArea and Checkbox", () => {
-  it("TextArea is labelled with hint and error", () => {
-    render(<TextArea label="Notes" hint="Optional" error="Too long" />);
+describe("Textarea and Checkbox", () => {
+  it("Textarea is labelled with hint and error", () => {
+    render(<Textarea label="Notes" hint="Optional" error="Too long" />);
     const area = screen.getByRole("textbox", { name: "Notes" });
     expect(area).toHaveAccessibleDescription("Optional Too long");
     expect(area).toHaveAttribute("aria-invalid", "true");

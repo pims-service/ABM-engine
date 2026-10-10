@@ -22,7 +22,7 @@ from apps.companies.domain import normalize_domain
         ("  https://example.com/  ", "example.com"),
         ("example.com/some/page", "example.com"),
         ("ftp://files.example.co.uk", "files.example.co.uk"),
-        ("https://eu.example.com", "eu.example.com"),  # subdomains are kept (open question 11)
+        ("https://eu.example.com", "eu.example.com"),  # subdomains are kept (decision 11)
         ("https://www.www.example.com", "www.example.com"),  # only one leading www is dropped
         ("https://bücher.de/katalog", "xn--bcher-kva.de"),
         ("https://شركة.السعودية", "xn--ogbpi5d.xn--mgberp4a5d4ar"),

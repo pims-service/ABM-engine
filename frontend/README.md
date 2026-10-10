@@ -42,7 +42,7 @@ docker run --rm -p 3000:3000 abm-frontend
 - `src/features/` - feature code: `clients`, `campaigns`, `selection` (current client/campaign), `access` (what the UI shows)
 - `src/app/error.tsx` - error boundary; `src/app/not-found.tsx` - 404
 - `src/app/globals.css` - design tokens (both themes); `tailwind.config.ts` maps them to utilities
-- `src/components/ui/` - base primitives: `Button`, `Badge`, `StatusPill`, `Card`, `EmptyState`, `Skeleton`, `PageHeader`, `TextField`, `TextArea`, `Select`, `Checkbox`, `Alert`, `Table`, `Pagination`, `Modal`, `ConfirmDialog`
+- `src/components/ui/` - base primitives: `Button`, `Badge`, `StatusPill`, `Card`, `EmptyState`, `Skeleton`, `PageHeader`, `TextField`, `Select`, `Checkbox`, `Alert`, `Table`, `Pagination`, `Modal`, `ConfirmDialog`
 - `src/lib/config.ts` - typed env config; `src/lib/theme.ts` - theme storage key and pre-paint script
 - `e2e/` - Playwright specs; `*.test.ts(x)` files sit next to the code they test
 
@@ -137,7 +137,7 @@ auth endpoints of the API directly. A small BFF (backend for frontend) in Next.j
 Tests: unit tests next to the code (`redirect`, `login-form`, `AuthProvider`, route handlers, middleware); the
 Playwright spec `e2e/auth.spec.ts` runs against `e2e/mock-api.mjs`, a tiny stand-in for the Django API
 (browser-level route mocking cannot intercept the server-side calls the BFF makes). `playwright.config.ts` starts
-it on port 8999 and points the app's `API_INTERNAL_BASE_URL` at it. Specs that need a signed-in user use the
+it on port 8999 and points the app's `API_INTERNAL_BASE_URL` at it. `e2e/mock-data.mjs` is the single clients and campaigns layer (see "Test data in e2e") used by `e2e/clients.spec.ts` and `e2e/campaign-form.spec.ts`. Specs that need a signed-in user use the
 `test` from `e2e/fixtures.ts`, which seeds a session; `anonymousTest` starts logged out.
 
 ## Typed API client
@@ -212,7 +212,7 @@ as an alert above the list. Lists show a skeleton while loading and an alert wit
 | `@/features/campaigns/api`               | `listCampaigns`, `listClientCampaigns`, `getCampaign`, `cloneCampaign`, `activateCampaign`, `archiveCampaign`, `restoreCampaign`; hooks `useCampaigns`, `useClientCampaigns`, `useCampaign`; `campaignEditPath(id)`, `campaignNewPath(clientId?)`. |
 | `@/features/access/AccessProvider`       | `useAccess()` gives `can("edit" \| "manage", clientId?)` and `noteError(error, level, clientId?)`.                                                                                                                                                 |
 | `@/lib/hooks/useApiQuery`                | `useApiQuery(key, fetcher)` returns `{ data, error, loading, reload }`; stale answers are ignored, the previous data stays while the next loads.                                                                                                   |
-| `@/components/ui/*`                      | New: `Modal`, `ConfirmDialog`, `Alert`, `Table` (`Th`, `Td`), `Select`, `TextArea`, `Checkbox`, `Pagination`. `@/components/StatusBadge`, `ListToolbar`, `ListSkeleton`.                                                                           |
+| `@/components/ui/*`                      | New: `Modal`, `ConfirmDialog`, `Alert`, `Table` (`Th`, `Td`), `Select`, `Checkbox`, `Pagination`. `@/components/StatusBadge`, `ListToolbar`, `ListSkeleton`.                                                                                       |
 
 After you change a client or campaign (create, rename, archive, clone, ...) call `useSelection().refresh()` so the
 switcher and the context stay current; the shared action hooks (`useClientActions`, `useCampaignActions`) do it
@@ -258,10 +258,39 @@ sideways inside their card on narrow screens; status badges carry a glyph and a 
 
 ### Test data in e2e
 
-`e2e/mock-data.mjs` (loaded by `e2e/mock-api.mjs`) adds in-memory clients and campaigns with the real shapes and
-filters, plus CORS (the browser calls these endpoints directly). Test controls: `POST /__data/reset` (back to the
-seed, returns the ids), `POST /__data/role {role: "admin" | "manager" | "viewer"}` (writes the role may not do
-answer 403) and `GET /__data/log` (write requests seen). `e2e/clients.spec.ts` runs serially because it shares that data.
+`e2e/mock-data.mjs` (loaded by `e2e/mock-api.mjs`) is the one in-memory clients and campaigns layer for both feature
+specs: real shapes, list/search/status/archived/client filters and pagination, create and PATCH with rule validation
+and the `X-Profile-Version-Created` header, clone, activate, archive/restore, profile versions, CORS (the browser
+calls these endpoints directly) and a view-only client ("Viewer Only Ltd": writes answer 403). Test controls:
+`POST /__data/reset` or `POST /__campaigns/reset` (back to the seed; the first returns the ids),
+`POST /__data/role {role: "admin" | "manager" | "viewer"}` (lowers every client's role), `GET /__data/log` (write
+requests seen) and `GET /__campaigns` (campaigns plus the last PATCH body). `e2e/clients.spec.ts` runs serially
+because it shares that data; `campaign-form.spec.ts` uses unique names so it can run in parallel with it, but see
+below for the role control.
+
+## Campaign form (create / edit)
+
+Routes: `/campaigns/new` (optionally `?client=<id>` to preselect the client) and `/campaigns/[id]/edit`.
+Everything lives in `src/features/campaigns/form/`; the route files only pass URL params in.
+
+| File                        | What                                                                                                                                                                        |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CampaignFormPages.tsx`     | `NewCampaignPage` / `EditCampaignPage`: load clients or the campaign (+ profile versions), then show loading, error (with retry), not-found, no-access or empty states.     |
+| `CampaignForm.tsx`          | The multi-section form (Client and offer, Targeting, Exclusions, Buyers, Language, Custom rules; edit adds the version panel and the "What changed" note).                  |
+| `values.ts`                 | Form state (API field names), `toCreateBody`, `toPatchBody` (only changed rule fields; `change_note` only when filled in), `isDirty`.                                       |
+| `validation.ts`             | Client-side checks mirroring the API: client, name and offer required, size min <= max, whole numbers, 100 items x 200 characters per list, ISO countries, `en`/`ar`.       |
+| `serverErrors.ts`           | Maps `error.details` (`name`, `client` and `profile.<field>`, list-item errors flattened) to form fields; anything unmapped (e.g. `structured_rules`) stays in the summary. |
+| `reference.ts`              | The ISO 3166-1 alpha-2 list and languages as typed constants mirroring `backend/apps/campaigns/reference.py` (names come from `Intl.DisplayNames`). Keep them in step.      |
+| `api.ts`                    | Small typed helpers over `getApiClient()`; `updateCampaign` also returns `X-Profile-Version-Created`.                                                                       |
+| `useUnsavedChangesGuard.ts` | `beforeunload`, a capture-phase click guard for in-app links (the App Router has no route-change events) and a Back-button guard; uses `window.confirm`.                    |
+
+Behaviour worth knowing:
+
+- **Validation**: on submit and when leaving name, offer and the size fields; an error clears when the field is edited. A summary (`role="alert"`) lists every problem with links, and focus goes to the first invalid field. API errors use the same fields and the same summary.
+- **Edit**: shows "Version N", the note of the current version and the version history. PATCH sends only changed fields. The message follows `X-Profile-Version-Created`: "Saved as version N", "No changes. The rules are identical to version N", or (name only) "the rules are unchanged". With nothing changed no request is made. After a create the user lands on the edit page with "Campaign created as version 1."
+- **Permissions**: the API does not tell the client its role, so a 403 on save turns the form read-only with an explanation (viewers and reviewers cannot create or edit). A 403 on load shows a "no access" state.
+- **Cross-origin note**: the browser calls the API directly. If the API is on another origin it must allow the `Authorization` header and expose `X-Profile-Version-Created` (`Access-Control-Expose-Headers`); otherwise the form falls back to comparing `profile_version` before and after.
+- **New primitives** in `src/components/ui/`: `Field`, `Textarea`, `SelectField`, `ChoiceGroup` (radios/checkboxes), `TagInput` (Enter or comma adds, Backspace removes, text is kept on blur), `MultiSelect` (searchable ARIA combobox), `OrderedList` (Move up/down buttons with focus following the item and a live-region announcement; native HTML5 drag as an extra). `TextField` accepts an `id` and `markRequired`.
 
 ## Tooling and testing
 

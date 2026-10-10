@@ -20,9 +20,10 @@ def normalize_domain(website: str | None) -> str | None:
     Rules: take the host (a bare ``example.com/path`` works without a scheme), lowercase it,
     drop scheme, credentials, port, path, query, a leading ``www.`` and trailing dots, and
     convert internationalized names to punycode. Other subdomains are kept (``eu.example.com``
-    stays as is: stripping to the registrable domain needs a public suffix list, see open
-    question 11). IP addresses, single labels such as ``localhost`` and malformed input give
-    ``None``, which means "no domain" (the company is then matched by a same-name warning).
+    stays as is: stripping to the registrable domain needs a public suffix list, see
+    decision 11 in docs/data-model.md). IP addresses, single labels such as ``localhost`` and
+    malformed input give ``None``, which means "no domain" (the company is then matched by
+    a same-name warning).
     """
     text = (website or "").strip()
     if not text:

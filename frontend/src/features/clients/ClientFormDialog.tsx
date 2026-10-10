@@ -5,7 +5,7 @@ import { type FormEvent, useId, useState } from "react";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { TextArea } from "@/components/ui/TextArea";
+import { Textarea } from "@/components/ui/Textarea";
 import { TextField } from "@/components/ui/TextField";
 import { useAccess } from "@/features/access/AccessProvider";
 import { ApiError } from "@/lib/api";
@@ -105,7 +105,7 @@ function ClientForm({
           error={fieldErrors.name}
           onChange={(event) => setName(event.target.value)}
         />
-        <TextArea
+        <Textarea
           label="Notes"
           value={notes}
           error={fieldErrors.notes}
