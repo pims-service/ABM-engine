@@ -188,6 +188,7 @@ def rolled_back() -> Iterator[None]:
 # ------------------------------------------------------------------ scenarios
 
 PROFILE = {"offer": "Probe offer"}
+PROBE_SECRET = "ISOLATIONPROBESECRET1234567"  # pragma: allowlist secret
 SEQ = iter(range(10_000))
 
 
@@ -295,9 +296,7 @@ def _scenarios() -> dict[str, Scenario]:
                 "category": "llm",
                 "provider": "fake",
                 "name": unique("Conn"),
-                "credentials": {
-                    "api_key": "ISOLATIONPROBESECRET1234567"
-                },  # pragma: allowlist secret
+                "credentials": {"api_key": PROBE_SECRET},
             },
         ),
         Scenario("GET /api/v1/integrations/connections/{pk}/", "item", Level.EDIT, "connection"),
