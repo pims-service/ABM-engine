@@ -17,6 +17,7 @@ decided, what else we considered and what it costs us. See
 | [0008](0008-icp-fit-and-trigger-are-separate.md) | ICP Fit and Trigger are separate concepts | Accepted |
 | [0009](0009-data-model-conventions.md) | Data model conventions: tenant column, latest-row lookups, immutable history | Accepted |
 | [0010](0010-direct-browser-to-api-with-cors-allowlist.md) | The browser calls the API directly, protected by a CORS allowlist | Accepted |
+| [0012](0012-first-provider-selection.md) | First provider selection (needs the owner's commercial decision) | Proposed |
 
 ## Adding a new ADR
 
