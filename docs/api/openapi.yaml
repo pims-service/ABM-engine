@@ -1741,6 +1741,657 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/:
+    get:
+      operationId: integration_connections_list
+      description: 'Connections of the clients where you are manager or admin (all
+        for a global admin), paginated. Archived ones are hidden unless `archived`
+        asks for them. Credentials are never returned: see `has_credentials` and `credentials_hint`.
+        Needs the `EDIT` level: manager and admin. Others get 403; clients you are
+        not a member of give 404.'
+      summary: List integration connections
+      parameters:
+      - in: query
+        name: archived
+        schema:
+          enum:
+          - 'false'
+          - 'true'
+          - all
+          type: string
+          minLength: 1
+        description: |-
+          `false` (default) hides archived connections, `true` shows only them.
+
+          * `false` - false
+          * `true` - true
+          * `all` - all
+      - in: query
+        name: category
+        schema:
+          enum:
+          - llm
+          - company_data
+          - people_data
+          - email_enrichment
+          - email_verification
+          - crm
+          - outreach
+          - storage
+          - automation
+          type: string
+          minLength: 1
+        description: |-
+          * `llm` - LLM
+          * `company_data` - Company data
+          * `people_data` - People data
+          * `email_enrichment` - Email enrichment
+          * `email_verification` - Email verification
+          * `crm` - CRM
+          * `outreach` - Outreach
+          * `storage` - Storage
+          * `automation` - Automation
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only this client's connections.
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: provider
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          enum:
+          - active
+          - disabled
+          - error
+          type: string
+          minLength: 1
+        description: |-
+          * `active` - Active
+          * `disabled` - Disabled
+          * `error` - Error
+      - in: query
+        name: test_status
+        schema:
+          enum:
+          - ok
+          - failed
+          type: string
+          minLength: 1
+        description: |-
+          * `ok` - OK
+          * `failed` - Failed
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedConnectionList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    post:
+      operationId: integration_connections_create
+      description: 'Optionally with its first `credentials` (write-only, encrypted
+        at rest). The name must be unique per client, category and provider among
+        non-archived connections (case-insensitive). 404 for a client you cannot see.
+        Needs the `MANAGE` level: admin. Others get 403; clients you are not a member
+        of give 404.'
+      summary: Create an integration connection
+      tags:
+      - integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/:
+    get:
+      operationId: integration_connections_retrieve
+      description: 'Archived connections can be retrieved by id. Needs the `EDIT`
+        level: manager and admin. Others get 403; clients you are not a member of
+        give 404.'
+      summary: Get an integration connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    put:
+      operationId: integration_connections_update
+      description: '`credentials`, when sent, replace all stored credentials; when
+        omitted they are kept. Category and provider cannot change. An archived connection
+        is read-only (400). Needs the `MANAGE` level: admin. Others get 403; clients
+        you are not a member of give 404.'
+      summary: Change a connection's name, config and/or credentials
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    patch:
+      operationId: integration_connections_partial_update
+      description: 'Same as the full update; every field is optional. Needs the `MANAGE`
+        level: admin. Others get 403; clients you are not a member of give 404.'
+      summary: Change a connection's name, config and/or credentials
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedConnectionUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/archive/:
+    post:
+      operationId: integration_connections_archive
+      description: 'Soft delete: it leaves default lists and adapters stop using it.
+        Idempotent. Needs the `MANAGE` level: admin. Others get 403; clients you are
+        not a member of give 404.'
+      summary: Archive a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/disable/:
+    post:
+      operationId: integration_connections_disable
+      description: 'Adapters stop resolving it; settings and credentials are kept.
+        Idempotent. Needs the `MANAGE` level: admin. Others get 403; clients you are
+        not a member of give 404.'
+      summary: Disable a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/enable/:
+    post:
+      operationId: integration_connections_enable
+      description: 'Sets the status to `active` (also clears `error`). Idempotent.
+        Needs the `MANAGE` level: admin. Others get 403; clients you are not a member
+        of give 404.'
+      summary: Enable a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/restore/:
+    post:
+      operationId: integration_connections_restore
+      description: '400 on `name` if another active connection now uses the name.
+        Needs the `MANAGE` level: admin. Others get 403; clients you are not a member
+        of give 404.'
+      summary: Restore an archived connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /healthz:
     get:
       operationId: health_live
@@ -2110,6 +2761,28 @@ components:
           $ref: '#/components/schemas/CampaignProfileInputRequest'
       required:
       - name
+    CategoryEnum:
+      enum:
+      - llm
+      - company_data
+      - people_data
+      - email_enrichment
+      - email_verification
+      - crm
+      - outreach
+      - storage
+      - automation
+      type: string
+      description: |-
+        * `llm` - LLM
+        * `company_data` - Company data
+        * `people_data` - People data
+        * `email_enrichment` - Email enrichment
+        * `email_verification` - Email verification
+        * `crm` - CRM
+        * `outreach` - Outreach
+        * `storage` - Storage
+        * `automation` - Automation
     Check:
       type: object
       description: One readiness check; the extra fields depend on the check (documentation
@@ -2212,6 +2885,182 @@ components:
       description: |-
         * `active` - Active
         * `archived` - Archived
+    Connection:
+      type: object
+      description: A connection as returned by the API. Never contains a secret.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          readOnly: true
+        provider:
+          type: string
+          readOnly: true
+          description: Provider key, e.g. 'openai' or 'fake'.
+        name:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ConnectionStatusEnum'
+          readOnly: true
+        config:
+          readOnly: true
+          description: Non-secret settings. Never put a secret here.
+        has_credentials:
+          type: boolean
+          readOnly: true
+          description: True when credentials are stored. Their values are never shown.
+        credentials_hint:
+          type: object
+          additionalProperties:
+            type: string
+          readOnly: true
+          description: 'Masked hint per credential name: `****abcd` (last 4 characters)
+            for long secrets, `****` for short ones.'
+        credentials_updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_tested_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        last_test_status:
+          allOf:
+          - $ref: '#/components/schemas/LastTestStatusEnum'
+          readOnly: true
+        last_test_message:
+          type: string
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - category
+      - client
+      - config
+      - created_at
+      - created_by
+      - credentials_hint
+      - credentials_updated_at
+      - has_credentials
+      - id
+      - last_test_message
+      - last_test_status
+      - last_tested_at
+      - name
+      - provider
+      - status
+      - updated_at
+    ConnectionCreateRequest:
+      type: object
+      properties:
+        client:
+          type: string
+          format: uuid
+          description: The client this connection belongs to.
+        category:
+          $ref: '#/components/schemas/CategoryEnum'
+        provider:
+          type: string
+          minLength: 1
+          description: Provider key, e.g. `openai`. Lower-case letters, digits and
+            underscores.
+          maxLength: 64
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ConnectionCreateStatusEnum'
+          default: active
+        config:
+          type: object
+          additionalProperties: {}
+          description: Non-secret settings (JSON object). Secrets are rejected here.
+        credentials:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 4096
+          writeOnly: true
+          description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
+            update they replace all stored credentials. Never returned.'
+      required:
+      - category
+      - client
+      - name
+      - provider
+    ConnectionCreateStatusEnum:
+      enum:
+      - active
+      - disabled
+      type: string
+      description: |-
+        * `active` - active
+        * `disabled` - disabled
+    ConnectionStatusEnum:
+      enum:
+      - active
+      - disabled
+      - error
+      type: string
+      description: |-
+        * `active` - Active
+        * `disabled` - Disabled
+        * `error` - Error
+    ConnectionUpdateRequest:
+      type: object
+      description: 'Category and provider are fixed: create a new connection to switch
+        provider.'
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        config:
+          type: object
+          additionalProperties: {}
+          description: Replaces the whole config. Secrets are rejected here.
+        credentials:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 4096
+          writeOnly: true
+          description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
+            update they replace all stored credentials. Never returned.'
     ErrorBody:
       type: object
       description: The `error` object of the standard envelope (apps/core/exceptions.py).
@@ -2256,6 +3105,14 @@ components:
       - ok
       type: string
       description: '* `ok` - ok'
+    LastTestStatusEnum:
+      enum:
+      - ok
+      - failed
+      type: string
+      description: |-
+        * `ok` - OK
+        * `failed` - Failed
     PaginatedCampaignList:
       type: object
       required:
@@ -2325,6 +3182,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Client'
+    PaginatedConnectionList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connection'
     PatchedCampaignWriteRequest:
       type: object
       description: |-
@@ -2358,6 +3238,28 @@ components:
           maxLength: 200
         notes:
           type: string
+    PatchedConnectionUpdateRequest:
+      type: object
+      description: 'Category and provider are fixed: create a new connection to switch
+        provider.'
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        config:
+          type: object
+          additionalProperties: {}
+          description: Replaces the whole config. Secrets are rejected here.
+        credentials:
+          type: object
+          additionalProperties:
+            type: string
+            minLength: 1
+            maxLength: 4096
+          writeOnly: true
+          description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
+            update they replace all stored credentials. Never returned.'
     Readiness:
       type: object
       description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
