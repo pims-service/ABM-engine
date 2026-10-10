@@ -1,4 +1,4 @@
-import type { components } from "@/lib/api";
+import type { Client } from "@/features/clients/api";
 import { getApiClient } from "@/lib/api";
 
 import type {
@@ -8,7 +8,7 @@ import type {
   CampaignWriteRequest,
 } from "./values";
 
-export type Client = components["schemas"]["Client"];
+export type { Client };
 
 /** Clients the user can pick (active ones; the API paginates by up to 100). */
 export async function fetchClients(signal?: AbortSignal): Promise<Client[]> {
