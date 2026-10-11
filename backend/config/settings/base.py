@@ -177,6 +177,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
         {"name": "campaigns", "description": "Campaigns, versioned profiles, rules summary."},
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
+        {
+            "name": "integrations",
+            "description": "Per-client provider connections; credentials are write-only.",
+        },
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "meta", "description": "API metadata."},
     ],

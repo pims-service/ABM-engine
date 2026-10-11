@@ -3492,6 +3492,8 @@ tags:
   description: Campaigns, versioned profiles, rules summary.
 - name: clients
   description: 'Clients (tenants): list, create, edit, archive.'
+- name: integrations
+  description: Per-client provider connections; credentials are write-only.
 - name: health
   description: Liveness and readiness probes (no auth).
 - name: meta
