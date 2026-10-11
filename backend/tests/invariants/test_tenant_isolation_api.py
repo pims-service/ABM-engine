@@ -35,6 +35,7 @@ from apps.core.models import AuditLog
 from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
 from apps.core.seed_sample import SeededWorld, load_seeded_world
+from apps.imports.models import ImportBatch
 from tests.factories import make_campaign, make_client, make_user
 from tests.fixtures_seed import run_all_seeders
 from tests.invariants.conftest import shared_db
@@ -105,6 +106,9 @@ class Ctx:
     b_archived_client: Client
     extra_campaign: Campaign
     outsider: User = field(default=None)  # type: ignore[assignment]
+    a_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
+    b_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
+    extra_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
 
     def api(self, user: User | None) -> APIClient:
         client = APIClient()
@@ -143,7 +147,11 @@ def build_ctx(world: SeededWorld) -> Ctx:
     services.archive_client(b_arch_client)
 
     extra = make_client(name="Extra Co")
+    extra_campaign = make_campaign(client=extra, name="Extra campaign")
     return Ctx(
+        a_batch=ImportBatch.objects.create(campaign=world.campaigns["skylight"], source="provider"),
+        b_batch=ImportBatch.objects.create(campaign=world.campaigns["meridian"], source="provider"),
+        extra_batch=ImportBatch.objects.create(campaign=extra_campaign, source="provider"),
         world=world,
         extra=extra,
         users=users,
@@ -155,7 +163,7 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_campaign=world.campaigns["meridian"],
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
-        extra_campaign=make_campaign(client=extra, name="Extra campaign"),
+        extra_campaign=extra_campaign,
         outsider=make_user(),
     )
 
@@ -266,6 +274,23 @@ def _scenarios() -> dict[str, Scenario]:
             "GET /api/v1/campaigns/{pk}/profile-versions/{version}/", "item", Level.READ, "campaign"
         ),
         Scenario("GET /api/v1/campaigns/{pk}/rules-summary/", "item", Level.READ, "campaign"),
+        # Provider import (issue #67)
+        Scenario("GET /api/v1/providers/", "list", Level.READ),
+        Scenario(
+            "POST /api/v1/campaigns/{pk}/provider-search/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: {"provider": "fake"},
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{pk}/provider-import/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: {"provider": "fake", "companies": [{"name": unique("Probe")}]},
+        ),
+        Scenario("GET /api/v1/provider-imports/{pk}/", "item", Level.READ, "batch"),
     ]
     return {s.key: s for s in items}
 
@@ -284,12 +309,16 @@ def fill(path: str, **values: str) -> str:
 def own_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.a_archived_client if s.archived else ctx.a_client).pk)
+    if s.target == "batch":
+        return str(ctx.a_batch.pk)
     return str((ctx.a_archived_campaign if s.archived else ctx.a_campaign).pk)
 
 
 def foreign_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.b_archived_client if s.archived else ctx.b_client).pk)
+    if s.target == "batch":
+        return str(ctx.b_batch.pk)
     return str((ctx.b_archived_campaign if s.archived else ctx.b_campaign).pk)
 
 
@@ -438,7 +467,9 @@ def test_a_third_clients_object_is_not_found_either(ctx, key) -> None:
     """A user of client A cannot reach a client they have never heard of (not only Meridian)."""
     s = SCENARIOS[key]
     api = ctx.api(ctx.users["admin"])
-    target = ctx.extra if s.target == "client" else ctx.extra_campaign
+    target: Any = ctx.extra if s.target == "client" else ctx.extra_campaign
+    if s.target == "batch":
+        target = ctx.extra_batch
     if s.archived:
         archive = services.archive_client if s.target == "client" else services.archive_campaign
         archive(target)
