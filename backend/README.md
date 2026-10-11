@@ -173,18 +173,23 @@ suite adapters import is `tests/adapter_contract.py`. Step-by-step guide:
 
 ```python
 from apps.integrations.framework import (
-    AdapterRegistry, ConnectionSpec, CompanyRef, execute, supports,
+    AdapterRegistry,
+    ConnectionSpec,
+    CompanyRef,
+    execute,
+    supports,
 )
 
-registry = AdapterRegistry()          # or default_registry (empty until you register)
-registry.register(MyCompanyAdapter)   # explicit, validated: terms, features, config schema
-adapter = registry.resolve(ConnectionSpec("company_data", "my-vendor", {"region": "eu"},
-                                          {"api_key": secret}))   # credentials: str or SecretStr
+registry = AdapterRegistry()  # or default_registry (empty until you register)
+registry.register(MyCompanyAdapter)  # explicit, validated: terms, features, config schema
+adapter = registry.resolve(
+    ConnectionSpec("company_data", "my-vendor", {"region": "eu"}, {"api_key": secret})
+)  # credentials: str or SecretStr
 if supports(adapter, "enrich_company"):
     result = execute(adapter, adapter.enrich_company, CompanyRef(domain="acme.com"))
-    company = result.data             # NormalizedCompany or None (unknown, never invented)
-    result.provenance                 # provider, category, source, retrieved_at, terms, ...
-    result.usage                      # credits / cost / tokens / latency_ms
+    company = result.data  # NormalizedCompany or None (unknown, never invented)
+    result.provenance  # provider, category, source, retrieved_at, terms, ...
+    result.usage  # credits / cost / tokens / latency_ms
 ```
 
 - **Adapter** (`Adapter` ABC plus one base class per category) declares `key`, `display_name`,
