@@ -23,7 +23,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
 config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
-apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models; others are empty AppConfigs)
+apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models, integrations the encrypted provider connections; others are mostly empty AppConfigs)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
 
@@ -420,6 +420,72 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
   `custom_rules`, `structured_rules` (reserved, always `[]`). Changing the shape means bumping
   `RULES_SUMMARY_SCHEMA_VERSION`; `tests/test_campaign_api.py::test_rules_summary_shape_snapshot`
   pins it.
+
+### Integration credentials (`apps/integrations`, issue #76)
+
+Per-client provider connections (`IntegrationConnection`, categories from Brief §17) with the
+non-secret `config` in plain JSON and the secrets in an **encrypted, write-only** column. This is
+the security design; adapters (#74, #82 to #85) and the settings UI (#77) build on it.
+
+**Encryption.** `EncryptedCredentialsField` (`fields.py`) stores only Fernet ciphertext (AES + HMAC,
+`cryptography`). Keys come from `INTEGRATION_ENCRYPTION_KEYS` (comma-separated, newest first;
+`MultiFernet`): the first key encrypts, all keys decrypt. The ORM, `values()`, fixtures and
+`bulk_update` can never write plaintext because the field refuses anything that is not a
+`Credentials` object. Loading a row does not decrypt (listing needs no key); `reveal()` does.
+It fails closed: a wrong, missing or malformed key, or a tampered value, raises `DecryptionError` /
+`EncryptionConfigError` with a safe message, never a plaintext fallback.
+
+**Never printed.** Secrets live in `apps.integrations.crypto.Credentials`: `repr`, `str` and
+f-strings give `Credentials([redacted])`, it cannot be pickled (so it cannot reach a cache or the
+task queue), hashed or iterated, and read access is explicit (`.get("api_key")`, `.reveal()`).
+`mask()` shows `****abcd` only for secrets of 16 characters or more.
+
+**Where secrets are kept out.**
+
+| Place | How |
+| --- | --- |
+| API responses and errors | `credentials` is a write-only serializer field; responses carry `has_credentials` and `credentials_hint` only. Validation errors never echo values. |
+| Audit log | Credential changes are `credentials_change: set / replaced / cleared / reencrypted` (an allow-listed marker, `SAFE_MARKERS` in `apps/core/audit.py`); the values never enter the snapshot. |
+| Logs and tracebacks | The wrapper prints redacted; `get_credentials` logs connection id, category, provider and purpose to `apps.integrations.access`, never values. The log redactor also masks `credential`-named keys. |
+| Django admin | Read-only and superuser-only; the `credentials` column is in no view, only `Credentials set` and the masked hint. |
+| `config` | Rejected if any key looks secret (`password`, `token`, `api_key`, ...), so secrets cannot hide in the plain JSON or its audit diff. |
+
+**Using a connection (adapters).**
+
+```python
+from apps.integrations import services
+from apps.integrations.models import IntegrationCategory
+
+connection = services.resolve_connection(client, IntegrationCategory.LLM, provider="openai")
+if connection is not None:  # active, non-archived, oldest first
+    creds = services.get_credentials(connection, purpose="icp_assessment")
+    api_key = creds.get("api_key")  # use it now; never store, log or return it
+    settings_for_provider = connection.config  # non-secret settings
+    ...
+    services.record_test_result(connection, ok=False, message="HTTP 401")  # safe, scrubbed text
+```
+
+`get_credentials` refuses archived connections (`ConnectionUnavailableError`), connections with no
+credentials (`CredentialsNotSetError`) and undecryptable ones (`DecryptionError`, message safe to
+show). Write through `services` only (`create_connection`, `update_connection`, `set_credentials`,
+`clear_credentials`, `enable_connection`, `disable_connection`, `archive_connection`,
+`restore_connection`): each is audited with the acting user.
+
+**API** (`/api/v1/integrations/connections/`, `apps/integrations/api/views.py`): `GET/POST`,
+`GET/PUT/PATCH /{id}/`, `POST /{id}/enable|disable|archive|restore/`. Reading needs manager or
+admin, every write needs admin (see [permissions](../docs/permissions.md#integration-connection-endpoints-apiv1integrationsconnections-issue-76)).
+No DELETE (archive). Filters `client`, `category`, `provider`, `status`, `test_status`,
+`archived`, `search`, `ordering`.
+
+**Key rotation.** `python manage.py rotate_credentials [--dry-run]` re-encrypts every row with the
+newest key (runbook in [environment.md](../docs/environment.md#secrets-handling)): prepend the new
+key, run the command, then drop the old key. Rows that cannot be decrypted are left untouched and
+reported by id, and the command exits with an error.
+
+**Tests.** `tests/test_integration_crypto.py`, `test_integration_services.py` (raw column holds
+ciphertext, audit and log carry no secret, rotation), `test_integration_api.py` (role matrix,
+no secret in any response), `test_integration_admin.py`, plus the invariant registry row and the
+tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist secret`.
 
 ### Companies, research history and data sources (`apps/companies`)
 
@@ -1045,7 +1111,7 @@ DATABASE_URL=postgres://postgres:YOUR_DB_PASSWORD@localhost:55432/abm_dev uv run
 ```bash
 docker build -t abm-backend backend
 docker run --rm -p 8000:8000 \
-  -e SECRET_KEY=YOUR_SECRET_KEY -e DATABASE_URL=postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@HOST:5432/YOUR_DB_NAME \
+  -e SECRET_KEY=YOUR_SECRET_KEY -e INTEGRATION_ENCRYPTION_KEYS=YOUR_INTEGRATION_ENCRYPTION_KEYS -e DATABASE_URL=postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@HOST:5432/YOUR_DB_NAME \
   -e ALLOWED_HOSTS=localhost -e SECURE_SSL_REDIRECT=False abm-backend
 ```
 

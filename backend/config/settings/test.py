@@ -16,3 +16,9 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": []}
 # Run queued tasks inline in the calling process, so tests need no worker or broker.
 Q_CLUSTER = {**Q_CLUSTER, "sync": True}
+
+# A throwaway Fernet key per test process (never a real secret). Tests that need specific keys
+# override settings.INTEGRATION_ENCRYPTION_KEYS.
+from cryptography.fernet import Fernet
+
+INTEGRATION_ENCRYPTION_KEYS = [Fernet.generate_key().decode("ascii")]

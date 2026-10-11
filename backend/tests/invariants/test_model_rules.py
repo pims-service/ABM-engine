@@ -21,6 +21,7 @@ from apps.core.base import (
     TenantQuerySet,
 )
 from apps.core.models import Job
+from apps.integrations.models import IntegrationConnection
 from apps.outreach.models import Message
 from apps.research.models import AIRecommendation, HumanDecision, ICPAssessment
 from tests.invariants.registry import (
@@ -46,6 +47,7 @@ ROOT_TENANT_MODELS = {
     DataSource,  # a source is registered per client, not per company
     ClientMembership,  # (user, client, role)
     Job,  # a background run names its client explicitly
+    IntegrationConnection,  # a provider connection is registered per client (issue #76)
 }
 
 #: Mutable tables that also guard their own history (not ``AppendOnlyModel`` subclasses).

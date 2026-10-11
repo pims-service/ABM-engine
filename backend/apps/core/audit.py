@@ -33,9 +33,23 @@ from .models import AuditAction, AuditLog
 _EXTRA_SECRET_KEY = re.compile(r"(?:^|[_-])(?:hash|salt|key|otp|pin|signature)$", re.IGNORECASE)
 _MAX_DEPTH = 8
 
+#: Keys that look secret to the redactor but only ever hold a fixed marker word
+#: (never a value): the value is kept only when it is one of the listed words.
+SAFE_MARKERS = {"credentials_change": frozenset({"set", "replaced", "cleared", "reencrypted"})}
+
 
 def is_secret_field(name: object) -> bool:
     return is_sensitive_key(name) or bool(_EXTRA_SECRET_KEY.search(str(name)))
+
+
+def _redact_entry(key: object, value: Any, depth: int) -> Any:
+    if str(key) in SAFE_MARKERS and (
+        value is None or (isinstance(value, str) and value in SAFE_MARKERS[str(key)])
+    ):
+        return value
+    if is_secret_field(key):
+        return REDACTED
+    return redact_value(value, _depth=depth + 1)
 
 
 def redact_value(value: Any, *, _depth: int = 0) -> Any:
@@ -45,10 +59,7 @@ def redact_value(value: Any, *, _depth: int = 0) -> Any:
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, Mapping):
-        return {
-            str(k): REDACTED if is_secret_field(k) else redact_value(v, _depth=_depth + 1)
-            for k, v in value.items()
-        }
+        return {str(k): _redact_entry(k, v, _depth) for k, v in value.items()}
     if isinstance(value, list | tuple | set | frozenset):
         return [redact_value(v, _depth=_depth + 1) for v in value]
     return value

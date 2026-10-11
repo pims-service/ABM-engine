@@ -414,6 +414,138 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/integrations/connections/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List integration connections
+     * @description Connections of the clients where you are manager or admin (all for a global admin), paginated. Archived ones are hidden unless `archived` asks for them. Credentials are never returned: see `has_credentials` and `credentials_hint`. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404.
+     */
+    get: operations["integration_connections_list"];
+    put?: never;
+    /**
+     * Create an integration connection
+     * @description Optionally with its first `credentials` (write-only, encrypted at rest). The name must be unique per client, category and provider among non-archived connections (case-insensitive). 404 for a client you cannot see. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an integration connection
+     * @description Archived connections can be retrieved by id. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404.
+     */
+    get: operations["integration_connections_retrieve"];
+    /**
+     * Change a connection's name, config and/or credentials
+     * @description `credentials`, when sent, replace all stored credentials; when omitted they are kept. Category and provider cannot change. An archived connection is read-only (400). Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    put: operations["integration_connections_update"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change a connection's name, config and/or credentials
+     * @description Same as the full update; every field is optional. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    patch: operations["integration_connections_partial_update"];
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/archive/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Archive a connection
+     * @description Soft delete: it leaves default lists and adapters stop using it. Idempotent. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_archive"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/disable/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Disable a connection
+     * @description Adapters stop resolving it; settings and credentials are kept. Idempotent. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_disable"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/enable/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Enable a connection
+     * @description Sets the status to `active` (also clears `error`). Idempotent. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_enable"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/restore/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restore an archived connection
+     * @description 400 on `name` if another active connection now uses the name. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/healthz": {
     parameters: {
       query?: never;
@@ -577,6 +709,28 @@ export interface components {
       name: string;
       profile?: components["schemas"]["CampaignProfileInputRequest"];
     };
+    /**
+     * @description * `llm` - LLM
+     *     * `company_data` - Company data
+     *     * `people_data` - People data
+     *     * `email_enrichment` - Email enrichment
+     *     * `email_verification` - Email verification
+     *     * `crm` - CRM
+     *     * `outreach` - Outreach
+     *     * `storage` - Storage
+     *     * `automation` - Automation
+     * @enum {string}
+     */
+    CategoryEnum:
+      | "llm"
+      | "company_data"
+      | "people_data"
+      | "email_enrichment"
+      | "email_verification"
+      | "crm"
+      | "outreach"
+      | "storage"
+      | "automation";
     /** @description One readiness check; the extra fields depend on the check (documentation only). */
     Check: {
       status: components["schemas"]["CheckStatusEnum"];
@@ -636,6 +790,86 @@ export interface components {
      * @enum {string}
      */
     ClientStatusEnum: "active" | "archived";
+    /** @description A connection as returned by the API. Never contains a secret. */
+    Connection: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly client: string;
+      readonly category: components["schemas"]["CategoryEnum"];
+      /** @description Provider key, e.g. 'openai' or 'fake'. */
+      readonly provider: string;
+      readonly name: string;
+      readonly status: components["schemas"]["ConnectionStatusEnum"];
+      /** @description Non-secret settings. Never put a secret here. */
+      readonly config: unknown;
+      /** @description True when credentials are stored. Their values are never shown. */
+      readonly has_credentials: boolean;
+      /** @description Masked hint per credential name: `****abcd` (last 4 characters) for long secrets, `****` for short ones. */
+      readonly credentials_hint: {
+        [key: string]: string;
+      };
+      /** Format: date-time */
+      readonly credentials_updated_at: string | null;
+      /** Format: date-time */
+      readonly last_tested_at: string | null;
+      readonly last_test_status: components["schemas"]["LastTestStatusEnum"];
+      readonly last_test_message: string;
+      /** Format: date-time */
+      readonly archived_at: string | null;
+      /** Format: uuid */
+      readonly created_by: string | null;
+      /** Format: date-time */
+      readonly created_at: string;
+      /** Format: date-time */
+      readonly updated_at: string;
+    };
+    ConnectionCreateRequest: {
+      /**
+       * Format: uuid
+       * @description The client this connection belongs to.
+       */
+      client: string;
+      category: components["schemas"]["CategoryEnum"];
+      /** @description Provider key, e.g. `openai`. Lower-case letters, digits and underscores. */
+      provider: string;
+      name: string;
+      /** @default active */
+      status: components["schemas"]["ConnectionCreateStatusEnum"];
+      /** @description Non-secret settings (JSON object). Secrets are rejected here. */
+      config?: {
+        [key: string]: unknown;
+      };
+      /** @description Write-only secrets by name, e.g. `{"api_key": "..."}`. On update they replace all stored credentials. Never returned. */
+      credentials?: {
+        [key: string]: string;
+      };
+    };
+    /**
+     * @description * `active` - active
+     *     * `disabled` - disabled
+     * @enum {string}
+     */
+    ConnectionCreateStatusEnum: "active" | "disabled";
+    /**
+     * @description * `active` - Active
+     *     * `disabled` - Disabled
+     *     * `error` - Error
+     * @enum {string}
+     */
+    ConnectionStatusEnum: "active" | "disabled" | "error";
+    /** @description Category and provider are fixed: create a new connection to switch provider. */
+    ConnectionUpdateRequest: {
+      name?: string;
+      /** @description Replaces the whole config. Secrets are rejected here. */
+      config?: {
+        [key: string]: unknown;
+      };
+      /** @description Write-only secrets by name, e.g. `{"api_key": "..."}`. On update they replace all stored credentials. Never returned. */
+      credentials?: {
+        [key: string]: string;
+      };
+    };
     /** @description The `error` object of the standard envelope (apps/core/exceptions.py). */
     ErrorBody: {
       /** @description Stable machine-readable code, e.g. `validation_error`. */
@@ -660,6 +894,12 @@ export interface components {
      * @enum {string}
      */
     HealthStatusEnum: "ok";
+    /**
+     * @description * `ok` - OK
+     *     * `failed` - Failed
+     * @enum {string}
+     */
+    LastTestStatusEnum: "ok" | "failed";
     PaginatedCampaignList: {
       /** @example 123 */
       count: number;
@@ -705,6 +945,21 @@ export interface components {
       previous?: string | null;
       results: components["schemas"]["Client"][];
     };
+    PaginatedConnectionList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["Connection"][];
+    };
     /**
      * @description Body of create (POST) and edit (PUT/PATCH).
      *
@@ -729,6 +984,18 @@ export interface components {
     PatchedClientRequest: {
       name?: string;
       notes?: string;
+    };
+    /** @description Category and provider are fixed: create a new connection to switch provider. */
+    PatchedConnectionUpdateRequest: {
+      name?: string;
+      /** @description Replaces the whole config. Secrets are rejected here. */
+      config?: {
+        [key: string]: unknown;
+      };
+      /** @description Write-only secrets by name, e.g. `{"api_key": "..."}`. On update they replace all stored credentials. Never returned. */
+      credentials?: {
+        [key: string]: string;
+      };
     };
     /** @description Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`. */
     Readiness: {
@@ -2682,6 +2949,721 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Client"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_list: {
+    parameters: {
+      query?: {
+        /**
+         * @description `false` (default) hides archived connections, `true` shows only them.
+         *
+         *     * `false` - false
+         *     * `true` - true
+         *     * `all` - all
+         */
+        archived?: "false" | "true" | "all";
+        /**
+         * @description * `llm` - LLM
+         *     * `company_data` - Company data
+         *     * `people_data` - People data
+         *     * `email_enrichment` - Email enrichment
+         *     * `email_verification` - Email verification
+         *     * `crm` - CRM
+         *     * `outreach` - Outreach
+         *     * `storage` - Storage
+         *     * `automation` - Automation
+         */
+        category?:
+          | "llm"
+          | "company_data"
+          | "people_data"
+          | "email_enrichment"
+          | "email_verification"
+          | "crm"
+          | "outreach"
+          | "storage"
+          | "automation";
+        /** @description Only this client's connections. */
+        client?: string;
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        provider?: string;
+        /** @description A search term. */
+        search?: string;
+        /**
+         * @description * `active` - Active
+         *     * `disabled` - Disabled
+         *     * `error` - Error
+         */
+        status?: "active" | "disabled" | "error";
+        /**
+         * @description * `ok` - OK
+         *     * `failed` - Failed
+         */
+        test_status?: "ok" | "failed";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedConnectionList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConnectionCreateRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["ConnectionUpdateRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_partial_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PatchedConnectionUpdateRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_archive: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_disable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_enable: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_restore: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Connection"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
