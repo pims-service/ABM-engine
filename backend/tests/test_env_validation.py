@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from django.core.exceptions import ImproperlyConfigured
 
 from config.env_validation import check_environment, validate_environment
@@ -10,11 +11,13 @@ from config.env_validation import check_environment, validate_environment
 DEV = "config.settings.dev"
 PROD = "config.settings.prod"
 GOOD_KEY = "k" * 40  # throwaway, not a real secret
+GOOD_FERNET_KEY = Fernet.generate_key().decode()  # throwaway
 GOOD = {
     "SECRET_KEY": GOOD_KEY,
     "DATABASE_URL": "postgres://u:p@localhost:5432/db",  # pragma: allowlist secret
     "ALLOWED_HOSTS": "example.test",
     "CORS_ALLOWED_ORIGINS": "https://app.example.test",
+    "INTEGRATION_ENCRYPTION_KEYS": GOOD_FERNET_KEY,
 }
 
 
@@ -30,7 +33,12 @@ def test_valid_environment_has_no_problems() -> None:
 
 def test_all_missing_required_variables_are_listed_together() -> None:
     problems = validate_environment({}, settings_module=DEV)
-    assert problems == ["SECRET_KEY: missing (required)", "DATABASE_URL: missing (required)"]
+    assert problems == [
+        "SECRET_KEY: missing (required)",
+        "DATABASE_URL: missing (required)",
+        "INTEGRATION_ENCRYPTION_KEYS: missing "
+        "(required, comma-separated Fernet keys, newest first)",
+    ]
 
 
 def test_blank_secret_key_counts_as_missing() -> None:
@@ -176,3 +184,36 @@ def test_settings_load_fails_without_required_variables(
         importlib.import_module(DEV)
     # Do not leave a half-imported module behind for other tests.
     sys.modules.pop("config.settings.base", None)
+
+
+# ---------------------------------------------------------------- INTEGRATION_ENCRYPTION_KEYS
+
+
+@pytest.mark.parametrize("module", [DEV, PROD])
+def test_encryption_keys_are_required_in_every_real_environment(module: str) -> None:
+    problems = validate_environment(_env(INTEGRATION_ENCRYPTION_KEYS=None), settings_module=module)
+    assert [p.split(":")[0] for p in problems] == ["INTEGRATION_ENCRYPTION_KEYS"]
+    assert validate_environment(_env(INTEGRATION_ENCRYPTION_KEYS=" , "), settings_module=module)
+
+
+def test_several_valid_keys_pass_newest_first() -> None:
+    keys = f"{Fernet.generate_key().decode()}, {Fernet.generate_key().decode()}"
+    assert validate_environment(_env(INTEGRATION_ENCRYPTION_KEYS=keys), settings_module=PROD) == []
+
+
+def test_placeholder_key_is_rejected() -> None:
+    problems = validate_environment(
+        _env(INTEGRATION_ENCRYPTION_KEYS="YOUR_INTEGRATION_ENCRYPTION_KEYS"), settings_module=DEV
+    )
+    assert problems == [
+        "INTEGRATION_ENCRYPTION_KEYS: entry 1 is still a YOUR_* placeholder; generate a key"
+    ]
+
+
+def test_invalid_key_names_its_position_and_never_its_value() -> None:
+    bad = "this-is-not-a-fernet-key-" + "q" * 12  # throwaway
+    keys = f"{Fernet.generate_key().decode()},{bad}"
+    problems = validate_environment(_env(INTEGRATION_ENCRYPTION_KEYS=keys), settings_module=DEV)
+    assert len(problems) == 1
+    assert "entry 2" in problems[0]
+    assert bad not in problems[0]

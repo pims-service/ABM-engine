@@ -13,6 +13,7 @@ dependencies = [
     "djangorestframework-simplejwt>=5.5",
     "drf-spectacular>=0.30.0",
     "django-cors-headers>=4.9.0",
+    "cryptography>=43",
 ]
 
 [dependency-groups]
