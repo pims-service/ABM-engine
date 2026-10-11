@@ -476,7 +476,7 @@ def test_provenance_requires_tz_aware_retrieved_at() -> None:
         {"terms": "scraping"},
         {"terms": "weird"},
         {"source_url": "ftp://x.example.com/a"},
-        {"source_url": "https://user:pw@example.com/a"},
+        {"source_url": "https://user:pw@example.com/a"},  # pragma: allowlist secret
         {"source_url": "not a url"},
         {"evidence_date": "2026-01-01"},
     ],
