@@ -21,6 +21,8 @@ from django.db import IntegrityError, transaction
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
+from apps.core.audit import record_change, snapshot
+from apps.core.models import AuditAction
 
 from .dedupe import NO_MATCH, DuplicateMatch, find_duplicate
 from .domain import normalize_domain
@@ -40,11 +42,13 @@ __all__ = [
     "CompanyResult",
     "DuplicateMatch",
     "add_research_snapshot",
+    "archive_company",
     "create_company",
     "create_contact",
     "create_data_source",
     "find_duplicate",
     "normalize_domain",
+    "restore_company",
     "restore_contact",
     "set_contact_role",
     "update_contact",
@@ -218,6 +222,47 @@ def create_company(
         similar=list(match.candidates) if match.is_weak else [],
         match=match,
     )
+
+
+COMPANY_AUDIT_FIELDS = ("name", "website", "profile_url", "country", "status", "archived_at")
+
+
+def _change_company(company: Company, action: str, user: User | None, archive: bool) -> Company:
+    """Archive or restore under a row lock (idempotent) and audit the change."""
+    with transaction.atomic():
+        locked = (
+            Company.objects.select_for_update()
+            .select_related("campaign__client")
+            .get(pk=company.pk)
+        )
+        if locked.campaign.is_archived or locked.campaign.client.is_archived:
+            raise ValidationError("Archived campaigns and clients are read-only.")
+        before = snapshot(locked, COMPANY_AUDIT_FIELDS)
+        if archive:
+            locked.archive()
+        else:
+            locked.restore()
+        record_change(
+            action,
+            "company",
+            locked.pk,
+            actor=user,
+            client=locked.client_id,
+            before=before,
+            after=snapshot(locked, COMPANY_AUDIT_FIELDS),
+        )
+    company.refresh_from_db()
+    return company
+
+
+def archive_company(company: Company, user: User | None = None) -> Company:
+    """Archive a company (idempotent, audited). Its research and history are kept."""
+    return _change_company(company, AuditAction.ARCHIVE, user, archive=True)
+
+
+def restore_company(company: Company, user: User | None = None) -> Company:
+    """Restore an archived company (idempotent, audited)."""
+    return _change_company(company, AuditAction.RESTORE, user, archive=False)
 
 
 @transaction.atomic
