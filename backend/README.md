@@ -477,6 +477,18 @@ admin, every write needs admin (see [permissions](../docs/permissions.md#integra
 No DELETE (archive). Filters `client`, `category`, `provider`, `status`, `test_status`,
 `archived`, `search`, `ordering`.
 
+**Testing a connection** (issue #77). `POST /api/v1/integrations/connections/{id}/test/` (admin only,
+5 per minute per connection, 429 `throttled` after that) runs the tester registered in
+`apps/integrations/testing.py` for the connection's category and provider:
+`register_tester(category, provider, fn)` with `fn(connection, credentials) -> (ok, message)`. Adapters
+(#74) register theirs on import. The built-in `fake` provider is deterministic (`config.simulate` of
+`auth_failed`, `rate_limited` or `error` makes it fail). A provider with no tester answers
+`result: "unconfigured"` ("No test available for this provider yet."): nothing is stored and nothing is
+claimed to work. `ok` and `failed` are stored via `record_test_result` (message scrubbed, also in the
+response); a tester that raises becomes a generic failure whose text is never shown. Each test is
+audited (`connection_test: ok|failed|unconfigured`, no message, no secret). Tests:
+`tests/test_integration_test_action.py`.
+
 **Key rotation.** `python manage.py rotate_credentials [--dry-run]` re-encrypts every row with the
 newest key (runbook in [environment.md](../docs/environment.md#secrets-handling)): prepend the new
 key, run the command, then drop the old key. Rows that cannot be decrypted are left untouched and

@@ -339,6 +339,12 @@ def _scenarios() -> dict[str, Scenario]:
             "connection",
             archived=True,
         ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/test/",
+            "item",
+            Level.MANAGE,
+            "connection",
+        ),
     ]
     return {s.key: s for s in items}
 

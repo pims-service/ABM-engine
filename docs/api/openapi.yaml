@@ -2392,6 +2392,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/test/:
+    post:
+      operationId: integration_connections_test
+      description: 'Runs the provider''s lightweight check with the stored credentials
+        and stores the outcome (`last_tested_at`, `last_test_status`, `last_test_message`).
+        A failure moves an active connection to `error`; a success clears `error`.
+        When no test exists for the provider yet the result is `unconfigured`: nothing
+        is stored and nothing is claimed to work. Credentials are never returned and
+        the message is scrubbed. Limited to 5 tests per minute per connection (429
+        `throttled`, with `Retry-After`). Archived connections cannot be tested (400).
+        Admin only: it uses credentials, so it is a `MANAGE` action. Needs the `MANAGE`
+        level: admin. Others get 403; clients you are not a member of give 404.'
+      summary: Test a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionTestResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /healthz:
     get:
       operationId: health_live
@@ -3039,6 +3108,39 @@ components:
         * `active` - Active
         * `disabled` - Disabled
         * `error` - Error
+    ConnectionTestResult:
+      type: object
+      description: 'The outcome of ``POST .../{id}/test/``. The message is untrusted
+        text: show it as text.'
+      properties:
+        result:
+          allOf:
+          - $ref: '#/components/schemas/ResultEnum'
+          readOnly: true
+          description: |-
+            `ok` or `failed` (stored on the connection), or `unconfigured` when no test exists for this provider yet (nothing is stored and nothing succeeded).
+
+            * `ok` - ok
+            * `failed` - failed
+            * `unconfigured` - unconfigured
+        ok:
+          type: boolean
+          readOnly: true
+          description: True only for `ok`.
+        message:
+          type: string
+          readOnly: true
+          description: Short, scrubbed reason. Never contains credentials. Render
+            as plain text.
+        connection:
+          allOf:
+          - $ref: '#/components/schemas/Connection'
+          readOnly: true
+      required:
+      - connection
+      - message
+      - ok
+      - result
     ConnectionUpdateRequest:
       type: object
       description: 'Category and provider are fixed: create a new connection to switch
@@ -3291,6 +3393,16 @@ components:
           type: string
           minLength: 1
           description: Refresh token. May be omitted when the refresh cookie is enabled.
+    ResultEnum:
+      enum:
+      - ok
+      - failed
+      - unconfigured
+      type: string
+      description: |-
+        * `ok` - ok
+        * `failed` - failed
+        * `unconfigured` - unconfigured
     RulesSummary:
       type: object
       description: |-

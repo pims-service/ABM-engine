@@ -6,6 +6,7 @@ levels are stricter than the rest of the client API:
 * read (list, retrieve): ``EDIT`` (manager and admin). Viewers and reviewers get 403 and a list
   only contains clients where the caller is manager or admin.
 * write (create, update, enable/disable, archive/restore): ``MANAGE`` (admin).
+* ``test`` (issue #77): ``MANAGE`` (admin), because it decrypts and uses the credentials.
 
 Credentials are write-only: no response ever contains them (only ``has_credentials`` and a
 masked hint). Every write goes through ``apps/integrations/services.py`` (audited, no values).
@@ -22,7 +23,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, mixins, serializers
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import Throttled, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -33,13 +34,16 @@ from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
 from apps.integrations import services
 from apps.integrations.models import IntegrationConnection
+from apps.integrations.testing import check_connection
 
 from .serializers import (
     ConnectionCreateSerializer,
     ConnectionListQuerySerializer,
     ConnectionSerializer,
+    ConnectionTestResultSerializer,
     ConnectionUpdateSerializer,
 )
+from .throttles import ConnectionTestThrottle
 
 TAGS = ["integrations"]
 
@@ -140,6 +144,7 @@ class ConnectionViewSet(
         "disable": Level.MANAGE,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
+        "test": Level.MANAGE,
     }
 
     def _user(self) -> User:
@@ -277,3 +282,41 @@ class ConnectionViewSet(
     @action(detail=True, methods=["post"])
     def restore(self, request: Request, pk: str | None = None) -> Response:
         return self._transition(services.restore_connection)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="integration_connections_test",
+        summary="Test a connection",
+        description="Runs the provider's lightweight check with the stored credentials and "
+        "stores the outcome (`last_tested_at`, `last_test_status`, `last_test_message`). A "
+        "failure moves an active connection to `error`; a success clears `error`. When no test "
+        "exists for the provider yet the result is `unconfigured`: nothing is stored and "
+        "nothing is claimed to work. Credentials are never returned and the message is "
+        "scrubbed. Limited to 5 tests per minute per connection (429 `throttled`, with "
+        "`Retry-After`). Archived connections cannot be tested (400). Admin only: it uses "
+        "credentials, so it is a `MANAGE` action. " + _WRITE,
+        request=None,
+        responses={
+            200: ConnectionTestResultSerializer,
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def test(self, request: Request, pk: str | None = None) -> Response:
+        connection = self.get_object()  # 404 / 403 first, so only an admin spends the budget
+        throttle = ConnectionTestThrottle()
+        if not throttle.allow_request(request, self):
+            raise Throttled(wait=throttle.wait())
+        with api_validation():
+            outcome = check_connection(connection, self._user())
+        connection.refresh_from_db()
+        return Response(
+            ConnectionTestResultSerializer(
+                {
+                    "result": outcome.result,
+                    "ok": outcome.ok,
+                    "message": outcome.message,
+                    "connection": connection,
+                }
+            ).data
+        )
