@@ -154,6 +154,13 @@ inside the container, then `docker cp` it out). Restore into an empty database; 
 the dev database, run `reset_local_db --no-migrate` first. Dumps contain real data, so keep them
 out of git.
 
+## Provider integrations
+
+External data, email, LLM and CRM providers are reached through adapters (ADR 0002). The provider
+shortlist, licensing notes and the requirements every adapter must meet are in
+[docs/integrations/](../docs/integrations/README.md); the first-provider choice is a proposed
+decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No adapter code exists yet.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
@@ -884,6 +891,132 @@ documented in "Company API" below; CSV and provider imports have none yet (#62, 
   value, 16 KiB total) on every save (`apps/imports/rawdata.py`).
 - Factories: `tests/factories_imports.py` (`make_import_batch`, `make_import_row`; they do not
   bump counters). The admin is view only.
+
+### CSV import format (`apps/imports/csvparse.py`, issue #61)
+
+Pure and DB-free (standard library only). It parses and maps; persistence and queuing are #62.
+Template: `build_template_csv()` (UTF-8 with BOM, CRLF); a sample with three placeholder rows,
+one with an Arabic name, is `docs/samples/companies-template.csv` (a test keeps it in sync).
+
+```csv
+company_name,website,profile_url,country,industry,notes
+Example Trading Co,example.com,https://www.linkedin.com/company/example-trading,SA,Retail,Placeholder row
+```
+
+- **Columns**: `company_name` (required), `website`, `profile_url` (LinkedIn or other company
+  profile), `country`. Every other column (`industry`, `notes`, anything) is kept in `raw`, so in
+  `ImportRow.raw_data`. `country` takes an ISO alpha-2 code or a common English name (`COUNTRY_NAMES`,
+  for example `Saudi Arabia`, `UAE`, `UK`, `Egypt`, plus a few Arabic names); an unknown name is
+  passed on and the input schema reports `country_unknown`.
+- **Header aliases** (`HEADER_ALIASES`, case, accents and punctuation ignored, then close
+  spellings at 0.84 similarity): name: `Company`, `Company Name`, `Organisation`, `Name`, `اسم الشركة`;
+  website: `Website`, `Domain`, `URL`, `الموقع`; profile_url: `LinkedIn`, `LinkedIn URL`,
+  `Profile URL`; country: `Country`, `HQ Country`, `الدولة`. `suggest_mapping(headers)` returns a
+  `Mapping` (`columns` header -> field, `unmapped`, `fuzzy`); exact matches win over fuzzy ones and a
+  field is never mapped twice. The UI may send its own `{header: field}`:
+  `Mapping.from_dict(...)`, checked by `validate_mapping(mapping, headers)` (name must be mapped,
+  no field twice, headers must exist, fields must be one of `FIELDS`); `iter_rows` raises
+  `MappingError` (a `CsvFileError`) for an invalid one. Store `mapping.to_dict()` in
+  `ImportBatch.column_mapping`.
+- **Encodings**, in this order: BOM (UTF-8, UTF-16, UTF-32); UTF-16 without BOM (NUL pattern);
+  strict UTF-8 over the whole file; else legacy Excel exports: Windows-1256 if the high bytes are
+  mostly Arabic letters, else Windows-1252, else ISO-8859-1. A legacy fallback adds the warning
+  `encoding_fallback`. Binary content (NUL bytes, xlsx/zip/pdf/xls signatures) and a declared
+  encoding that fails to decode are rejected with a clear code (`binary_file`,
+  `unsupported_format`, `undecodable`).
+- **Delimiter** comma, semicolon or tab, sniffed from the first records (Excel's `sep=;` line is
+  honoured; pass `delimiter=` to force). Quoted fields, `""` escapes, embedded newlines and
+  CRLF, LF or CR all work.
+- **Limits** (`CsvLimits`, defaults): file 10 MB, 5000 non-blank rows, 50 columns, 2000 characters
+  per cell. Too big a file fails before parsing (size known) or while streaming; too many columns or
+  an over-long header fail the file; too many rows raises `too_many_rows` once the limit is passed,
+  so call `summarize()` (one constant-memory pass, no rows kept) before queuing work. An over-long
+  cell, a ragged row (`column_count_mismatch`) or broken quoting (`malformed_row`) is a row error
+  on that row only; the parse goes on.
+- **Rows**: `iter_rows(source, mapping=None, limits=...)` yields `ParsedRow(row_number, raw,
+  mapped, errors)`; `row.ok` is `not errors`. `row_number` 1 is the first record after the header,
+  blank rows are skipped but still counted, so it matches the physical record (spreadsheet row =
+  number + 1). `raw` has every column (header -> text), `mapped` only `name`, `website`,
+  `profile_url`, `country` (empty for an errored row). Duplicate headers are renamed (`name (2)`),
+  empty ones become `column_N`, both with a warning. BOM, zero-width and bidi control characters are
+  removed and whitespace is stripped; nothing else is changed.
+- **Summary**: `it.summary` (`ParseSummary`: `encoding`, `delimiter`, `headers`, `mapping`,
+  `total_rows`, `blank_rows`, `error_rows`, `file_size`, `file_sha256`, `warnings`, `complete`) is
+  final once the iterator is exhausted. `preview(source, count=10)` gives the first rows,
+  headers, mapping and detected settings for the mapping screen.
+- **Memory**: the file is read in 64 KiB blocks (twice: encoding detection, then parsing) and rows are
+  produced lazily; a non-seekable stream is spooled to a temporary file first.
+- **Formula injection**: raw values are stored as typed (`=cmd|' /C calc'!A0` stays as is). Every
+  value written to a CSV or XLSX export must go through `safe_cell(value)` (or `safe_row`), which
+  prefixes `'` to values starting with `=`, `+`, `-`, `@`, tab or CR.
+### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
+
+What a company data provider adapter implements, so M2 imports (#67, #68) and M3 adapters meet
+in the middle. Pure Python: no models, no API, no network, no vendor SDK. Importing the package
+registers nothing. Tests: `tests/test_provider_contract.py`.
+
+```python
+from apps.imports.providers import (
+    CompanySearchRequest,
+    FakeCompanyProvider,
+    ProviderRegistry,
+    execute_search,
+    ProviderError,
+)
+
+request = CompanySearchRequest.from_campaign_rules(build_rules_summary(campaign), page_size=25)
+provider = FakeCompanyProvider()  # or get_provider("<name>") for a registered one
+while True:
+    page = execute_search(provider, request)  # never call provider.search directly
+    for company in page.items:
+        result = company.to_company_input()  # CompanyInput | InputErrors (never raises)
+        raw = company.to_raw_data(page.provider_name)  # for ImportRow.raw_data, has provider_key
+    if page.next_cursor is None:
+        break
+    request = request.with_cursor(page.next_cursor)
+```
+
+- **Request** `CompanySearchRequest` (frozen, validated on construction; bad input raises
+  `ProviderBadRequest(field)`): `query`, `countries` (ISO alpha-2), `industries`,
+  `employee_min/max`, `business_model` (`b2b|b2c|both|""`), `excluded_industries`,
+  `excluded_company_types`, `cursor`, `page_size` (1-100, default 25), `sort` (`relevance`,
+  `name`, `employee_count_asc`, `employee_count_desc`), `limit` (1-1000 total, default 100).
+  `from_campaign_rules(rules_summary, query=, page_size=, limit=, sort=, cursor=)` reads rules
+  summary schema version 1 (`targeting.*`, `exclusions.*`); other versions are refused.
+- **Result** `CompanySearchResult`: `items` (tuple of `ProviderCompany`), `provider_name`,
+  `retrieved_at` (timezone aware), `total_estimate`, `next_cursor` (`None` is the last page),
+  `raw_ref`, `credits_used`, `warnings` (partial page).
+- **`ProviderCompany`**: `name`, `website`, `domain_hint`, `profile_url`, `country` (ISO alpha-2
+  or it becomes an error), `industry`, `employee_count`, `employee_range`, `headquarters`,
+  `description`, `provider_id`, `provider_url`, `confidence`, `extra` (scalars only, at most 20
+  keys and 4 KiB, credentials scrubbed). `to_company_input(require_identifier=False)` uses the
+  same `validate_company_input` as manual and CSV rows; the website falls back to `domain_hint`.
+- **Interface** `CompanySearchProvider` (Protocol): `name`, `capabilities`
+  (`ProviderCapabilities(terms, supports_search, supports_filters=FilterSupport(countries,
+  industries, size, business_model), max_page_size, requires_credentials)`) and
+  `search(request) -> CompanySearchResult`. `execute_search(provider, request)` caps the page
+  size, wraps unexpected exceptions as `ProviderUnavailable` and checks the result.
+- **Errors** (`ProviderError` and subclasses, each with `code`, `retryable`, `as_dict()`):
+  `ProviderAuthError` (`provider_auth`), `ProviderRateLimited(retry_after)`
+  (`provider_rate_limited`, retryable), `ProviderUnavailable` (`provider_unavailable`,
+  retryable), `ProviderBadRequest` (`provider_bad_request`), `ProviderQuotaExceeded`
+  (`provider_quota_exceeded`). Messages are fixed per class: never credentials, never upstream
+  bodies. Chain the vendor exception with `raise ... from exc`.
+- **Registry**: `ProviderRegistry()` (`register(provider, replace=False)`, `get`, `list`,
+  `unregister`, `clear`) and the module default via `register_provider`, `get_provider`,
+  `list_providers`. Refusals raise `ProviderRegistryError` with a `code`: `invalid_provider`,
+  `invalid_name`, `terms_missing`, `terms_forbidden`, `terms_unknown`, `duplicate_name`,
+  `provider_not_found` (on `get`).
+- **Compliance (Brief 4, 17)**: `capabilities.terms` must be `licensed_api`, `public_data` or
+  `manual`. Scraping-style terms are refused at registration. Profile URLs (LinkedIn included)
+  are identifiers only: never fetched.
+- **Idempotent identity**: `provider_company_key(provider_name, provider_id)` ->
+  `"<name>:<id>"` (maps to `DataSource.name` and `DataSource.provider_reference`);
+  `ProviderCompany.provider_key(name)` is `None` without an id. Same key, same company.
+- **`FakeCompanyProvider(name="fake", fail_with=None, max_page_size=50)`**: 25 placeholder
+  companies on `example.com` (some Arabic names), every filter, sort, cursor paging and `limit`.
+  Errors on demand: `fail_with=` an error instance, or the queries `!auth`, `!rate_limited`,
+  `!unavailable`, `!bad_request`, `!quota`. `calls` records requests. Not registered by default.
 
 ### Invariant tests (`tests/invariants`, issue #53)
 

@@ -43,6 +43,13 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Django admin](admin.md): who can sign in (staff only), what is read only,
   what is masked and how to register a new model.
 
+## Integrations
+
+- [Integrations](integrations/README.md): the provider shortlist and licensing
+  review (issue #73), the requirements every adapter must meet, and the
+  proposed first-provider decision
+  ([ADR 0012](adr/0012-first-provider-selection.md)).
+
 ## Reference for each part of the repo
 
 - [Project README](../README.md): purpose, architecture sketch, layout, V1 scope.
