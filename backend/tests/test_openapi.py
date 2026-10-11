@@ -88,6 +88,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "clients_partial_update": ("PATCH", "/api/v1/clients/{id}/"),
         "clients_archive": ("POST", "/api/v1/clients/{id}/archive/"),
         "clients_restore": ("POST", "/api/v1/clients/{id}/restore/"),
+        "providers_list": ("GET", "/api/v1/providers/"),
+        "campaigns_provider_search": ("POST", "/api/v1/campaigns/{id}/provider-search/"),
+        "campaigns_provider_import": ("POST", "/api/v1/campaigns/{id}/provider-import/"),
+        "provider_imports_retrieve": ("GET", "/api/v1/provider-imports/{id}/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
@@ -95,6 +99,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "provider import"
+            if "provider" in path
             else "campaigns"
             if "/campaigns/" in path
             else "clients"
@@ -110,6 +116,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "clients",
         "health",
         "meta",
+        "provider import",
     }
 
 

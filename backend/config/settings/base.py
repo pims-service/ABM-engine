@@ -191,6 +191,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "meta", "description": "API metadata."},
+        {
+            "name": "provider import",
+            "description": "Company data providers: search preview and import into a campaign.",
+        },
     ],
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayOperationId": True},
 }
