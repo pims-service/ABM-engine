@@ -449,6 +449,41 @@ Indexes:
 - `imp_row_client`: (client)
 - `imp_row_company`: (company)
 
+### IntegrationConnection
+
+`integrations.IntegrationConnection`, mutable, archivable, tenant, table `integrations_integrationconnection`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| created_at | timestamptz | no |  |
+| updated_at | timestamptz | no |  |
+| archived_at | timestamptz | yes |  |
+| client_id | uuid | no | FK to campaigns.Client |
+| category | text(32) | no | one of: `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| provider | text(64) | no |  |
+| name | text(200) | no |  |
+| status | text(16) | no | one of: `active`, `disabled`, `error` |
+| config | jsonb | no |  |
+| credentials | text | no |  |
+| credentials_hint | jsonb | no |  |
+| credentials_updated_at | timestamptz | yes |  |
+| last_tested_at | timestamptz | yes |  |
+| last_test_status | text(16) | no | one of: `ok`, `failed` |
+| last_test_message | text(500) | no |  |
+| created_by_id | uuid | yes | FK to accounts.User |
+
+Constraints:
+
+- `integrations_connection_category_valid`: check
+- `integrations_connection_name_unique_active`: unique (client, category, provider, Lower(name)) (partial)
+- `integrations_connection_status_valid`: check
+- `integrations_connection_test_status_valid`: check
+
+Indexes:
+
+- `integ_conn_client_cat_idx`: (client, category, status)
+
 ### Activity
 
 `outreach.Activity`, append-only, tenant, table `outreach_activity`.

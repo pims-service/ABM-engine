@@ -33,6 +33,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      INTEGRATION_ENCRYPTION_KEYS: ${INTEGRATION_ENCRYPTION_KEYS:?set INTEGRATION_ENCRYPTION_KEYS in .env}
       DEBUG: ${DEBUG:-True}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
       # Origins of the web service as the browser sees it (follows WEB_PORT).
@@ -70,6 +71,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.dev
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      INTEGRATION_ENCRYPTION_KEYS: ${INTEGRATION_ENCRYPTION_KEYS:?set INTEGRATION_ENCRYPTION_KEYS in .env}
       DEBUG: ${DEBUG:-True}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
