@@ -41,6 +41,7 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `CSRF_TRUSTED_ORIGINS` | api | no | empty | `https://YOUR_DOMAIN` | backend | Production only, comma-separated origins. |
 | `SECURE_SSL_REDIRECT` | api | no | `True` in prod | `True` | backend | Production only. |
 | `SECURE_HSTS_SECONDS` | api | no | `3600` | `3600` | backend | Production only. Integer. |
+| `PROVIDER_FAKE_ENABLED` | api, worker | no | `true` in dev and test settings, `false` everywhere else | `true` | backend | `true`/`false`. Registers the fake company data provider (`fake`) for the provider import flow. Dev and test only: leave unset in production. |
 | `API_PAGE_SIZE` | api | no | `25` | `25` | backend | DRF default page size. Integer. |
 | `API_THROTTLE_ANON` | api | no | `100/hour` | `100/hour` | backend | DRF rate for anonymous users. |
 | `API_THROTTLE_USER` | api | no | `1000/hour` | `1000/hour` | backend | DRF rate for authenticated users. |

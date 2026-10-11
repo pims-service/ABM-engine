@@ -10,6 +10,7 @@ from .base import *
 from .base import Q_CLUSTER, REST_FRAMEWORK
 
 DEBUG = False
+PROVIDER_FAKE_ENABLED = True
 ALLOWED_HOSTS = ["testserver", "localhost"]
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
