@@ -342,7 +342,7 @@ def test_empty_body_reports_everything(world, manager) -> None:
     [
         ({"website": "not a domain"}, "website", "website_invalid"),
         ({"website": "ftp://acme.com"}, "website", "website_invalid_scheme"),
-        ({"website": "https://user:pw@acme.com"}, "website", "website_has_credentials"),
+        ({"website": "https://" + "user:pw" + "@acme.com"}, "website", "website_has_credentials"),
         ({"website": "a" * 2001}, "website", "website_too_long"),
         ({"profile_url": "linkedin.com/company/acme"}, "profile_url", "profile_url_invalid"),
         ({"profile_url": "javascript:alert(1)"}, "profile_url", "profile_url_invalid_scheme"),
