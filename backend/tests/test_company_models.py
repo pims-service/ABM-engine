@@ -14,6 +14,7 @@ from django.db.models import Model, ProtectedError
 from django.urls import reverse
 
 from apps.companies import services
+from apps.companies.dedupe import NO_MATCH
 from apps.companies.models import (
     Classification,
     Company,
@@ -279,12 +280,13 @@ class TestCreateCompany:
         services.create_company(make_campaign(), "Acme")
         assert services.create_company(campaign, "Acme").similar == []
 
-    def test_company_with_domain_gets_no_name_warning(self):
+    def test_company_with_a_domain_is_still_a_weak_match_for_a_domainless_same_name(self):
         campaign = make_campaign()
-        services.create_company(campaign, "Acme")
+        first = services.create_company(campaign, "Acme").company
         result = services.create_company(campaign, "Acme", "acme.com")
         assert result.created
-        assert result.similar == []
+        assert result.similar == [first]
+        assert result.company.possible_duplicate_of == first
 
     def test_invalid_input_rejected(self):
         campaign = make_campaign()
@@ -308,12 +310,12 @@ class TestCreateCompany:
         campaign = make_campaign()
         winner = make_company(campaign=campaign, website="https://acme.com")
         # Simulate the lookup missing the row (another writer inserted it a moment later).
-        calls = iter([None])
-        real = services._find_by_domain
+        calls = iter([NO_MATCH])
+        real = services.find_duplicate
         monkeypatch.setattr(
             services,
-            "_find_by_domain",
-            lambda c, d: next(calls, None) or real(c, d),
+            "find_duplicate",
+            lambda *a, **k: next(calls, None) or real(*a, **k),
         )
         result = services.create_company(campaign, "Acme", "acme.com")
         assert result.duplicate

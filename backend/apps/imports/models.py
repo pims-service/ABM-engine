@@ -22,6 +22,7 @@ from typing import Any, ClassVar, Self
 from django.conf import settings
 from django.db import models
 
+from apps.companies.dedupe import MatchStrength
 from apps.companies.models import InputSource
 from apps.core.base import (
     AppendOnlyModel,
@@ -280,6 +281,10 @@ OUTCOME_COUNTERS: dict[str, str] = {
 }
 
 
+#: ``ImportRow.match_strength`` values (the ``none`` strength is stored as blank).
+ROW_MATCH_STRENGTHS = [(MatchStrength.STRONG.value, "Strong"), (MatchStrength.WEAK.value, "Weak")]
+
+
 class ImportRowQuerySet(  # type: ignore[override]
     AppendOnlyQuerySet["ImportRow"], TenantQuerySet["ImportRow"]
 ):
@@ -293,7 +298,11 @@ class ImportRow(AppendOnlyModel, TenantModel, UUIDModel):
     header); unique per batch. ``raw_data`` is what was submitted, scrubbed of credentials and
     size-capped on save. The normalized fields are what validation made of it (blank when the row
     was too broken to normalize). ``company`` is the created company, or the existing one for a
-    duplicate or a restore; it is null for skipped and failed rows. A failed row carries a stable
+    duplicate or a restore; it is null for skipped and failed rows. ``match_strength``,
+    ``matched_on`` and ``candidate`` record the duplicate match (issue #58): strong for a
+    duplicate or restored row (``candidate`` is that existing company, same as ``company``), weak
+    for a created row flagged as a possible duplicate (``candidate`` is the other company); all
+    three are blank/null when nothing matched. A failed row carries a stable
     ``error_code`` (see ``apps.imports.schema`` and ``services``) and a human ``error_message``.
     """
 
@@ -316,6 +325,23 @@ class ImportRow(AppendOnlyModel, TenantModel, UUIDModel):
         blank=True,
         on_delete=models.PROTECT,
         related_name="import_rows",
+    )
+    match_strength = models.CharField(
+        max_length=8,
+        blank=True,
+        choices=ROW_MATCH_STRENGTHS,
+        help_text="strong: linked to an existing company; weak: created and flagged.",
+    )
+    matched_on = models.CharField(
+        max_length=16, blank=True, help_text="domain, profile or name_country."
+    )
+    candidate = models.ForeignKey(
+        "companies.Company",
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+        help_text="The matched company: the existing one (strong) or the possible duplicate.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -349,6 +375,17 @@ class ImportRow(AppendOnlyModel, TenantModel, UUIDModel):
                 condition=~models.Q(outcome=ImportRowOutcome.FAILED) | ~models.Q(error_code=""),
                 name="imports_row_failed_has_code",
             ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(match_strength="", matched_on="", candidate__isnull=True)
+                    | (
+                        models.Q(match_strength__in=[s for s, _ in ROW_MATCH_STRENGTHS])
+                        & ~models.Q(matched_on="")
+                        & models.Q(candidate__isnull=False)
+                    )
+                ),
+                name="imports_row_match_complete",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -356,13 +393,13 @@ class ImportRow(AppendOnlyModel, TenantModel, UUIDModel):
 
     def sync_client(self) -> None:
         super().sync_client()
-        company = self.company
-        if company is None:
-            return
-        if company.client_id != self.client_id:
-            raise TenantMismatchError("ImportRow.company belongs to a different client.")
-        if company.campaign_id != self.batch.campaign_id:
-            raise TenantMismatchError("ImportRow.company belongs to a different campaign.")
+        for label, company in (("company", self.company), ("candidate", self.candidate)):
+            if company is None:
+                continue
+            if company.client_id != self.client_id:
+                raise TenantMismatchError(f"ImportRow.{label} belongs to a different client.")
+            if company.campaign_id != self.batch.campaign_id:
+                raise TenantMismatchError(f"ImportRow.{label} belongs to a different campaign.")
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         if self._state.adding:

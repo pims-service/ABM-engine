@@ -39,6 +39,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
+from apps.companies.dedupe import DuplicateMatch
 from apps.companies.models import Company
 from apps.companies.services import CompanyResult, create_company
 from apps.core.logging import redact_text
@@ -217,6 +218,7 @@ def record_row_outcome(
     company: Company | None = None,
     error_code: str = "",
     error_message: str = "",
+    match: DuplicateMatch | None = None,
 ) -> ImportRow:
     """Store what happened to row ``row_number`` and count it, atomically.
 
@@ -228,6 +230,8 @@ def record_row_outcome(
     * Counters may not exceed ``total_count``: call ``set_total`` first.
 
     ``raw`` is stored scrubbed and size-capped; ``company_input`` fills the normalized columns.
+    ``match`` (from ``CompanyResult.match``) fills ``match_strength``, ``matched_on`` and
+    ``candidate`` when it is a strong or weak match; a ``none`` match leaves them blank.
     """
     if outcome not in ImportRowOutcome.values:
         raise ValueError(f"Unknown row outcome {outcome!r}.")
@@ -238,6 +242,7 @@ def record_row_outcome(
     if outcome == ImportRowOutcome.FAILED and not error_code:
         raise ValueError("A failed row needs an error_code.")
     normalized = company_input.as_dict() if company_input else {}
+    found = match if match and match.company and match.matched_on else None
     with _locked_batch(batch) as locked:
         existing = ImportRow.objects.filter(batch=locked, row_number=row_number).first()
         if existing is not None:
@@ -262,6 +267,9 @@ def record_row_outcome(
             error_code=error_code[:64],
             error_message=_clip(error_message),
             company=company,
+            match_strength=found.strength.value if found else "",
+            matched_on=found.matched_on or "" if found else "",
+            candidate=found.company if found else None,
         )
         counter = OUTCOME_COUNTERS[outcome]
         setattr(locked, counter, getattr(locked, counter) + 1)
@@ -312,6 +320,7 @@ def process_row(
                 raw=raw,
                 company_input=checked,
                 company=result.company,
+                match=result.match,
             )
     except ValidationError as exc:
         return record_row_outcome(

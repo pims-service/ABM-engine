@@ -154,6 +154,13 @@ inside the container, then `docker cp` it out). Restore into an empty database; 
 the dev database, run `reset_local_db --no-migrate` first. Dumps contain real data, so keep them
 out of git.
 
+## Provider integrations
+
+External data, email, LLM and CRM providers are reached through adapters (ADR 0002). The provider
+shortlist, licensing notes and the requirements every adapter must meet are in
+[docs/integrations/](../docs/integrations/README.md); the first-provider choice is a proposed
+decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No adapter code exists yet.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
@@ -489,11 +496,25 @@ tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist sec
   credentials, port, path, a leading `www.` and trailing dots; IDN becomes punycode; IPs,
   single labels and junk give `None`. `Company.save()` always derives `domain` from `website`.
 - `create_company(campaign, name, website="", *, profile_url, country, input_source, user,
-  created_by_job_id)` returns a `CompanyResult`. Same normalized domain already in the campaign:
-  nothing is inserted, `duplicate=True`, and an archived one is restored (`restored=True`). No
-  domain: created, with `similar` / `warnings` listing active same-name companies (never
-  auto-merged). Unique `(campaign, domain)` where domain is not null is also a database
-  constraint (archived rows count).
+  created_by_job_id)` returns a `CompanyResult` and is the merge-safe upsert (issue #58, rules
+  in `docs/data-model.md`, "Company duplicate detection"). A **strong** match (same normalized
+  domain, then same canonical profile URL, inside the campaign) inserts nothing and never edits
+  the existing company: `duplicate=True`, `company` is the existing row, an archived one is
+  restored (`restored=True`). A **weak** match (same name key and compatible country) creates
+  the company flagged `possible_duplicate_of` the oldest candidate (written once, never
+  edited), with `similar` / `warnings` listing the candidates (never auto-merged).
+  `result.match` is the `DuplicateMatch`. Unique `(campaign, domain)` and `(campaign,
+  profile_key)` are also database constraints (archived rows count); a lost race (`IntegrityError`)
+  is caught and returned as `duplicate=True`, so concurrent submissions yield one company.
+- **`find_duplicate(campaign, name, website="", profile_url="", country="", *, exclude=None)`**
+  (`apps/companies/dedupe.py`) is read-only and returns `DuplicateMatch(strength, company,
+  matched_on, candidates)`: `strength` is `MatchStrength.STRONG` / `WEAK` / `NONE`, `matched_on`
+  is `domain`, `profile` or `name_country`. At most two queries. Same name in another country
+  is not a match; the same domain in another campaign or client is not a match.
+- Company columns for it: `profile_key` and `name_key` (derived on save from `profile_url` and
+  `name`, never typed), `possible_duplicate_of` (nullable self FK, PROTECT), the derived
+  `Company.possible_duplicate` and `Company.objects.possible_duplicates()`. Human resolution of
+  a flag is a later issue; it must not clear `possible_duplicate_of`.
 - `add_research_snapshot(company, data_source, *, researched_at=None, **facts)` appends a
   snapshot (facts: `RESEARCH_FIELDS`; omitted means null = not found). The source must belong to
   the company's client. `researched_at` defaults to the source's `retrieved_at`.
@@ -536,7 +557,9 @@ is ever fetched.
 - `company_match_keys(name, website, profile_url) -> tuple[MatchKey, ...]`: ordered identity
   keys, `MatchKey("domain", "acme.com")`, `MatchKey("profile", "linkedin:acme")`,
   `MatchKey("name", "acme")` (`str(key)` gives `domain:acme.com`). Domain is exactly what
-  `Company.domain` stores. The name key is a weak match: combine with country (#58).
+  `Company.domain` stores. The name key is a weak match: `find_duplicate` combines it with
+  country (#58). `profile_key(raw)` and `name_match_key(raw)` give the values stored in
+  `Company.profile_key` / `Company.name_key`.
 - `normalize_company_input(name, website, profile_url) -> NormalizedCompanyInput`: all of the
   above for one row with `domain`, `profile_url_canonical`, `name_normalized`, `warnings`
   (`website_unparseable`, `website:tracking_params_removed`, ...) and `match_keys`.
@@ -871,11 +894,84 @@ schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (s
   Lower level: `record_row_outcome`, `start_batch`, `attach_job`, `fail_batch`, `cancel_batch`.
   Counters change under a row lock, rows are written once (a redelivered task is safe), and
   `BatchStateError` signals a finished batch or counts beyond `total_count`.
+- **Match info on rows** (issue #58): `ImportRow.match_strength` (`strong` for `duplicate` and
+  `restored`, `weak` for a flagged `created` row, blank otherwise), `matched_on` and `candidate`
+  (the matched company) come from `CompanyResult.match`; `record_row_outcome(..., match=)`.
+  The outcome enum is unchanged. An import never modifies an existing company's fields.
 - **Rows are append-only**; the batch is mutable only in status, counters, timestamps and
   `error_summary`. `ImportRow.raw_data` is scrubbed of credentials and capped (2000 characters per
   value, 16 KiB total) on every save (`apps/imports/rawdata.py`).
 - Factories: `tests/factories_imports.py` (`make_import_batch`, `make_import_row`; they do not
   bump counters). The admin is view only.
+
+### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
+
+What a company data provider adapter implements, so M2 imports (#67, #68) and M3 adapters meet
+in the middle. Pure Python: no models, no API, no network, no vendor SDK. Importing the package
+registers nothing. Tests: `tests/test_provider_contract.py`.
+
+```python
+from apps.imports.providers import (
+    CompanySearchRequest,
+    FakeCompanyProvider,
+    ProviderRegistry,
+    execute_search,
+    ProviderError,
+)
+
+request = CompanySearchRequest.from_campaign_rules(build_rules_summary(campaign), page_size=25)
+provider = FakeCompanyProvider()  # or get_provider("<name>") for a registered one
+while True:
+    page = execute_search(provider, request)  # never call provider.search directly
+    for company in page.items:
+        result = company.to_company_input()  # CompanyInput | InputErrors (never raises)
+        raw = company.to_raw_data(page.provider_name)  # for ImportRow.raw_data, has provider_key
+    if page.next_cursor is None:
+        break
+    request = request.with_cursor(page.next_cursor)
+```
+
+- **Request** `CompanySearchRequest` (frozen, validated on construction; bad input raises
+  `ProviderBadRequest(field)`): `query`, `countries` (ISO alpha-2), `industries`,
+  `employee_min/max`, `business_model` (`b2b|b2c|both|""`), `excluded_industries`,
+  `excluded_company_types`, `cursor`, `page_size` (1-100, default 25), `sort` (`relevance`,
+  `name`, `employee_count_asc`, `employee_count_desc`), `limit` (1-1000 total, default 100).
+  `from_campaign_rules(rules_summary, query=, page_size=, limit=, sort=, cursor=)` reads rules
+  summary schema version 1 (`targeting.*`, `exclusions.*`); other versions are refused.
+- **Result** `CompanySearchResult`: `items` (tuple of `ProviderCompany`), `provider_name`,
+  `retrieved_at` (timezone aware), `total_estimate`, `next_cursor` (`None` is the last page),
+  `raw_ref`, `credits_used`, `warnings` (partial page).
+- **`ProviderCompany`**: `name`, `website`, `domain_hint`, `profile_url`, `country` (ISO alpha-2
+  or it becomes an error), `industry`, `employee_count`, `employee_range`, `headquarters`,
+  `description`, `provider_id`, `provider_url`, `confidence`, `extra` (scalars only, at most 20
+  keys and 4 KiB, credentials scrubbed). `to_company_input(require_identifier=False)` uses the
+  same `validate_company_input` as manual and CSV rows; the website falls back to `domain_hint`.
+- **Interface** `CompanySearchProvider` (Protocol): `name`, `capabilities`
+  (`ProviderCapabilities(terms, supports_search, supports_filters=FilterSupport(countries,
+  industries, size, business_model), max_page_size, requires_credentials)`) and
+  `search(request) -> CompanySearchResult`. `execute_search(provider, request)` caps the page
+  size, wraps unexpected exceptions as `ProviderUnavailable` and checks the result.
+- **Errors** (`ProviderError` and subclasses, each with `code`, `retryable`, `as_dict()`):
+  `ProviderAuthError` (`provider_auth`), `ProviderRateLimited(retry_after)`
+  (`provider_rate_limited`, retryable), `ProviderUnavailable` (`provider_unavailable`,
+  retryable), `ProviderBadRequest` (`provider_bad_request`), `ProviderQuotaExceeded`
+  (`provider_quota_exceeded`). Messages are fixed per class: never credentials, never upstream
+  bodies. Chain the vendor exception with `raise ... from exc`.
+- **Registry**: `ProviderRegistry()` (`register(provider, replace=False)`, `get`, `list`,
+  `unregister`, `clear`) and the module default via `register_provider`, `get_provider`,
+  `list_providers`. Refusals raise `ProviderRegistryError` with a `code`: `invalid_provider`,
+  `invalid_name`, `terms_missing`, `terms_forbidden`, `terms_unknown`, `duplicate_name`,
+  `provider_not_found` (on `get`).
+- **Compliance (Brief 4, 17)**: `capabilities.terms` must be `licensed_api`, `public_data` or
+  `manual`. Scraping-style terms are refused at registration. Profile URLs (LinkedIn included)
+  are identifiers only: never fetched.
+- **Idempotent identity**: `provider_company_key(provider_name, provider_id)` ->
+  `"<name>:<id>"` (maps to `DataSource.name` and `DataSource.provider_reference`);
+  `ProviderCompany.provider_key(name)` is `None` without an id. Same key, same company.
+- **`FakeCompanyProvider(name="fake", fail_with=None, max_page_size=50)`**: 25 placeholder
+  companies on `example.com` (some Arabic names), every filter, sort, cursor paging and `limit`.
+  Errors on demand: `fail_with=` an error instance, or the queries `!auth`, `!rate_limited`,
+  `!unavailable`, `!bad_request`, `!quota`. `calls` records requests. Not registered by default.
 
 ### Invariant tests (`tests/invariants`, issue #53)
 

@@ -38,8 +38,17 @@ class ImportBatchAdmin(ReadOnlyAdmin):
 
 @admin.register(ImportRow)
 class ImportRowAdmin(ReadOnlyAdmin):
-    list_display = ("batch", "row_number", "outcome", "name", "domain", "error_code", "company")
-    list_filter = ("outcome", "client")
+    list_display = (
+        "batch",
+        "row_number",
+        "outcome",
+        "match_strength",
+        "name",
+        "domain",
+        "error_code",
+        "company",
+    )
+    list_filter = ("outcome", "match_strength", "client")
     list_select_related = ("batch", "company")
     search_fields = ("name", "domain", "error_code", "batch__original_filename")
     date_hierarchy = "created_at"
