@@ -79,6 +79,12 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "/api/v1/campaigns/{id}/profile-versions/{version}/",
         ),
         "campaigns_rules_summary": ("GET", "/api/v1/campaigns/{id}/rules-summary/"),
+        "campaign_companies_list": ("GET", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "campaign_companies_create": ("POST", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "companies_retrieve": ("GET", "/api/v1/companies/{id}/"),
+        "companies_analyze": ("POST", "/api/v1/companies/{id}/analyze/"),
+        "companies_archive": ("POST", "/api/v1/companies/{id}/archive/"),
+        "companies_restore": ("POST", "/api/v1/companies/{id}/restore/"),
         "client_campaigns_list": ("GET", "/api/v1/clients/{client_pk}/campaigns/"),
         "client_campaigns_create": ("POST", "/api/v1/clients/{client_pk}/campaigns/"),
         "clients_list": ("GET", "/api/v1/clients/"),
@@ -95,6 +101,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "companies"
+            if "/companies/" in path
             else "campaigns"
             if "/campaigns/" in path
             else "clients"
@@ -108,6 +116,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth",
         "campaigns",
         "clients",
+        "companies",
         "health",
         "meta",
     }
