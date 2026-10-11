@@ -159,7 +159,60 @@ out of git.
 External data, email, LLM and CRM providers are reached through adapters (ADR 0002). The provider
 shortlist, licensing notes and the requirements every adapter must meet are in
 [docs/integrations/](../docs/integrations/README.md); the first-provider choice is a proposed
-decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No adapter code exists yet.
+decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No vendor adapter exists yet;
+the framework they plug into is described next.
+
+### Integration framework (`apps/integrations/framework`, issues #74 and #75, [ADR 0013](../docs/adr/0013-integration-framework.md))
+
+One adapter model for the nine Brief section 17 categories (`IntegrationCategory`: `llm`,
+`company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`,
+`storage`, `automation`). Pure Python: no models, no migrations, no endpoints, no network, no vendor
+SDK. Importing it registers nothing. Tests: `tests/test_integration_framework.py`; the reusable
+suite adapters import is `tests/adapter_contract.py`. Step-by-step guide:
+[docs/integrations/framework.md](../docs/integrations/framework.md).
+
+```python
+from apps.integrations.framework import (
+    AdapterRegistry, ConnectionSpec, CompanyRef, execute, supports,
+)
+
+registry = AdapterRegistry()          # or default_registry (empty until you register)
+registry.register(MyCompanyAdapter)   # explicit, validated: terms, features, config schema
+adapter = registry.resolve(ConnectionSpec("company_data", "my-vendor", {"region": "eu"},
+                                          {"api_key": secret}))   # credentials: str or SecretStr
+if supports(adapter, "enrich_company"):
+    result = execute(adapter, adapter.enrich_company, CompanyRef(domain="acme.com"))
+    company = result.data             # NormalizedCompany or None (unknown, never invented)
+    result.provenance                 # provider, category, source, retrieved_at, terms, ...
+    result.usage                      # credits / cost / tokens / latency_ms
+```
+
+- **Adapter** (`Adapter` ABC plus one base class per category) declares `key`, `display_name`,
+  `version`, `terms` (`licensed_api` | `public_data` | `manual`; scraping is refused),
+  `capabilities` (`AdapterCapabilities`: features of its category, allowed hosts, rate limit,
+  page size) and `config_schema` (settings plus credential NAMES under `x-credentials`; secrets
+  are never settings). `validate_config()` reports field names and codes, never values.
+  `test_connection()` returns a `ConnectionTestResult` with a fixed safe message and latency.
+- **Operations** return `AdapterResult[T]`: company `search` / `enrich_company` /
+  `list_job_postings`, people `find_people`, email `find_email` and `verify`, LLM
+  `generate_structured`, CRM `push_contact` / `push_company` (idempotent by `external_key`),
+  outreach `export_prospects` (export only in V1), storage `put_object` / `get_object` /
+  `delete_object`, automation `trigger` / `run_status`. Always call through `execute()`: it checks
+  the declared feature, turns stray exceptions into `ProviderUnavailable`, checks the result's
+  stamp and fills `usage.latency_ms`.
+- **Envelope** (`AdapterResult`, `Provenance`, `Usage`) and **normalized types**
+  (`NormalizedCompany`, `NormalizedPerson`, `SignalCandidate`, `EmailVerification`, ...):
+  `None` means unknown; evidence-bearing data requires provenance with a source and a
+  timezone-aware `retrieved_at`; text is bounded and scrubbed of secrets.
+- **Errors**: the #66 family plus `ProviderNotConfigured`, `ProviderNotFound`, `ProviderConflict`,
+  `ProviderTimeout`, `ProviderUpstreamError` (and `ProviderInvalidOutput`). Each has a stable
+  `code`, `retryable`, `retry_after` and a safe `as_dict()`; `map_http_status(status)` is the one
+  HTTP table.
+- **Compatibility**: `apps.imports.providers` keeps working unchanged; its errors and terms
+  check now live in the framework and are re-exported. `framework.bridge.as_company_search_provider`
+  lets a `CompanyDataAdapter` serve the #66 import contract.
+- **Fakes** (`framework.fakes`, one per category, `register_fakes(registry)`) are for tests and
+  local development only.
 
 ## Background jobs (Django-Q2)
 
