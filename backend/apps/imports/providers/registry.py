@@ -18,28 +18,11 @@ Registration refuses (``ProviderRegistryError``, stable ``code``):
 
 from __future__ import annotations
 
-from .base import ALLOWED_TERMS, CompanySearchProvider, ProviderCapabilities
+from apps.integrations.framework.categories import check_terms
+
+from .base import CompanySearchProvider, ProviderCapabilities
 from .errors import ProviderRegistryError
 from .keys import PROVIDER_NAME_PATTERN
-
-_FORBIDDEN_MARKERS = ("scrap", "crawl", "spider", "harvest", "unauthorized", "unlicensed")
-
-
-def check_terms(terms: object) -> None:
-    """Raise ``ProviderRegistryError`` unless ``terms`` is an allowed access basis."""
-    if not isinstance(terms, str) or not terms.strip():
-        raise ProviderRegistryError("terms_missing", "The provider must declare its terms.")
-    value = terms.strip().lower()
-    if any(marker in value for marker in _FORBIDDEN_MARKERS):
-        raise ProviderRegistryError(
-            "terms_forbidden",
-            "Scraping-style access is not allowed. "
-            "Use a licensed API, public data or manual input.",
-        )
-    if value not in ALLOWED_TERMS:
-        raise ProviderRegistryError(
-            "terms_unknown", "The provider terms must be licensed_api, public_data or manual."
-        )
 
 
 class ProviderRegistry:
