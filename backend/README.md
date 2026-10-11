@@ -838,6 +838,63 @@ schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (s
 - Factories: `tests/factories_imports.py` (`make_import_batch`, `make_import_row`; they do not
   bump counters). The admin is view only.
 
+### CSV import format (`apps/imports/csvparse.py`, issue #61)
+
+Pure and DB-free (standard library only). It parses and maps; persistence and queuing are #62.
+Template: `build_template_csv()` (UTF-8 with BOM, CRLF); a sample with three placeholder rows,
+one with an Arabic name, is `docs/samples/companies-template.csv` (a test keeps it in sync).
+
+```csv
+company_name,website,profile_url,country,industry,notes
+Example Trading Co,example.com,https://www.linkedin.com/company/example-trading,SA,Retail,Placeholder row
+```
+
+- **Columns**: `company_name` (required), `website`, `profile_url` (LinkedIn or other company
+  profile), `country`. Every other column (`industry`, `notes`, anything) is kept in `raw`, so in
+  `ImportRow.raw_data`. `country` takes an ISO alpha-2 code or a common English name (`COUNTRY_NAMES`,
+  for example `Saudi Arabia`, `UAE`, `UK`, `Egypt`, plus a few Arabic names); an unknown name is
+  passed on and the input schema reports `country_unknown`.
+- **Header aliases** (`HEADER_ALIASES`, case, accents and punctuation ignored, then close
+  spellings at 0.84 similarity): name: `Company`, `Company Name`, `Organisation`, `Name`, `اسم الشركة`;
+  website: `Website`, `Domain`, `URL`, `الموقع`; profile_url: `LinkedIn`, `LinkedIn URL`,
+  `Profile URL`; country: `Country`, `HQ Country`, `الدولة`. `suggest_mapping(headers)` returns a
+  `Mapping` (`columns` header -> field, `unmapped`, `fuzzy`); exact matches win over fuzzy ones and a
+  field is never mapped twice. The UI may send its own `{header: field}`:
+  `Mapping.from_dict(...)`, checked by `validate_mapping(mapping, headers)` (name must be mapped,
+  no field twice, headers must exist, fields must be one of `FIELDS`); `iter_rows` raises
+  `MappingError` (a `CsvFileError`) for an invalid one. Store `mapping.to_dict()` in
+  `ImportBatch.column_mapping`.
+- **Encodings**, in this order: BOM (UTF-8, UTF-16, UTF-32); UTF-16 without BOM (NUL pattern);
+  strict UTF-8 over the whole file; else legacy Excel exports: Windows-1256 if the high bytes are
+  mostly Arabic letters, else Windows-1252, else ISO-8859-1. A legacy fallback adds the warning
+  `encoding_fallback`. Binary content (NUL bytes, xlsx/zip/pdf/xls signatures) and a declared
+  encoding that fails to decode are rejected with a clear code (`binary_file`,
+  `unsupported_format`, `undecodable`).
+- **Delimiter** comma, semicolon or tab, sniffed from the first records (Excel's `sep=;` line is
+  honoured; pass `delimiter=` to force). Quoted fields, `""` escapes, embedded newlines and
+  CRLF, LF or CR all work.
+- **Limits** (`CsvLimits`, defaults): file 10 MB, 5000 non-blank rows, 50 columns, 2000 characters
+  per cell. Too big a file fails before parsing (size known) or while streaming; too many columns or
+  an over-long header fail the file; too many rows raises `too_many_rows` once the limit is passed,
+  so call `summarize()` (one constant-memory pass, no rows kept) before queuing work. An over-long
+  cell, a ragged row (`column_count_mismatch`) or broken quoting (`malformed_row`) is a row error
+  on that row only; the parse goes on.
+- **Rows**: `iter_rows(source, mapping=None, limits=...)` yields `ParsedRow(row_number, raw,
+  mapped, errors)`; `row.ok` is `not errors`. `row_number` 1 is the first record after the header,
+  blank rows are skipped but still counted, so it matches the physical record (spreadsheet row =
+  number + 1). `raw` has every column (header -> text), `mapped` only `name`, `website`,
+  `profile_url`, `country` (empty for an errored row). Duplicate headers are renamed (`name (2)`),
+  empty ones become `column_N`, both with a warning. BOM, zero-width and bidi control characters are
+  removed and whitespace is stripped; nothing else is changed.
+- **Summary**: `it.summary` (`ParseSummary`: `encoding`, `delimiter`, `headers`, `mapping`,
+  `total_rows`, `blank_rows`, `error_rows`, `file_size`, `file_sha256`, `warnings`, `complete`) is
+  final once the iterator is exhausted. `preview(source, count=10)` gives the first rows,
+  headers, mapping and detected settings for the mapping screen.
+- **Memory**: the file is read in 64 KiB blocks (twice: encoding detection, then parsing) and rows are
+  produced lazily; a non-seekable stream is spooled to a temporary file first.
+- **Formula injection**: raw values are stored as typed (`=cmd|' /C calc'!A0` stays as is). Every
+  value written to a CSV or XLSX export must go through `safe_cell(value)` (or `safe_row`), which
+  prefixes `'` to values starting with `=`, `+`, `-`, `@`, tab or CR.
 ### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
 
 What a company data provider adapter implements, so M2 imports (#67, #68) and M3 adapters meet
