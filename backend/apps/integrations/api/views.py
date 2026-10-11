@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from typing import Any, ClassVar, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, mixins, serializers
 from rest_framework.decorators import action
@@ -106,7 +107,8 @@ _WRITE = _levels("MANAGE", "admin")
         operation_id="integration_connections_update",
         summary="Change a connection's name, config and/or credentials",
         description="`credentials`, when sent, replace all stored credentials; when omitted "
-        "they are kept. Category and provider cannot change. An archived connection is "
+        "they are kept, and `credentials: null` removes them. Category and provider cannot "
+        "change. An archived connection is "
         "read-only (400). " + _WRITE,
         request=ConnectionUpdateSerializer,
         responses={200: ConnectionSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
@@ -209,14 +211,13 @@ class ConnectionViewSet(
 
     def perform_update(self, serializer: serializers.BaseSerializer[Any]) -> None:
         values = dict(serializer.validated_data)
+        clear = "credentials" in values and values["credentials"] is None  # explicit null
         credentials = values.pop("credentials", None)
-        with api_validation():
-            services.update_connection(
-                cast(IntegrationConnection, serializer.instance),
-                self._user(),
-                credentials=credentials,
-                **values,
-            )
+        instance = cast(IntegrationConnection, serializer.instance)
+        with api_validation(), transaction.atomic():
+            services.update_connection(instance, self._user(), credentials=credentials, **values)
+            if clear:
+                services.clear_credentials(instance, self._user())
 
     def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         partial = kwargs.pop("partial", False)

@@ -477,6 +477,10 @@ admin, every write needs admin (see [permissions](../docs/permissions.md#integra
 No DELETE (archive). Filters `client`, `category`, `provider`, `status`, `test_status`,
 `archived`, `search`, `ordering`.
 
+**Clearing credentials.** `PATCH /{id}/` with `"credentials": null` removes the stored credentials
+(audited as `credentials_change: cleared`); omitting the field keeps them, and an empty object is
+rejected. The settings UI uses it for "Clear credentials".
+
 **Testing a connection** (issue #77). `POST /api/v1/integrations/connections/{id}/test/` (admin only,
 5 per minute per connection, 429 `throttled` after that) runs the tester registered in
 `apps/integrations/testing.py` for the connection's category and provider:

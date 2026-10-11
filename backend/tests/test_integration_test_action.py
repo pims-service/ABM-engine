@@ -300,6 +300,36 @@ def test_get_is_not_allowed() -> None:
     assert as_user(admin).get(test_url(connection)).status_code == 405
 
 
+# ------------------------------------------------------------------ clearing credentials (UI)
+
+
+def test_patch_credentials_null_clears_them_and_is_audited() -> None:
+    client = make_client()
+    admin = member("admin", client)
+    connection = make_connection(client)
+    response = as_user(admin).patch(f"{URL}{connection.pk}/", {"credentials": None}, format="json")
+    assert response.status_code == 200, response.content
+    data = response.json()
+    assert data["has_credentials"] is False
+    assert data["credentials_hint"] == {}
+    entry = AuditLog.objects.filter(object_type="integration_connection").latest("created_at")
+    assert (entry.after or {}).get("credentials_change") == "cleared"
+    assert FAKE_SECRET not in response.content.decode()
+
+
+def test_clearing_credentials_needs_the_admin_role_and_an_empty_object_is_still_rejected() -> None:
+    client = make_client()
+    connection = make_connection(client)
+    manager = member("manager", client)
+    denied = as_user(manager).patch(f"{URL}{connection.pk}/", {"credentials": None}, format="json")
+    assert denied.status_code == 403
+    admin = member("admin", client)
+    empty = as_user(admin).patch(f"{URL}{connection.pk}/", {"credentials": {}}, format="json")
+    assert empty.status_code == 400
+    connection.refresh_from_db()
+    assert connection.credentials.is_set
+
+
 # ------------------------------------------------------------------ rate limit
 
 

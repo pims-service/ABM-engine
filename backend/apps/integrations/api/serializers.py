@@ -84,8 +84,9 @@ class StrictSecretField(serializers.CharField):
         return super().to_internal_value(data)
 
 
-def _credentials_field() -> serializers.DictField:
+def _credentials_field(*, allow_null: bool = False) -> serializers.DictField:
     return serializers.DictField(
+        allow_null=allow_null,
         child=StrictSecretField(
             max_length=MAX_CREDENTIAL_VALUE_LENGTH,
             trim_whitespace=True,
@@ -126,7 +127,7 @@ class ConnectionUpdateSerializer(serializers.Serializer[dict[str, Any]]):
     config = serializers.DictField(
         required=False, help_text="Replaces the whole config. Secrets are rejected here."
     )
-    credentials = _credentials_field()
+    credentials = _credentials_field(allow_null=True)
 
 
 class ConnectionListQuerySerializer(serializers.Serializer[dict[str, str]]):

@@ -2015,9 +2015,10 @@ paths:
     put:
       operationId: integration_connections_update
       description: '`credentials`, when sent, replace all stored credentials; when
-        omitted they are kept. Category and provider cannot change. An archived connection
-        is read-only (400). Needs the `MANAGE` level: admin. Others get 403; clients
-        you are not a member of give 404.'
+        omitted they are kept, and `credentials: null` removes them. Category and
+        provider cannot change. An archived connection is read-only (400). Needs the
+        `MANAGE` level: admin. Others get 403; clients you are not a member of give
+        404.'
       summary: Change a connection's name, config and/or credentials
       parameters:
       - in: path
@@ -3161,6 +3162,7 @@ components:
             minLength: 1
             maxLength: 4096
           writeOnly: true
+          nullable: true
           description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
             update they replace all stored credentials. Never returned.'
     ErrorBody:
@@ -3360,6 +3362,7 @@ components:
             minLength: 1
             maxLength: 4096
           writeOnly: true
+          nullable: true
           description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
             update they replace all stored credentials. Never returned.'
     Readiness:
