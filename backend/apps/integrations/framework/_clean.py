@@ -72,6 +72,11 @@ def email(value: object) -> str | None:
     return f"{local}@{host.lower()}"
 
 
+def currency(value: object) -> str | None:
+    raw = text(value, 10)
+    return raw.upper() if raw and len(raw) == 3 and raw.isalpha() else None
+
+
 def country(value: object) -> str | None:
     raw = text(value, 2)
     if raw is None:

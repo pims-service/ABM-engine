@@ -18,7 +18,9 @@ Registration refuses (``ProviderRegistryError``, stable ``code``):
 
 from __future__ import annotations
 
-from apps.integrations.framework.categories import check_terms
+from apps.integrations.framework.categories import (
+    check_terms as check_terms,
+)
 
 from .base import CompanySearchProvider, ProviderCapabilities
 from .errors import ProviderRegistryError

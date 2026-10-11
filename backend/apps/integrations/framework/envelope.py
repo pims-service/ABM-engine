@@ -118,8 +118,7 @@ class Usage:
         zero = Decimal(0)
         _set(self, "credits", _clean.decimal(self.credits, minimum=zero))
         _set(self, "cost", _clean.decimal(self.cost, minimum=zero))
-        cur = _clean.text(self.currency, 3)
-        _set(self, "currency", cur.upper() if cur and len(cur) == 3 and cur.isalpha() else None)
+        _set(self, "currency", _clean.currency(self.currency))
         for name in ("input_tokens", "output_tokens"):
             _set(self, name, _clean.integer(getattr(self, name), maximum=100_000_000))
         _set(self, "model", _clean.text(self.model, 100))

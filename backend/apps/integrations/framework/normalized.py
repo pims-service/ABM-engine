@@ -155,8 +155,7 @@ class Funding:
         )
         _set(self, "last_round_type", _clean.text(self.last_round_type, 100))
         _set(self, "last_round_date", _clean.day(self.last_round_date))
-        cur = _clean.text(self.currency, 3)
-        _set(self, "currency", cur.upper() if cur and len(cur) == 3 and cur.isalpha() else None)
+        _set(self, "currency", _clean.currency(self.currency))
 
 
 @dataclass(frozen=True)

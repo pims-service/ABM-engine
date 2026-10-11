@@ -92,10 +92,10 @@ class ConnectionSpec:
     it from their stored rows; this module knows nothing about those rows. ``credentials`` values
     may be ``str`` (wrapped on construction); ``repr`` never shows them."""
 
-    category: IntegrationCategory
+    category: IntegrationCategory | str
     key: str
     config: Mapping[str, Any] = field(default_factory=dict)
-    credentials: Mapping[str, SecretStr] = field(default_factory=dict, repr=False)
+    credentials: Mapping[str, SecretStr | str] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         try:
