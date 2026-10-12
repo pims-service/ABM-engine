@@ -55,6 +55,8 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Resilience and provider jobs](integrations/resilience.md): retries, timeouts, rate
   limiting, circuit breaker and the provider job base
   ([ADR 0014](adr/0014-resilience-and-provider-jobs.md)).
+- [LLM adapter and structured output](integrations/llm.md): Pydantic schemas,
+  `structured_call`, prompt-injection hygiene and the Anthropic adapter.
 
 ## Reference for each part of the repo
 
