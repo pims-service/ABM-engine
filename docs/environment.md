@@ -55,6 +55,8 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `Q_WORKERS` | worker | no | `2` | `2` | root, backend | Django-Q2 worker processes. Integer. |
 | `Q_TASK_TIMEOUT` | worker | no | `300` | `300` | root, backend | Hard per-task limit in seconds. Integer. |
 | `Q_TASK_RETRY` | worker | no | `360` | `360` | root, backend | Redelivery delay in seconds; must be greater than `Q_TASK_TIMEOUT`. |
+| `IMPORT_UPLOAD_DIR` | api, worker | no | `backend/var/import-uploads` | `/var/lib/abm/import-uploads` | backend | Private directory where uploaded CSV files wait for the worker (random file names, deleted when the batch ends). The api and the worker must see the same directory: in production mount one shared volume. Never served over HTTP. |
+| `IMPORT_CHUNK_SIZE` | worker | no | `100` | `100` | backend | Rows the CSV import worker processes between progress saves and cancellation checks. Integer, at least 1. |
 | `LOG_LEVEL` | api, worker | no | `INFO` | `INFO` | root, backend | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 | `DEV_SUPERUSER_EMAIL` | api | no | `admin@example.com` | `YOUR_EMAIL` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_PASSWORD` | api | no | none (no superuser is created) | `YOUR_DEV_ADMIN_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. |
