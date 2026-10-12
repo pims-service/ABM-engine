@@ -176,15 +176,25 @@ SPECTACULAR_SETTINGS = {
     "SERVE_AUTHENTICATION": [],  # the docs pages must open in a browser without a token
     "SORT_OPERATIONS": True,
     "COMPONENT_SPLIT_REQUEST": True,  # request bodies get their own component (no readOnly noise)
+    # Two `status` fields with different choices exist (company, job): name them explicitly.
+    "ENUM_NAME_OVERRIDES": {
+        "CompanyStatusEnum": "apps.companies.models.CompanyStatus",
+        "JobStatusEnum": "apps.core.models.JobStatus",
+    },
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
         {"name": "campaigns", "description": "Campaigns, versioned profiles, rules summary."},
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
         {
+            "name": "companies",
+            "description": "Manual company entry, list, detail, archive and Analyze Company.",
+        },
+        {
             "name": "integrations",
             "description": "Per-client provider connections; credentials are write-only.",
         },
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
+        {"name": "imports", "description": "Company import: CSV template, upload, batches."},
         {"name": "meta", "description": "API metadata."},
     ],
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayOperationId": True},
@@ -212,6 +222,13 @@ Q_CLUSTER = {
     "save_limit": 500,  # finished task rows kept for the admin; older ones are pruned
     "catch_up": False,  # do not replay missed schedules after downtime
 }
+
+# CSV import (issue #62). Uploaded CSV files wait here, under a random name (the batch id),
+# until the worker has processed them; they are deleted when the batch ends. The directory is
+# private (never served) and must be shared by the api and the worker. Rows are processed and
+# progress is saved in chunks of this many rows. File size and row limits: apps.imports.csvparse.
+IMPORT_UPLOAD_DIR = Path(env("IMPORT_UPLOAD_DIR", default=str(BASE_DIR / "var" / "import-uploads")))
+IMPORT_CHUNK_SIZE = max(1, env.int("IMPORT_CHUNK_SIZE", default=100))
 
 # Authentication (ADR 0006): SimpleJWT. Short-lived access token; refresh token rotates on every
 # use and the old one is blacklisted, so a reused (stolen) refresh token is rejected.

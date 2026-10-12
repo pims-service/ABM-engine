@@ -79,6 +79,12 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "/api/v1/campaigns/{id}/profile-versions/{version}/",
         ),
         "campaigns_rules_summary": ("GET", "/api/v1/campaigns/{id}/rules-summary/"),
+        "campaign_companies_list": ("GET", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "campaign_companies_create": ("POST", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "companies_retrieve": ("GET", "/api/v1/companies/{id}/"),
+        "companies_analyze": ("POST", "/api/v1/companies/{id}/analyze/"),
+        "companies_archive": ("POST", "/api/v1/companies/{id}/archive/"),
+        "companies_restore": ("POST", "/api/v1/companies/{id}/restore/"),
         "client_campaigns_list": ("GET", "/api/v1/clients/{client_pk}/campaigns/"),
         "client_campaigns_create": ("POST", "/api/v1/clients/{client_pk}/campaigns/"),
         "clients_list": ("GET", "/api/v1/clients/"),
@@ -112,6 +118,13 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/integrations/connections/{id}/restore/",
         ),
+        "campaigns_csv_import_preview": (
+            "POST",
+            "/api/v1/campaigns/{campaign_id}/csv-import/preview/",
+        ),
+        "campaigns_csv_import_create": ("POST", "/api/v1/campaigns/{campaign_id}/csv-import/"),
+        "imports_csv_template": ("GET", "/api/v1/imports/csv-template/"),
+        "imports_cancel": ("POST", "/api/v1/imports/{batch_id}/cancel/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
@@ -119,6 +132,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "imports"
+            if "/imports/" in path or "/csv-import/" in path
+            else "companies"
+            if "/companies/" in path
             else "campaigns"
             if "/campaigns/" in path
             else "integrations"
@@ -134,8 +151,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth",
         "campaigns",
         "clients",
+        "companies",
         "integrations",
         "health",
+        "imports",
         "meta",
     }
 
