@@ -384,6 +384,235 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/companies/:
+    get:
+      operationId: campaign_companies_list
+      description: 'Companies of one campaign, paginated, each with its newest analysis
+        job (`analysis`) and the possible-duplicate pointer. Archived companies are
+        hidden unless `archived` asks for them. `search` matches name, domain and
+        website. Needs the `READ` level: any member of the campaign''s client. Others
+        get 403; companies of clients you are not a member of give 404.'
+      summary: List a campaign's companies
+      parameters:
+      - in: query
+        name: archived
+        schema:
+          enum:
+          - 'false'
+          - 'true'
+          - all
+          type: string
+          minLength: 1
+        description: |-
+          `false` (default) hides archived companies, `true` shows only archived ones, `all` shows both.
+
+          * `false` - false
+          * `true` - true
+          * `all` - all
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: input_source
+        schema:
+          enum:
+          - manual
+          - csv
+          - provider
+          type: string
+          minLength: 1
+        description: |-
+          How the company came in.
+
+          * `manual` - Manual
+          * `csv` - CSV import
+          * `provider` - Provider
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: possible_duplicate
+        schema:
+          enum:
+          - 'true'
+          - 'false'
+          type: string
+          minLength: 1
+        description: |-
+          `true`: only companies flagged as a possible duplicate; `false`: the rest.
+
+          * `true` - true
+          * `false` - false
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          enum:
+          - pending
+          - analyzing
+          - analyzed
+          - failed
+          type: string
+          minLength: 1
+        description: |-
+          Only companies with this status.
+
+          * `pending` - Pending
+          * `analyzing` - Analyzing
+          * `analyzed` - Analyzed
+          * `failed` - Failed
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCompanyList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    post:
+      operationId: campaign_companies_create
+      description: 'Manual entry (Brief section 4A). Send `name` and a `website` and/or
+        `profile_url` (`country` optional), or `input` for one free-text box; `analyze:
+        true` also queues an analysis. The entry runs through a one-row manual import
+        batch: **201** when a company was created (a weak name-and-country match still
+        creates it, flagged `possible_duplicate`); **200** when a strong match (same
+        domain or profile) already exists in the campaign: that company is returned
+        **unchanged** with `duplicate: true` (an archived one is restored: `restored:
+        true`). Field errors use the stable codes of the import schema: `details.<field>[].code`.
+        Nothing is created for invalid input. Archived campaigns and clients take
+        no companies (400). Needs the `EDIT` level: manager and admin, in the campaign''s
+        client. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Add one company by hand
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ManualCompanyRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualEntryResult'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualEntryResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{id}/:
     get:
       operationId: campaigns_retrieve
@@ -1741,6 +1970,262 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/:
+    get:
+      operationId: companies_retrieve
+      description: 'The company with its newest analysis job, its latest research
+        snapshot (`latest_research`, null until research exists) and the possible-duplicate
+        pointer. Archived companies can be retrieved by id. Needs the `READ` level:
+        any member. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Get a company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/analyze/:
+    post:
+      operationId: companies_analyze
+      description: 'Queues an analysis of the company as a background job (`company_analysis`,
+        scoped to the company''s client and campaign) and answers **202** with the
+        job. Idempotent: while the company has a queued or running analysis job that
+        job is returned (`already_queued: true`) and nothing is queued again. 400
+        for an archived company, campaign or client. **The research engine is not
+        built yet (milestone M4):** the worker task is a placeholder that ends the
+        job `failed` with a clear "not implemented yet" message in `error_summary`.
+        It researches nothing and invents no data. Needs the `EDIT` level: manager
+        and admin. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Analyze Company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRequest'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/archive/:
+    post:
+      operationId: companies_archive
+      description: 'Soft delete: the company leaves default lists; its research and
+        history are kept. Idempotent. 400 inside an archived campaign or client. Needs
+        the `MANAGE` level: admin. Others get 403; companies of clients you are not
+        a member of give 404.'
+      summary: Archive a company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/restore/:
+    post:
+      operationId: companies_restore
+      description: 'Idempotent. 400 inside an archived campaign or client. Needs the
+        `MANAGE` level: admin. Others get 403; companies of clients you are not a
+        member of give 404.'
+      summary: Restore an archived company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanyDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/integrations/connections/:
     get:
       operationId: integration_connections_list
@@ -2445,6 +2930,77 @@ paths:
           description: Unexpected server error (`internal_error`).
 components:
   schemas:
+    AnalysisJob:
+      type: object
+      description: The background job behind an "Analyze Company" request (see `GET`
+        job status in M4).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          type: string
+          readOnly: true
+          description: A job type registered in code (`@tracked_job`), not free input.
+        status:
+          allOf:
+          - $ref: '#/components/schemas/JobStatusEnum'
+          readOnly: true
+        total_count:
+          type: integer
+          readOnly: true
+        done_count:
+          type: integer
+          readOnly: true
+        failed_count:
+          type: integer
+          readOnly: true
+        error_summary:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created_at
+      - done_count
+      - error_summary
+      - failed_count
+      - finished_at
+      - id
+      - started_at
+      - status
+      - total_count
+      - type
+    AnalysisRequest:
+      type: object
+      description: Result of `POST /companies/{id}/analyze/` (HTTP 202).
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        job:
+          $ref: '#/components/schemas/AnalysisJob'
+        already_queued:
+          type: boolean
+          description: 'True when the company already had a queued or running job:
+            that job is returned and nothing new is queued.'
+      required:
+      - already_queued
+      - company_id
+      - job
     ApiLinks:
       type: object
       properties:
@@ -2820,6 +3376,18 @@ components:
         * `ok` - ok
         * `fail` - fail
         * `skipped` - skipped
+    ClassificationEnum:
+      enum:
+      - b2b
+      - b2c
+      - both
+      - unknown
+      type: string
+      description: |-
+        * `b2b` - B2B
+        * `b2c` - B2C
+        * `both` - B2B and B2C
+        * `unknown` - Unknown
     Client:
       type: object
       description: |-
@@ -2885,6 +3453,204 @@ components:
       description: |-
         * `active` - Active
         * `archived` - Archived
+    Company:
+      type: object
+      description: A company as listed. ``analysis`` is its newest analysis job (null
+        if never requested).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        website:
+          type: string
+          readOnly: true
+          description: As entered.
+        domain:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Normalized, or null.
+        profile_url:
+          type: string
+          format: uri
+          readOnly: true
+        country:
+          type: string
+          readOnly: true
+          description: ISO 3166-1 alpha-2, upper.
+        input_source:
+          allOf:
+          - $ref: '#/components/schemas/InputSourceEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/CompanyStatusEnum'
+          readOnly: true
+        possible_duplicate:
+          type: boolean
+          readOnly: true
+          description: True when it was created next to a weak (name and country)
+            match.
+        possible_duplicate_of:
+          allOf:
+          - $ref: '#/components/schemas/PossibleDuplicateOf'
+          readOnly: true
+          nullable: true
+        analysis:
+          allOf:
+          - $ref: '#/components/schemas/AnalysisJob'
+          readOnly: true
+          nullable: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - analysis
+      - archived_at
+      - campaign
+      - client
+      - country
+      - created_at
+      - domain
+      - id
+      - input_source
+      - name
+      - possible_duplicate
+      - possible_duplicate_of
+      - profile_url
+      - status
+      - updated_at
+      - website
+    CompanyDetail:
+      type: object
+      description: A company with its latest research snapshot (null until research
+        exists).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        website:
+          type: string
+          readOnly: true
+          description: As entered.
+        domain:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Normalized, or null.
+        profile_url:
+          type: string
+          format: uri
+          readOnly: true
+        country:
+          type: string
+          readOnly: true
+          description: ISO 3166-1 alpha-2, upper.
+        input_source:
+          allOf:
+          - $ref: '#/components/schemas/InputSourceEnum'
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/CompanyStatusEnum'
+          readOnly: true
+        possible_duplicate:
+          type: boolean
+          readOnly: true
+          description: True when it was created next to a weak (name and country)
+            match.
+        possible_duplicate_of:
+          allOf:
+          - $ref: '#/components/schemas/PossibleDuplicateOf'
+          readOnly: true
+          nullable: true
+        analysis:
+          allOf:
+          - $ref: '#/components/schemas/AnalysisJob'
+          readOnly: true
+          nullable: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        latest_research:
+          allOf:
+          - $ref: '#/components/schemas/ResearchSummary'
+          readOnly: true
+          nullable: true
+      required:
+      - analysis
+      - archived_at
+      - campaign
+      - client
+      - country
+      - created_at
+      - domain
+      - id
+      - input_source
+      - latest_research
+      - name
+      - possible_duplicate
+      - possible_duplicate_of
+      - profile_url
+      - status
+      - updated_at
+      - website
+    CompanyStatusEnum:
+      enum:
+      - pending
+      - analyzing
+      - analyzed
+      - failed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `analyzing` - Analyzing
+        * `analyzed` - Analyzed
+        * `failed` - Failed
     Connection:
       type: object
       description: A connection as returned by the API. Never contains a secret.
@@ -3105,6 +3871,68 @@ components:
       - ok
       type: string
       description: '* `ok` - ok'
+    ImportRowSummary:
+      type: object
+      description: What the one-row manual import batch recorded for this entry.
+      properties:
+        id:
+          type: string
+          format: uuid
+        row_number:
+          type: integer
+          description: Always 1 for a manual entry.
+        outcome:
+          $ref: '#/components/schemas/ImportRowSummaryOutcomeEnum'
+        match_strength:
+          type: string
+          description: '`strong`, `weak` or blank (no match).'
+        matched_on:
+          type: string
+          description: '`domain`, `profile`, `name` or blank.'
+      required:
+      - id
+      - match_strength
+      - matched_on
+      - outcome
+      - row_number
+    ImportRowSummaryOutcomeEnum:
+      enum:
+      - created
+      - duplicate
+      - restored
+      - skipped
+      - failed
+      type: string
+      description: |-
+        * `created` - Created
+        * `duplicate` - Duplicate
+        * `restored` - Restored
+        * `skipped` - Skipped
+        * `failed` - Failed
+    InputSourceEnum:
+      enum:
+      - manual
+      - csv
+      - provider
+      type: string
+      description: |-
+        * `manual` - Manual
+        * `csv` - CSV import
+        * `provider` - Provider
+    JobStatusEnum:
+      enum:
+      - queued
+      - running
+      - succeeded
+      - partial
+      - failed
+      type: string
+      description: |-
+        * `queued` - Queued
+        * `running` - Running
+        * `succeeded` - Succeeded
+        * `partial` - Partially succeeded
+        * `failed` - Failed
     LastTestStatusEnum:
       enum:
       - ok
@@ -3113,6 +3941,110 @@ components:
       description: |-
         * `ok` - OK
         * `failed` - Failed
+    ManualCompanyRequest:
+      type: object
+      description: |-
+        Body of `POST /campaigns/{id}/companies/`.
+
+        Send `name` plus `website` and/or `profile_url`, or use `input` (one free-text box) for one
+        of them. Values are validated with the stable codes of the import schema; errors look like
+        `{"details": {"website": [{"code": "website_invalid", "message": "..."}]}}`.
+      properties:
+        name:
+          type: string
+          nullable: true
+          description: Company name (required unless `input` is a name). At most 300
+            characters.
+        website:
+          type: string
+          nullable: true
+          description: Website or domain, e.g. `acme.com` or `https://www.acme.com/about`.
+        profile_url:
+          type: string
+          nullable: true
+          description: Public company profile URL, e.g. `https://www.linkedin.com/company/acme`.
+            Used as an identifier only; it is never fetched.
+        country:
+          type: string
+          nullable: true
+          description: ISO 3166-1 alpha-2 code, any case.
+        input:
+          type: string
+          nullable: true
+          description: One free-text box. A URL or domain fills `website`, a company
+            profile URL fills `profile_url`, anything else fills `name`; it only fills
+            a field you left empty (`input_conflicts_with_field` otherwise).
+        analyze:
+          type: boolean
+          default: false
+          description: Also queue an analysis (same as calling `analyze` next).
+    ManualEntryResult:
+      type: object
+      description: 'Result of a manual entry: 201 when `created`, 200 for an existing
+        company.'
+      properties:
+        outcome:
+          allOf:
+          - $ref: '#/components/schemas/ManualEntryResultOutcomeEnum'
+          description: |-
+            `created`, `duplicate` (strong match: the existing company is returned unchanged) or `restored` (a strong match that was archived is back).
+
+            * `created` - created
+            * `duplicate` - duplicate
+            * `restored` - restored
+        created:
+          type: boolean
+        duplicate:
+          type: boolean
+          description: True for a strong match (outcome not created).
+        restored:
+          type: boolean
+          description: True when an archived duplicate was restored.
+        possible_duplicate:
+          type: boolean
+          description: True when a NEW company was created next to a weak match.
+        possible_duplicate_of:
+          allOf:
+          - $ref: '#/components/schemas/PossibleDuplicateOf'
+          nullable: true
+        company:
+          $ref: '#/components/schemas/CompanyDetail'
+        batch_id:
+          type: string
+          format: uuid
+          description: The one-row manual ImportBatch.
+        import_row:
+          $ref: '#/components/schemas/ImportRowSummary'
+        analysis:
+          allOf:
+          - $ref: '#/components/schemas/AnalysisJob'
+          nullable: true
+          description: The analysis job when `analyze` was true (or one was already
+            queued).
+      required:
+      - analysis
+      - batch_id
+      - company
+      - created
+      - duplicate
+      - import_row
+      - outcome
+      - possible_duplicate
+      - possible_duplicate_of
+      - restored
+    ManualEntryResultOutcomeEnum:
+      enum:
+      - created
+      - duplicate
+      - restored
+      type: string
+      description: |-
+        * `created` - created
+        * `duplicate` - duplicate
+        * `restored` - restored
+    NullEnum:
+      enum:
+      - null
     PaginatedCampaignList:
       type: object
       required:
@@ -3182,6 +4114,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Client'
+    PaginatedCompanyList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Company'
     PaginatedConnectionList:
       type: object
       required:
@@ -3260,6 +4215,37 @@ components:
           writeOnly: true
           description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
             update they replace all stored credentials. Never returned.'
+    PossibleDuplicateOf:
+      type: object
+      description: A short pointer to another company of the same campaign.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        website:
+          type: string
+          readOnly: true
+          description: As entered.
+        domain:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Normalized, or null.
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - archived_at
+      - domain
+      - id
+      - name
+      - website
     Readiness:
       type: object
       description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
@@ -3291,6 +4277,60 @@ components:
           type: string
           minLength: 1
           description: Refresh token. May be omitted when the refresh cookie is enabled.
+    ResearchSummary:
+      type: object
+      description: The current (latest) research snapshot of a company. Null facts
+        mean "not found".
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        researched_at:
+          type: string
+          format: date-time
+          readOnly: true
+        industry:
+          type: string
+          readOnly: true
+          nullable: true
+        description:
+          type: string
+          readOnly: true
+          nullable: true
+        headquarters:
+          type: string
+          readOnly: true
+          nullable: true
+        employee_count:
+          type: integer
+          readOnly: true
+          nullable: true
+        business_model:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Free text, as found.
+        classification:
+          readOnly: true
+          nullable: true
+          oneOf:
+          - $ref: '#/components/schemas/ClassificationEnum'
+          - $ref: '#/components/schemas/NullEnum'
+        data_source:
+          type: string
+          format: uuid
+          readOnly: true
+      required:
+      - business_model
+      - classification
+      - data_source
+      - description
+      - employee_count
+      - headquarters
+      - id
+      - industry
+      - researched_at
     RulesSummary:
       type: object
       description: |-
@@ -3492,6 +4532,8 @@ tags:
   description: Campaigns, versioned profiles, rules summary.
 - name: clients
   description: 'Clients (tenants): list, create, edit, archive.'
+- name: companies
+  description: Manual company entry, list, detail, archive and Analyze Company.
 - name: integrations
   description: Per-client provider connections; credentials are write-only.
 - name: health
