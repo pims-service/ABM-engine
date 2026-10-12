@@ -315,6 +315,21 @@ counts (`set_total`, `record_progress`, or items).
 - Archiving a client or campaign (`services.archive_client` / `archive_campaign`) is refused
   while it has `queued` or `running` jobs.
 
+### Resilience and provider jobs (`apps/integrations/resilience`, `apps/integrations/tasks.py`, issues #78 and #86, [ADR 0014](../docs/adr/0014-resilience-and-provider-jobs.md))
+
+Call adapters through `resilient_execute(adapter, adapter.op, *args, client_id=client.pk)`: retries
+with backoff and jitter (only `retryable` errors, `Retry-After` honoured), a per (client, adapter)
+rate limit from `AdapterCapabilities.rate_limit` and a circuit breaker, both shared by all worker
+processes through the `q_stats` database cache (no Redis, no new table), and a hard deadline for a
+hung call. Tune with the optional `INTEGRATION_RESILIENCE` dict (no environment variables).
+
+Background provider work uses `@provider_task(job_type=..., category=...)` instead of bare
+`@tracked_job`: it fails closed on a missing connection or credentials, runs calls through
+`resilient_execute`, re-queues retryable errors with the provider's delay instead of waiting,
+fails only the item for item-specific errors (job ends `partial`), is idempotent on redelivery,
+and supports a soft time limit, cancellation (`request_cancel`) and `worker_health()`.
+Full guide: [docs/integrations/resilience.md](../docs/integrations/resilience.md).
+
 ### Audit log (`apps/core/audit.py`, `AuditLog`, issue #44)
 
 `AuditLog` is append-only (the `AppendOnlyModel` guards): `actor` (null = system), `client`
