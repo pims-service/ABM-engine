@@ -45,6 +45,7 @@ _DESCRIPTIONS = {
     403: "Not allowed (`permission_denied`).",
     404: "Not found (`not_found`).",
     409: "Conflict with the current state (e.g. `client_has_active_jobs`).",
+    413: "Upload larger than the allowed size (`file_too_large`).",
     429: "Throttled (`throttled`, with `details.retry_after`).",
     500: "Unexpected server error (`internal_error`).",
 }

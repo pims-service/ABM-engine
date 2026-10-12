@@ -9,7 +9,8 @@ oversized payload. It is idempotent (sanitizing its own output changes nothing).
 * Only JSON values are kept (other types become their ``str``), at most ``MAX_KEYS`` keys and
   ``MAX_VALUE_LENGTH`` characters per string.
 * The serialized payload is at most ``MAX_RAW_BYTES``. Keys that no longer fit are dropped, in
-  order, and ``"_truncated": true`` marks the loss. The submitted file itself is not kept.
+  order, and ``"_truncated": true`` marks the loss. The submitted file is only kept until its
+  batch ends (``apps.imports.uploads``).
 """
 
 from __future__ import annotations

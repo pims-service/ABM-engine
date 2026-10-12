@@ -143,6 +143,12 @@ def test_retry_must_exceed_timeout() -> None:
     assert validate_environment(_env(Q_TASK_TIMEOUT="400"), settings_module=DEV) != []
 
 
+def test_import_chunk_size_must_be_an_integer() -> None:
+    problems = validate_environment(_env(IMPORT_CHUNK_SIZE="many"), settings_module=DEV)
+    assert problems == ["IMPORT_CHUNK_SIZE: invalid, must be an integer"]
+    assert validate_environment(_env(IMPORT_CHUNK_SIZE="250"), settings_module=DEV) == []
+
+
 def test_check_environment_raises_with_every_variable_named() -> None:
     with pytest.raises(ImproperlyConfigured) as excinfo:
         check_environment({"Q_WORKERS": "x"}, settings_module=DEV)
