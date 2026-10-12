@@ -194,7 +194,7 @@ def cached_execute[T](
                 campaign=campaign,
                 user=user,
             )
-            return hit  # type: ignore[no-any-return]
+            return hit
     result = tracked_execute(
         connection, adapter, operation, *args, job=job, campaign=campaign, user=user, **kwargs
     )

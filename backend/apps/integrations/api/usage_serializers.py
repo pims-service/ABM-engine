@@ -92,7 +92,7 @@ class UsageRowSerializer(serializers.Serializer[dict[str, Any]]):
     month = serializers.DateField(required=False)
     currency = serializers.CharField(help_text="ISO 4217 code of `cost`; empty when no cost.")
     calls = serializers.IntegerField()
-    errors = serializers.IntegerField()
+    error_calls = serializers.IntegerField()
     cache_hits = serializers.IntegerField()
     credits = serializers.DecimalField(max_digits=24, decimal_places=4, allow_null=True)
     cost = serializers.DecimalField(max_digits=24, decimal_places=6, allow_null=True)

@@ -39,7 +39,7 @@ DEFAULT_GROUP = ("provider",)
 
 _AGGREGATES: dict[str, Any] = {
     "calls": Count("id"),
-    "errors": Count("id", filter=Q(status="error")),
+    "error_calls": Count("id", filter=Q(status="error")),
     "cache_hits": Count("id", filter=Q(cache_hit=True)),
     "credits": Sum("credits"),
     "cost": Sum("cost"),
@@ -61,7 +61,7 @@ def _row(values: dict[str, Any]) -> dict[str, Any]:
 
 def summarize(queryset: QuerySet[ProviderCall], group_by: Sequence[str]) -> list[dict[str, Any]]:
     """One dict per distinct combination of ``group_by`` (names from ``GROUPS``) and currency,
-    with ``calls``, ``errors``, ``cache_hits``, ``credits``, ``cost``, ``input_tokens`` and
+    with ``calls``, ``error_calls``, ``cache_hits``, ``credits``, ``cost``, ``input_tokens`` and
     ``output_tokens``. Ordered by the group keys; at most ``MAX_GROUPS`` rows."""
     unknown = [g for g in group_by if g not in GROUPS]
     if unknown:
@@ -82,7 +82,7 @@ def summarize(queryset: QuerySet[ProviderCall], group_by: Sequence[str]) -> list
 def totals(queryset: QuerySet[ProviderCall]) -> list[dict[str, Any]]:
     """The grand totals, one row per currency (a single row with ``currency=""`` when no cost)."""
     rows = queryset.order_by().values("currency").annotate(**_AGGREGATES).order_by("currency")
-    return [_row(r) for r in rows]
+    return [_row(dict(r)) for r in rows]
 
 
 def run_totals(*, campaign: Campaign | None = None, job: Job | None = None) -> list[dict[str, Any]]:

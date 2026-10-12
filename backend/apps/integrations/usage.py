@@ -381,7 +381,7 @@ def set_budget(
     ):
         errors["warn_at_percent"] = "Must be a whole number from 1 to 100."
     if not isinstance(hard_stop, bool):
-        errors["hard_stop"] = "Must be true or false."
+        errors["hard_stop"] = "Must be true or false."  # type: ignore[unreachable]
     if errors:
         raise ValidationError(errors)
 

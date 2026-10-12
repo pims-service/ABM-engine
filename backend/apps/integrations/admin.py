@@ -67,7 +67,7 @@ class _SuperuserReadOnly(SuperuserOnlyMixin, ReadOnlyAdmin):
     """View only, superusers only. Every shown field is read only."""
 
     def get_readonly_fields(self, request: Any, obj: Any = None) -> tuple[str, ...]:
-        return tuple(self.fields or ())
+        return tuple(str(f) for f in self.fields or ())
 
 
 @admin.register(ProviderCall)

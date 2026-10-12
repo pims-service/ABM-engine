@@ -154,7 +154,7 @@ _registry: dict[tuple[str, str], CachePolicy] = {}
 
 
 def _key(category: object, provider: str) -> tuple[str, str]:
-    return str(IntegrationCategory(category).value), provider
+    return str(IntegrationCategory(str(category)).value), provider
 
 
 def register_cache_policy(

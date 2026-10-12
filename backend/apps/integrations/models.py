@@ -10,8 +10,9 @@ Change connections through ``apps.integrations.services`` so every change is aud
 secret values. Rows are archived, never deleted.
 
 Usage, budgets, cache and raw payloads (issues #79 and #80,
-``docs/integrations/usage-and-cache.md``) are further down: ``ProviderCall`` (append-only, one row per call, no payloads), ``UsageBudget``,
-``CachedResponse`` and ``RawPayload`` (the last two are removable by retention).
+``docs/integrations/usage-and-cache.md``) are further down: ``ProviderCall`` (append-only, one
+row per call, no payloads), ``UsageBudget``, ``CachedResponse`` and ``RawPayload`` (the last two
+are removable by retention).
 """
 
 from __future__ import annotations
