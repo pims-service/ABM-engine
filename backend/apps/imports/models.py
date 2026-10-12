@@ -103,8 +103,9 @@ class ImportBatch(TenantModel, BaseModel):
     ``cancelled``. ``job`` links the background run that processes the rows so a screen can show
     its progress; the batch counters are the source of truth for the outcome.
 
-    ``file_sha256`` identifies the uploaded CSV (the file itself is not kept); ``column_mapping``
-    is free-form JSON saying which column fed which company field.
+    ``file_sha256`` identifies the uploaded CSV (the file waits in private storage only until the
+    batch ends, see ``uploads``); ``column_mapping`` is free-form JSON saying which column fed
+    which company field.
     """
 
     tenant_parent = "campaign"

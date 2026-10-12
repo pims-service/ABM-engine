@@ -118,6 +118,13 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/integrations/connections/{id}/restore/",
         ),
+        "campaigns_csv_import_preview": (
+            "POST",
+            "/api/v1/campaigns/{campaign_id}/csv-import/preview/",
+        ),
+        "campaigns_csv_import_create": ("POST", "/api/v1/campaigns/{campaign_id}/csv-import/"),
+        "imports_csv_template": ("GET", "/api/v1/imports/csv-template/"),
+        "imports_cancel": ("POST", "/api/v1/imports/{batch_id}/cancel/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
@@ -125,6 +132,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "imports"
+            if "/imports/" in path or "/csv-import/" in path
             else "companies"
             if "/companies/" in path
             else "campaigns"
@@ -145,6 +154,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "companies",
         "integrations",
         "health",
+        "imports",
         "meta",
     }
 

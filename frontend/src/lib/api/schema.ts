@@ -130,6 +130,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_id}/csv-import/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start a CSV import
+     * @description Validates the whole file (same rules and errors as the preview), stores it privately, creates the import batch (source `csv`) and a background job, and returns 202 at once; rows are processed by the worker in chunks. Poll `status_url` (the batch: `status`, counters, `progress_percent`) until `status` is `completed`, `partial` (some rows failed), `failed` or `cancelled`. Each row is validated and de-duplicated like a manual entry; a bad row is recorded as failed and never stops the batch. Re-uploading the same file (SHA-256) into the same campaign while an earlier batch of it is pending or processing is 409 `import_in_progress` with the existing batch in `details.batch`; once it ended the same file may be imported again (rows then come back as duplicates). The optional `mapping` field is `{file column: field}` JSON; left out, the suggestion is used. 400 for an archived campaign or client. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_csv_import_create"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{campaign_id}/csv-import/preview/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview a CSV upload
+     * @description Reads the whole file (nothing is stored or created) and returns what the mapping screen needs: the headers, the mapping suggested from them, the first rows with the problems the import would record, totals, warnings (e.g. a legacy encoding), the file's SHA-256 and the limits. Whole-file problems are 400 with a stable `error.code` (`empty_file`, `no_header`, `no_data_rows`, `binary_file`, `unsupported_format`, `undecodable`, `too_many_columns`, `header_too_long`, `too_many_rows` (over 5000), `name_column_missing`, `unknown_column`, `unknown_field`, `duplicate_target`); a file over the size limit (10 MiB) is 413 `file_too_large`. `details.issues` lists every problem. The optional `mapping` field is applied to the rows shown. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_csv_import_preview"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/companies/": {
     parameters: {
       query?: never;
@@ -512,6 +552,46 @@ export interface paths {
      * @description Idempotent. 400 inside an archived campaign or client. Needs the `MANAGE` level: admin. Others get 403; companies of clients you are not a member of give 404.
      */
     post: operations["companies_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/{batch_id}/cancel/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Cancel an import batch
+     * @description A `pending` or `processing` batch becomes `cancelled`: the worker stops at its next chunk (at most one chunk of rows, 100 by default, is still processed), the stored upload is deleted, and rows already imported stay (their companies exist). Idempotent: cancelling a cancelled batch returns it again (200). A batch that ended any other way is 409 `batch_already_finished`. Needs the `EDIT` level: manager and admin. Others get 403; batches of clients you are not a member of give 404.
+     */
+    post: operations["imports_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/csv-template/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download the CSV template
+     * @description The CSV file customers fill in: header `company_name, website, profile_url, country, industry, notes`, UTF-8 with BOM (Excel shows Arabic correctly). With `examples=true` it holds three placeholder rows. Any signed-in user may download it.
+     */
+    get: operations["imports_csv_template"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1079,6 +1159,90 @@ export interface components {
         [key: string]: string;
       };
     };
+    /** @description 202 response: the work is queued (or, in tests, already done). */
+    CsvImportAccepted: {
+      batch: components["schemas"]["ImportBatch"];
+      /** Format: uuid */
+      job_id: string;
+      /** @description Where to poll the batch: `GET {status_url}`. */
+      status_url: string;
+    };
+    CsvIssue: {
+      /** @description Company field the problem is about; blank for the row. */
+      field: string;
+      /** @description Stable code (`apps.imports.csvparse` / `schema`). */
+      code: string;
+      message: string;
+      detail: string;
+    };
+    CsvLimits: {
+      max_file_bytes: number;
+      max_rows: number;
+      max_columns: number;
+      max_cell_length: number;
+    };
+    /** @description 200 response of the preview. Nothing was stored. */
+    CsvPreview: {
+      file: components["schemas"]["CsvPreviewFile"];
+      headers: string[];
+      /** @description Guessed from the headers. */
+      suggested_mapping: {
+        [key: string]: string;
+      };
+      /** @description The mapping the rows below were read with (yours, else the suggestion). */
+      mapping: {
+        [key: string]: string;
+      };
+      unmapped_headers: string[];
+      /** @description Matched only approximately: worth a look. */
+      fuzzy_headers: string[];
+      /** @description The company fields a column may be mapped to. */
+      company_fields: string[];
+      rows: components["schemas"]["CsvPreviewRow"][];
+      /** @description Non-blank data rows in the whole file. */
+      total_rows: number;
+      blank_rows: number;
+      /** @description Rows of the whole file the parser can already tell are broken. */
+      error_rows: number;
+      warnings: components["schemas"]["CsvIssue"][];
+      limits: components["schemas"]["CsvLimits"];
+      /**
+       * Format: uuid
+       * @description Id of a pending/processing batch of this same file in this campaign (the import would be refused with 409), else null.
+       */
+      active_import: string | null;
+    };
+    CsvPreviewFile: {
+      name: string;
+      size_bytes: number;
+      sha256: string;
+      encoding: string;
+      delimiter: string;
+    };
+    CsvPreviewRow: {
+      /** @description Record position after the header (1-based). */
+      row_number: number;
+      /** @description Every column. */
+      raw: {
+        [key: string]: string;
+      };
+      /** @description The company fields (empty for a broken row). */
+      mapped: {
+        [key: string]: string;
+      };
+      /** @description Why the import would fail this row. */
+      errors: components["schemas"]["CsvIssue"][];
+    };
+    /** @description ``multipart/form-data`` body of the preview and the import. */
+    CsvUploadRequest: {
+      /**
+       * Format: binary
+       * @description The CSV file. Any content type is accepted; the bytes decide (see the limits in the preview response).
+       */
+      file: string;
+      /** @description Optional JSON object `{"<file column>": "<field>"}` with fields `name`, `website`, `profile_url`, `country`; `name` is required. Left out, the mapping suggested from the headers is used. */
+      mapping?: string;
+    };
     /** @description The `error` object of the standard envelope (apps/core/exceptions.py). */
     ErrorBody: {
       /** @description Stable machine-readable code, e.g. `validation_error`. */
@@ -1103,6 +1267,66 @@ export interface components {
      * @enum {string}
      */
     HealthStatusEnum: "ok";
+    /**
+     * @description One import batch with its counters. The counters are the source of truth for the outcome;
+     *     ``job`` is the background run (``/jobs`` progress is derived from the same counters).
+     */
+    ImportBatch: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly campaign: string;
+      /** Format: uuid */
+      readonly client: string;
+      /** @description How the batch was fed: `manual`, `csv` or `provider`. */
+      readonly source: string;
+      readonly status: components["schemas"]["ImportBatchStatusEnum"];
+      readonly original_filename: string;
+      /** @description Bytes. */
+      readonly file_size: number | null;
+      /** @description Hex digest, CSV only. */
+      readonly file_sha256: string;
+      /** @description `{file column: company field}`. */
+      readonly column_mapping: {
+        [key: string]: string;
+      };
+      readonly total_count: number;
+      readonly created_count: number;
+      readonly duplicate_count: number;
+      readonly restored_count: number;
+      readonly skipped_count: number;
+      readonly failed_count: number;
+      readonly processed_count: number;
+      /** @description 0 to 100: processed rows over total rows. */
+      readonly progress_percent: number;
+      readonly error_summary: string;
+      /** Format: uuid */
+      readonly job: string | null;
+      /** Format: uuid */
+      readonly created_by: string | null;
+      /** Format: date-time */
+      readonly created_at: string;
+      /** Format: date-time */
+      readonly started_at: string | null;
+      /** Format: date-time */
+      readonly finished_at: string | null;
+    };
+    /**
+     * @description * `pending` - Pending
+     *     * `processing` - Processing
+     *     * `completed` - Completed
+     *     * `partial` - Partially completed
+     *     * `failed` - Failed
+     *     * `cancelled` - Cancelled
+     * @enum {string}
+     */
+    ImportBatchStatusEnum:
+      | "pending"
+      | "processing"
+      | "completed"
+      | "partial"
+      | "failed"
+      | "cancelled";
     /** @description What the one-row manual import batch recorded for this entry. */
     ImportRowSummary: {
       /** Format: uuid */
@@ -1859,6 +2083,191 @@ export interface operations {
       };
       /** @description Not found (`not_found`). */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_csv_import_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["CsvUploadRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CsvImportAccepted"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Upload larger than the allowed size (`file_too_large`). */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_csv_import_preview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["CsvUploadRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CsvPreview"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Upload larger than the allowed size (`file_too_large`). */
+      413: {
         headers: {
           [name: string]: unknown;
         };
@@ -3835,6 +4244,130 @@ export interface operations {
       };
       /** @description Not found (`not_found`). */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_cancel: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportBatch"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_csv_template: {
+    parameters: {
+      query?: {
+        /** @description Add three placeholder rows. Default false (header only). */
+        examples?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
         headers: {
           [name: string]: unknown;
         };
