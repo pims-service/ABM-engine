@@ -638,7 +638,7 @@ def test_resilience_bundle_for_adapter_uses_settings(settings: Any) -> None:
 def test_logs_and_reprs_never_contain_credentials_or_arguments(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    secret = "YOUR_API_KEY"  # placeholder in the allow-listed shape
+    secret = "YOUR_API_KEY"  # pragma: allowlist secret
     clock = FakeClock()
     adapter = ScriptedAdapter(
         credentials={"api_key": SecretStr(secret)},
