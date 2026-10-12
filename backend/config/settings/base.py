@@ -189,6 +189,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
         {"name": "campaigns", "description": "Campaigns, versioned profiles, rules summary."},
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
+        {
+            "name": "integrations",
+            "description": "Per-client provider connections; credentials are write-only.",
+        },
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "meta", "description": "API metadata."},
         {
@@ -255,3 +259,10 @@ CORS_ALLOW_HEADERS = ["authorization", "content-type", "accept", "x-request-id"]
 # Response headers the browser may read from fetch(); all others are hidden from page code.
 CORS_EXPOSE_HEADERS = ["X-Profile-Version-Created", "X-Request-ID", "Retry-After"]
 CORS_PREFLIGHT_MAX_AGE = env.int("CORS_PREFLIGHT_MAX_AGE", default=600)  # seconds
+
+# Integration credentials (issue #76): Fernet keys, comma-separated, NEWEST FIRST. New data is
+# encrypted with the first key; every key can decrypt (rotation: apps/integrations/crypto.py).
+# Required outside tests (config/env_validation.py); never logged. Test settings generate one.
+INTEGRATION_ENCRYPTION_KEYS = [
+    key.strip() for key in env.list("INTEGRATION_ENCRYPTION_KEYS", default=[]) if key.strip()
+]

@@ -192,6 +192,14 @@ erDiagram
         text_8 match_strength
         uuid candidate_id FK
     }
+    IntegrationConnection {
+        uuid id PK
+        uuid client_id FK
+        text_32 category
+        text_16 status
+        text_16 last_test_status
+        uuid created_by_id FK
+    }
     Activity {
         uuid id PK
         uuid client_id FK
@@ -342,6 +350,7 @@ this page and the reference disagree, the reference is right: fix the table.
 | JobItem | core | mutable, tenant | `core_jobitem` |
 | ImportBatch | imports | mutable, tenant | `imports_importbatch` |
 | ImportRow | imports | append-only, tenant | `imports_importrow` |
+| IntegrationConnection | integrations | mutable, archivable, tenant | `integrations_integrationconnection` |
 | Activity | outreach | append-only, tenant | `outreach_activity` |
 | AngleSignal | outreach | append-only, tenant | `outreach_angle_signals` |
 | AngleSource | outreach | append-only, tenant | `outreach_angle_sources` |
@@ -813,6 +822,36 @@ The shared input schema (`apps/imports/schema.py`) is the same for manual, CSV a
 credentials), `profile_url` (absolute http/https, no credentials) and `country` (ISO 3166-1
 alpha-2). Errors are field-level with stable codes. No research is triggered by an import.
 
+### IntegrationConnection (issue #76)
+
+A client's connection to one external provider (Brief §17: providers are replaceable per client).
+Mutable and archivable (archive, never delete). The non-secret settings are plain JSON; the secrets
+are encrypted at rest and write-only.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | tenancy column; a root tenant row (no parent), set explicitly on create |
+| category | enum | `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| provider | text | provider key such as `openai` or `fake`: lower-case letters, digits, underscores. Checked per provider later |
+| name | text | display name, unique per client + category + provider among non-archived rows (case-insensitive) |
+| status | enum | `active`, `disabled`, `error`. `error` is set by a failed connection test and cleared by a success or by enabling |
+| config | jsonb | non-secret settings. Keys that look secret are rejected |
+| credentials | text | **Fernet ciphertext** (`EncryptedCredentialsField`) of a JSON object of named secrets, or empty. Never selected into an API response, the admin or an audit entry |
+| credentials_hint | jsonb | `{name: "****abcd"}`: last 4 characters for secrets of 16 or more characters, `****` for shorter ones |
+| credentials_updated_at | timestamptz, null | when the secrets were last replaced or cleared |
+| last_tested_at | timestamptz, null | last connection test |
+| last_test_status | enum, blank | `ok`, `failed`, or blank when never tested |
+| last_test_message | text | safe, scrubbed, at most 500 characters |
+| created_by_id | FK User, null | |
+| archived_at, created_at, updated_at | timestamptz | |
+
+Rules: category and provider never change (create a new connection to switch provider); an
+archived connection is read-only until restored; adapters resolve the oldest active, non-archived
+connection of a category with `services.resolve_connection`. Credential changes are audited as
+`credentials_change: replaced | set | cleared | reencrypted` (the values never are).
+Security design: [backend/README.md](../backend/README.md#integration-credentials-issue-76).
+
 ### AuditLog (issue #44), append-only
 
 Who changed Client, Campaign, ClientMembership and similar configuration, and
@@ -1040,6 +1079,7 @@ The rules they implement:
 | Signal | `data_source_id` NOT NULL, `event_date` NOT NULL, non-empty `evidence`; `supersedes` is one to one |
 | Contact | unique `(company_id, role)` where `role IN ('primary','secondary') AND archived_at IS NULL`; unique `(company_id, profile_url)` where the URL is set and the row is not archived; rank >= 1; email and status CHECKs |
 | ClientMembership | unique `(user_id, client_id)` |
+| IntegrationConnection | unique `(client_id, category, provider, lower(name))` where `archived_at IS NULL`; CHECKs on category, status and last_test_status; index `(client_id, category, status)` |
 | JobItem | unique `(job_id, subject_type, subject_id)` |
 | ImportRow | unique `(batch_id, row_number)`; CHECK `company_id` set for `created` / `duplicate` / `restored`; CHECK `error_code` set when `failed`; CHECK `match_strength`, `matched_on` and `candidate_id` are all set or all empty |
 | ImportBatch | CHECK the five outcome counters add up to at most `total_count`; CHECK a `csv` batch has `file_sha256`; `finished_at` is set exactly when the status is terminal |

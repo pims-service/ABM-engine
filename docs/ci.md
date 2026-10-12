@@ -53,6 +53,7 @@ Backend (needs a reachable Postgres; see
 cd backend
 export DATABASE_URL=postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@localhost:5432/YOUR_DB_NAME
 export SECRET_KEY=YOUR_SECRET_KEY
+export INTEGRATION_ENCRYPTION_KEYS=YOUR_INTEGRATION_ENCRYPTION_KEYS  # only for dev settings; tests generate a key
 uv sync --frozen
 uv run ruff check . && uv run ruff format --check .
 uv run mypy .

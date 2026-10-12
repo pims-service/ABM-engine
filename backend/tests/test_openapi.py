@@ -92,6 +92,30 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "campaigns_provider_search": ("POST", "/api/v1/campaigns/{id}/provider-search/"),
         "campaigns_provider_import": ("POST", "/api/v1/campaigns/{id}/provider-import/"),
         "provider_imports_retrieve": ("GET", "/api/v1/provider-imports/{id}/"),
+        "integration_connections_list": ("GET", "/api/v1/integrations/connections/"),
+        "integration_connections_create": ("POST", "/api/v1/integrations/connections/"),
+        "integration_connections_retrieve": ("GET", "/api/v1/integrations/connections/{id}/"),
+        "integration_connections_update": ("PUT", "/api/v1/integrations/connections/{id}/"),
+        "integration_connections_partial_update": (
+            "PATCH",
+            "/api/v1/integrations/connections/{id}/",
+        ),
+        "integration_connections_enable": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/enable/",
+        ),
+        "integration_connections_disable": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/disable/",
+        ),
+        "integration_connections_archive": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/archive/",
+        ),
+        "integration_connections_restore": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/restore/",
+        ),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
@@ -103,6 +127,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             if "provider" in path
             else "campaigns"
             if "/campaigns/" in path
+            else "integrations"
+            if "/integrations/" in path
             else "clients"
             if "/clients/" in path
             else "health"
@@ -114,6 +140,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth",
         "campaigns",
         "clients",
+        "integrations",
         "health",
         "meta",
         "provider import",

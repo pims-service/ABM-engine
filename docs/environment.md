@@ -33,6 +33,7 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `DATABASE_URL` | api, worker | yes | none (compose builds it) | `postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@localhost:5432/YOUR_DB_NAME` | backend | Secret (contains the password). Must be a `postgres://` URL. |
 | `DJANGO_SETTINGS_MODULE` | api, worker | no | `config.settings.dev` for `manage.py`; `config.settings.prod` for wsgi/asgi | `config.settings.dev` | backend | `config.settings.test` skips the startup check and is for tests only. |
 | `SECRET_KEY` | api, worker | yes | none | `YOUR_SECRET_KEY` | root, backend | Secret. Rejected while it is still a `YOUR_*` placeholder; at least 32 characters in production. |
+| `INTEGRATION_ENCRYPTION_KEYS` | api, worker | yes | none | `YOUR_INTEGRATION_ENCRYPTION_KEYS` | root, backend | Secret. Comma-separated Fernet keys, **newest first**: the first encrypts, every one can decrypt (rotation). Each is 32 url-safe base64 bytes; generate with `uv run python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Required in dev and prod (tests generate their own); rejected while it is a `YOUR_*` placeholder or malformed. The error names the bad entry's position, never its value. Losing a key makes the credentials it encrypted unreadable. See "Provider credentials" below. |
 | `DEBUG` | api, worker | no | `True` in dev, forced `False` in prod | `True` | root, backend | `true`/`false`. |
 | `ALLOWED_HOSTS` | api | prod only | `localhost,127.0.0.1,[::1]` in dev | `localhost,127.0.0.1` | root, backend | Comma-separated host names. |
 | `API_DOCS_ENABLED` | api | no | `true` in dev, `false` everywhere else | `false` | backend | `true`/`false`. Serves the OpenAPI schema and Swagger UI/ReDoc at `/api/v1/schema/`, `/docs/`, `/redoc/` (404 when off). Keep off in production. |
@@ -126,12 +127,27 @@ logs. Compose has its own check for the three `POSTGRES_*` variables and `SECRET
 - Rotating `SECRET_KEY` invalidates existing sessions. Rotating `POSTGRES_PASSWORD` also needs
   `ALTER USER` in the database, because the variable only applies when the volume is created.
 
-**Provider credentials (later)**
+**Provider credentials**
 
-LLM, data-provider and CRM credentials arrive with the integrations work. The rules above apply
-now. When they are stored per tenant they must be encrypted at rest, decrypted only in memory at
-the point of use, excluded from API responses, logs and error reports, and rotatable without a
-deploy. That design is made in the integrations issues, not here.
+Per-client provider credentials (LLM, data providers, CRM, ...) are stored in the database in
+`IntegrationConnection.credentials`, encrypted with Fernet (authenticated encryption) using
+`INTEGRATION_ENCRYPTION_KEYS`. They are write-only through the API (responses show `has_credentials`
+and a masked hint), decrypted only in memory by `apps.integrations.services.get_credentials`, never
+logged or shown in the admin or the audit log, and fail closed when the key is wrong. Design and
+usage: [backend/README.md](../backend/README.md#integration-credentials-issue-76).
+
+Rotating `INTEGRATION_ENCRYPTION_KEYS` needs no downtime:
+
+1. Generate a new key and put it **first** in the list, keeping the old ones after it. Deploy.
+2. Run `python manage.py rotate_credentials` (add `--dry-run` to only check). It re-encrypts every
+   row with the newest key and exits with an error, listing row ids only, if any row cannot be
+   decrypted.
+3. Remove the old key from the list and deploy.
+
+Never drop a key before step 2 has succeeded: credentials still encrypted with it become
+unreadable and must be entered again. The `LLM_API_KEY`, `DATA_PROVIDER_API_KEY` and
+`CRM_API_KEY` names above stay reserved for platform-wide fallbacks; client credentials do not use
+environment variables.
 
 **Scanning**
 

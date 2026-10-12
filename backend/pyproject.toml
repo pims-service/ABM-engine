@@ -13,6 +13,7 @@ dependencies = [
     "djangorestframework-simplejwt>=5.5",
     "drf-spectacular>=0.30.0",
     "django-cors-headers>=4.9.0",
+    "cryptography>=43",
 ]
 
 [dependency-groups]
@@ -103,6 +104,11 @@ ignore_errors = true  # same reason as tests.factories
 module = "tests.test_campaign_audit"
 # AuditLog.before / after are nullable JSON; the tests assert they are set, then index them.
 disable_error_code = ["index"]
+
+[[tool.mypy.overrides]]
+module = "tests.test_integration_framework"
+# The tests feed untyped vendor-style values (str, float) to the cleaning constructors on purpose.
+disable_error_code = ["arg-type", "dict-item", "unused-ignore"]
 
 [[tool.mypy.overrides]]
 # These libraries ship no type information.
