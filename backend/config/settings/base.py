@@ -185,10 +185,19 @@ SPECTACULAR_SETTINGS = {
     "SERVE_AUTHENTICATION": [],  # the docs pages must open in a browser without a token
     "SORT_OPERATIONS": True,
     "COMPONENT_SPLIT_REQUEST": True,  # request bodies get their own component (no readOnly noise)
+    # Two `status` fields with different choices exist (company, job): name them explicitly.
+    "ENUM_NAME_OVERRIDES": {
+        "CompanyStatusEnum": "apps.companies.models.CompanyStatus",
+        "JobStatusEnum": "apps.core.models.JobStatus",
+    },
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
         {"name": "campaigns", "description": "Campaigns, versioned profiles, rules summary."},
         {"name": "clients", "description": "Clients (tenants): list, create, edit, archive."},
+        {
+            "name": "companies",
+            "description": "Manual company entry, list, detail, archive and Analyze Company.",
+        },
         {
             "name": "integrations",
             "description": "Per-client provider connections; credentials are write-only.",

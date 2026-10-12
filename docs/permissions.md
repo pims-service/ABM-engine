@@ -86,6 +86,22 @@ Archived campaigns are read-only (400) until restored; their profile versions st
 Search and import are throttled per user (`provider_search`, `provider_import` rates in
 `DEFAULT_THROTTLE_RATES`; #69 hardens and makes them configurable).
 
+### Company endpoints (issue #59)
+
+`/api/v1/campaigns/{campaign_id}/companies/` and `/api/v1/companies/{id}/`. The campaign of the
+URL (or the company's client) is looked up through the user's visible clients: another client's
+campaign or company is 404.
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list` (`GET campaigns/{id}/companies/`), `retrieve` | READ | yes | yes | yes | yes | yes | 404 |
+| `create` (manual entry, `POST campaigns/{id}/companies/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `analyze` (`POST companies/{id}/analyze/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `archive`, `restore` | MANAGE | no | no | no | yes | yes | 404 |
+
+There is no PUT, PATCH or DELETE (405 for MANAGE, 403 below it: an unrouted write fails closed).
+Archived campaigns and clients take no new companies, analysis, archive or restore (400).
+
 ### Integration connection endpoints (`/api/v1/integrations/connections/`, issue #76)
 
 Connections hold provider credentials, so they are **stricter than the rest of the client API**:

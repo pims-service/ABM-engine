@@ -31,14 +31,15 @@ from apps.accounts.models import User
 from apps.campaigns import services
 from apps.campaigns.memberships import grant_membership
 from apps.campaigns.models import Campaign, CampaignProfile, Client
-from apps.core.models import AuditLog
+from apps.companies.models import Company
+from apps.core.models import AuditLog, Job
 from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
 from apps.core.seed_sample import SeededWorld, load_seeded_world
 from apps.imports.models import ImportBatch
 from apps.integrations import services as services_integrations
 from apps.integrations.models import IntegrationConnection
-from tests.factories import make_campaign, make_client, make_user
+from tests.factories import make_campaign, make_client, make_company, make_user
 from tests.factories_integrations import make_connection
 from tests.fixtures_seed import run_all_seeders
 from tests.invariants.conftest import shared_db
@@ -108,6 +109,12 @@ class Ctx:
     b_archived_campaign: Campaign
     b_archived_client: Client
     extra_campaign: Campaign
+    a_company: Company
+    a_archived_company: Company
+    b_company: Company
+    b_archived_company: Company
+    extra_company: Company
+    extra_archived_company: Company
     a_connection: IntegrationConnection
     a_archived_connection: IntegrationConnection
     b_connection: IntegrationConnection
@@ -156,6 +163,16 @@ def build_ctx(world: SeededWorld) -> Ctx:
 
     extra = make_client(name="Extra Co")
     extra_campaign = make_campaign(client=extra, name="Extra campaign")
+    companies = {}
+    for key, campaign in (
+        ("a", world.campaigns["skylight"]),
+        ("b", world.campaigns["meridian"]),
+        ("extra", extra_campaign),
+    ):
+        companies[key] = make_company(campaign=campaign, name=f"Probe {key}")
+        archived = make_company(campaign=campaign, name=f"Probe archived {key}")
+        archived.archive()
+        companies[f"{key}_archived"] = archived
     a_conn_archived = make_connection(a, name="A archived connection")
     services_integrations.archive_connection(a_conn_archived)
     b_conn_archived = make_connection(b, name="B archived connection")
@@ -176,6 +193,12 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
         extra_campaign=extra_campaign,
+        a_company=companies["a"],
+        a_archived_company=companies["a_archived"],
+        b_company=companies["b"],
+        b_archived_company=companies["b_archived"],
+        extra_company=companies["extra"],
+        extra_archived_company=companies["extra_archived"],
         a_connection=make_connection(a, name="A connection"),
         a_archived_connection=a_conn_archived,
         b_connection=make_connection(b, name="B connection"),
@@ -209,11 +232,11 @@ class Scenario:
     """How to exercise one endpoint.
 
     ``kind``: ``list`` (collection read), ``item`` (``{pk}`` in the path), ``nested``
-    (``{client_pk}``
-    in the path), ``create`` (client id in the body), ``client_create`` (no client involved).
-    ``target`` picks the object family for ``{pk}``: ``client``, ``campaign`` or ``connection``.
-    ``archived`` says
-    the target must be archived (restore). ``level`` is what docs/permissions.md demands.
+    (``{client_pk}`` in the path), ``campaign_nested`` (``{campaign_pk}`` in the path),
+    ``create`` (client id in the body), ``client_create`` (no client involved).
+    ``target`` picks the object family for ``{pk}``: ``client``, ``campaign``, ``company`` or
+    ``connection``. ``archived`` says the target must be archived (restore). ``level`` is what
+    docs/permissions.md demands.
     """
 
     key: str
@@ -310,6 +333,19 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"provider": "fake", "companies": [{"name": unique("Probe")}]},
         ),
         Scenario("GET /api/v1/provider-imports/{pk}/", "item", Level.READ, "batch"),
+        Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_pk}/companies/",
+            "campaign_nested",
+            Level.EDIT,
+            body=lambda: {"name": unique("Probe"), "website": f"{uuid.uuid4().hex}.example.com"},
+        ),
+        Scenario("GET /api/v1/companies/{pk}/", "item", Level.READ, "company"),
+        Scenario("POST /api/v1/companies/{pk}/analyze/", "item", Level.EDIT, "company"),
+        Scenario("POST /api/v1/companies/{pk}/archive/", "item", Level.MANAGE, "company"),
+        Scenario(
+            "POST /api/v1/companies/{pk}/restore/", "item", Level.MANAGE, "company", archived=True
+        ),
         # Integration connections (issue #76): credentials are sensitive, so reading needs EDIT
         # (manager, admin) and every write needs MANAGE (admin).
         Scenario("GET /api/v1/integrations/connections/", "list", Level.EDIT),
@@ -384,6 +420,8 @@ def own_target(ctx: Ctx, s: Scenario) -> str:
         return str((ctx.a_archived_client if s.archived else ctx.a_client).pk)
     if s.target == "batch":
         return str(ctx.a_batch.pk)
+    if s.target == "company":
+        return str((ctx.a_archived_company if s.archived else ctx.a_company).pk)
     if s.target == "connection":
         return str((ctx.a_archived_connection if s.archived else ctx.a_connection).pk)
     return str((ctx.a_archived_campaign if s.archived else ctx.a_campaign).pk)
@@ -394,6 +432,8 @@ def foreign_target(ctx: Ctx, s: Scenario) -> str:
         return str((ctx.b_archived_client if s.archived else ctx.b_client).pk)
     if s.target == "batch":
         return str(ctx.b_batch.pk)
+    if s.target == "company":
+        return str((ctx.b_archived_company if s.archived else ctx.b_company).pk)
     if s.target == "connection":
         return str((ctx.b_archived_connection if s.archived else ctx.b_connection).pk)
     return str((ctx.b_archived_campaign if s.archived else ctx.b_campaign).pk)
@@ -411,6 +451,9 @@ def request_for(
     if s.kind == "nested":
         cid = client_id or (ctx.b_client.pk if foreign else ctx.a_client.pk)
         return method, fill(template, client_pk=str(cid)), body
+    if s.kind == "campaign_nested":
+        cid = client_id or (ctx.b_campaign.pk if foreign else ctx.a_campaign.pk)
+        return method, fill(template, campaign_pk=str(cid)), body
     if s.kind == "create":
         cid = client_id or (ctx.b_client.pk if foreign else ctx.a_client.pk)
         if s.body:
@@ -448,6 +491,16 @@ def tenant_state(*clients: Client) -> dict[str, Any]:
             ),
             "profiles": CampaignProfile.objects.filter(client=client).count(),
             "audit": AuditLog.objects.filter(client=client).count(),
+            "companies": sorted(
+                map(
+                    str,
+                    Company.objects.filter(client=client).values_list(
+                        "pk", "name", "status", "archived_at"
+                    ),
+                )
+            ),
+            "jobs": Job.objects.filter(client=client).count(),
+            "import_batches": ImportBatch.objects.filter(client=client).count(),
             "connections": sorted(
                 map(
                     str,
@@ -511,7 +564,9 @@ def test_no_endpoint_allows_delete() -> None:
 
 # ------------------------------------------------------------------ foreign ids are "not found"
 
-ITEM_LIKE = [k for k, s in SCENARIOS.items() if s.kind in {"item", "nested", "create"}]
+ITEM_LIKE = [
+    k for k, s in SCENARIOS.items() if s.kind in {"item", "nested", "campaign_nested", "create"}
+]
 
 
 @pytest.mark.parametrize("key", ITEM_LIKE)
@@ -529,6 +584,8 @@ def test_another_clients_object_is_indistinguishable_from_a_missing_one(ctx, key
         m_url, m_body = url.replace(foreign_target(ctx, s), str(missing_id)), body
     elif s.kind == "nested":
         m_url, m_body = url.replace(str(ctx.b_client.pk), str(missing_id)), body
+    elif s.kind == "campaign_nested":
+        m_url, m_body = url.replace(str(ctx.b_campaign.pk), str(missing_id)), body
     else:
         _, m_url, m_body = request_for(ctx, s, foreign=True, client_id=missing_id)
         body = {**m_body, "client": str(ctx.b_client.pk)}
@@ -540,7 +597,9 @@ def test_another_clients_object_is_indistinguishable_from_a_missing_one(ctx, key
     # Creating needs the level in SOME client first: a role that never reaches it is refused
     # up front (403) whatever client is named, which is still the same answer for B and "none".
     early_403 = (
-        s.kind in {"create", "nested"} and method == "POST" and not role_allows(role, s.level)
+        s.kind in {"create", "nested", "campaign_nested"}
+        and method == "POST"
+        and not role_allows(role, s.level)
     )
     expected = 403 if early_403 else 404
     assert missing.status_code == expected, (key, role, missing.content)
@@ -559,8 +618,9 @@ def test_a_third_clients_object_is_not_found_either(ctx, key) -> None:
         "campaign": ctx.extra_campaign,
         "connection": ctx.extra_connection,
         "batch": ctx.extra_batch,
+        "company": ctx.extra_archived_company if s.archived else ctx.extra_company,
     }[s.target]
-    if s.archived:
+    if s.archived and s.target != "company":
         archive: Any = {
             "client": services.archive_client,
             "campaign": services.archive_campaign,
@@ -618,6 +678,26 @@ def test_lists_only_contain_the_users_own_client(ctx, role) -> None:
     for query in ("search=Meridian", "ordering=name", "status=active"):
         assert not visible_ids(api, f"/api/v1/campaigns/?{query}&archived=all") & foreign_campaigns
         assert not visible_ids(api, f"/api/v1/clients/?{query}&archived=all") & foreign_clients
+
+
+@pytest.mark.parametrize("role", [*ROLES])
+def test_company_lists_only_contain_the_users_own_campaign(ctx, role) -> None:
+    api = ctx.api(ctx.users[role])
+    own = visible_ids(api, f"/api/v1/campaigns/{ctx.a_campaign.pk}/companies/?archived=all")
+    assert str(ctx.a_company.pk) in own
+    foreign = {
+        str(c.pk)
+        for c in (
+            ctx.b_company,
+            ctx.b_archived_company,
+            ctx.extra_company,
+            ctx.extra_archived_company,
+        )
+    }
+    assert not own & foreign
+    for query in ("search=Probe", "ordering=name", "possible_duplicate=false"):
+        url = f"/api/v1/campaigns/{ctx.a_campaign.pk}/companies/?{query}&archived=all"
+        assert not visible_ids(api, url) & foreign
 
 
 @pytest.mark.parametrize("role", [*ROLES])
@@ -695,7 +775,9 @@ def test_an_inactive_user_gets_nothing_even_with_a_valid_token(ctx, key, who) ->
         assert send(api, method, url, body).status_code == 401, key
 
 
-@pytest.mark.parametrize("key", [k for k, s in SCENARIOS.items() if s.kind in {"item", "nested"}])
+@pytest.mark.parametrize(
+    "key", [k for k, s in SCENARIOS.items() if s.kind in {"item", "nested", "campaign_nested"}]
+)
 def test_roles_are_per_client_not_global(ctx, key) -> None:
     """Admin in A and only viewer in B: B's answer follows the viewer role, A's the admin role."""
     s = SCENARIOS[key]

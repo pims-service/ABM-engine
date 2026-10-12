@@ -479,6 +479,59 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
   `RULES_SUMMARY_SCHEMA_VERSION`; `tests/test_campaign_api.py::test_rules_summary_shape_snapshot`
   pins it.
 
+### Company API (`/api/v1/campaigns/{id}/companies/`, `/api/v1/companies/{id}/`, issue #59)
+
+`apps/companies/api/companies.py` (`CampaignCompanyViewSet` and `CompanyViewSet`, both
+`ClientScopedViewSet`s), serializers in `serializers.py`. Companies are added by hand, listed,
+read, archived/restored and sent to analysis; they are never edited or deleted through the API
+(an import never rewrites a company, ADR 0009). Per-action levels:
+[docs/permissions.md](../docs/permissions.md#company-endpoints-issue-59).
+
+| Route | Action | Level |
+| --- | --- | --- |
+| `GET /campaigns/{id}/companies/` | list (filters `status`, `archived=false|true|all`, `possible_duplicate`, `input_source`, `search` on name/domain/website, `ordering`, `page`, `page_size`) | READ |
+| `POST /campaigns/{id}/companies/` | manual entry (below) | EDIT |
+| `GET /companies/{id}/` | detail with `latest_research` and `possible_duplicate_of` | READ |
+| `POST /companies/{id}/analyze/` | Analyze Company (202) | EDIT |
+| `POST /companies/{id}/archive/`, `restore/` | archive, restore (idempotent, audited) | MANAGE |
+
+- **Manual entry** (`apps/imports/manual.py`): body `{name?, website?, profile_url?, country?,
+  input?, analyze?}`. The rule is `validate_company_input(require_identifier=True)`: a `name`
+  and at least one of `website` or `profile_url` (country optional). `input` is one free-text
+  box routed by `classify_input` (URL or domain -> `website`, recognised profile URL ->
+  `profile_url`, anything else -> `name`); it only fills a field left empty, otherwise
+  `input_conflicts_with_field`; a `javascript:`-style value is `input_invalid`. Unknown fields
+  (e.g. `notes`: companies have no notes column) are 400s. The entry runs through a one-row
+  `ImportBatch` (source `manual`) with `process_row`, so history and counters match CSV and
+  provider imports, and the create or restore is audited (`company`, actions `create`/`restore`).
+- **Outcomes**: `201` `outcome: "created"` (a weak name+country match still creates the company,
+  `possible_duplicate: true`, `possible_duplicate_of` points at the candidate); `200`
+  `outcome: "duplicate"` (strong match on domain or profile URL, inside the campaign: the existing
+  company is returned unchanged, nothing submitted is copied onto it); `200` `outcome: "restored"`
+  (the strong match was archived and is back). Response keys: `outcome`, `created`, `duplicate`,
+  `restored`, `possible_duplicate`, `possible_duplicate_of`, `company`, `batch_id`,
+  `import_row {id,row_number,outcome,match_strength,matched_on}`, `analysis` (job or null).
+- **Errors**: standard envelope. Invalid input is a `400 validation_error` whose
+  `details.<field>` is a list of `{code, message}` objects with the stable codes of
+  `apps/imports/schema.py` (not plain strings, unlike the campaign API) and creates nothing, not
+  even a batch. Archived campaign or client: 400 `non_field_errors`. Another client's campaign or
+  company: 404. Wrong role: 403.
+- **Analyze Company** (`apps/companies/analysis.py`): creates a `core.Job` of type
+  `company_analysis` (client and campaign scoped, `created_by` the caller) with one `JobItem`
+  (`subject_type=company`), then queues `apps/companies/tasks.py::analyze_company` on Django-Q2.
+  Returns `202 {company_id, job, already_queued}`. Idempotent: while the company has a queued or
+  running analysis job that job is returned (`already_queued: true`). An archived company,
+  campaign or client is a 400. `analyze: true` on the create call does the same afterwards.
+  **The research engine is milestone M4.** Until then the task body is a placeholder that ends
+  the item and job `failed` with `ANALYSIS_NOT_IMPLEMENTED` in `error_summary`; it researches
+  nothing and writes no company data, and `Company.status` stays `pending`. M4 replaces the task
+  body only; the endpoint, job rows and tests of the contract stay. (A job left queued forever
+  would have blocked archiving the campaign, `campaign_has_active_jobs`, hence fail-fast.)
+- **Throttling**: the default per-user DRF throttle applies; dedicated import throttles are
+  issue #69.
+- **List cost**: constant number of queries per page (the newest analysis job per company is
+  loaded in one query for the page); `tests/test_company_api.py` pins it.
+
 ### Integration credentials (`apps/integrations`, issue #76)
 
 Per-client provider connections (`IntegrationConnection`, categories from Brief §17) with the
@@ -934,7 +987,8 @@ view, task. The task example uses Django-Q2 in sync mode (see "Background jobs")
 ### Company input and import batches (`apps/imports`, issue #56)
 
 Manual entry, CSV upload and provider import all land in the same two tables and the same input
-schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (see #59, #62, #63).
+schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). The manual entry API is
+documented in "Company API" below; CSV and provider imports have none yet (#62, #63).
 
 - **Input schema** (`apps/imports/schema.py`): `validate_company_input(raw, *,
   require_identifier=False)` returns a `CompanyInput` (`name`, `website`, `profile_url`,
