@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from rest_framework.schemas.generators import EndpointEnumerator
 from rest_framework.test import APIClient
@@ -35,6 +36,8 @@ from apps.core.models import AuditLog
 from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
 from apps.core.seed_sample import SeededWorld, load_seeded_world
+from apps.imports.models import ImportBatch
+from apps.imports.services import create_batch
 from tests.factories import make_campaign, make_client, make_user
 from tests.fixtures_seed import run_all_seeders
 from tests.invariants.conftest import shared_db
@@ -53,6 +56,7 @@ PUBLIC_ENDPOINTS = {
     "/api/v1/auth/refresh/": "authentication",
     "/api/v1/auth/logout/": "authentication",
     "/api/v1/auth/me/": "the caller's own profile",
+    "/api/v1/imports/csv-template/": "static CSV template, no client data (login required)",
 }
 
 HTTP = tuple[str, str]  # (METHOD, path template)
@@ -104,6 +108,9 @@ class Ctx:
     b_archived_campaign: Campaign
     b_archived_client: Client
     extra_campaign: Campaign
+    a_batch: ImportBatch
+    b_batch: ImportBatch
+    extra_batch: ImportBatch
     outsider: User = field(default=None)  # type: ignore[assignment]
 
     def api(self, user: User | None) -> APIClient:
@@ -143,6 +150,7 @@ def build_ctx(world: SeededWorld) -> Ctx:
     services.archive_client(b_arch_client)
 
     extra = make_client(name="Extra Co")
+    extra_campaign = make_campaign(client=extra, name="Extra campaign")
     return Ctx(
         world=world,
         extra=extra,
@@ -155,7 +163,10 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_campaign=world.campaigns["meridian"],
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
-        extra_campaign=make_campaign(client=extra, name="Extra campaign"),
+        extra_campaign=extra_campaign,
+        a_batch=create_batch(world.campaigns["skylight"], "manual", total_count=1),
+        b_batch=create_batch(world.campaigns["meridian"], "manual", total_count=1),
+        extra_batch=create_batch(extra_campaign, "manual", total_count=1),
         outsider=make_user(),
     )
 
@@ -185,8 +196,9 @@ class Scenario:
     ``kind``: ``list`` (collection read), ``item`` (``{pk}`` in the path), ``nested``
     (``{client_pk}``
     in the path), ``create`` (client id in the body), ``client_create`` (no client involved).
-    ``target`` picks the object family for ``{pk}``: ``client`` or ``campaign``. ``archived`` says
-    the target must be archived (restore). ``level`` is what docs/permissions.md demands.
+    ``target`` picks the object family for ``{pk}``: ``client``, ``campaign`` or ``batch``.
+    ``archived`` says the target must be archived (restore). ``level`` is what
+    docs/permissions.md demands.
     """
 
     key: str
@@ -266,8 +278,29 @@ def _scenarios() -> dict[str, Scenario]:
             "GET /api/v1/campaigns/{pk}/profile-versions/{version}/", "item", Level.READ, "campaign"
         ),
         Scenario("GET /api/v1/campaigns/{pk}/rules-summary/", "item", Level.READ, "campaign"),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_id}/csv-import/preview/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: csv_upload(),
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_id}/csv-import/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: csv_upload(),
+        ),
+        Scenario("POST /api/v1/imports/{batch_id}/cancel/", "item", Level.EDIT, "batch"),
     ]
     return {s.key: s for s in items}
+
+
+def csv_upload() -> dict[str, Any]:
+    """A multipart body: ``send`` switches to multipart when a value is a file."""
+    content = b"company_name,website\nProbe Co,probe.example.com\n"
+    return {"file": SimpleUploadedFile("probe.csv", content, content_type="text/csv")}
 
 
 SCENARIOS = _scenarios()
@@ -276,6 +309,8 @@ SCENARIO_IDS = list(SCENARIOS)
 
 def fill(path: str, **values: str) -> str:
     out = path.replace("{version}", "1")
+    if "pk" in values:  # routes whose id is named after the object
+        out = out.replace("{campaign_id}", values["pk"]).replace("{batch_id}", values["pk"])
     for name, value in values.items():
         out = out.replace("{" + name + "}", value)
     return out
@@ -284,12 +319,16 @@ def fill(path: str, **values: str) -> str:
 def own_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.a_archived_client if s.archived else ctx.a_client).pk)
+    if s.target == "batch":
+        return str(ctx.a_batch.pk)
     return str((ctx.a_archived_campaign if s.archived else ctx.a_campaign).pk)
 
 
 def foreign_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.b_archived_client if s.archived else ctx.b_client).pk)
+    if s.target == "batch":
+        return str(ctx.b_batch.pk)
     return str((ctx.b_archived_campaign if s.archived else ctx.b_campaign).pk)
 
 
@@ -313,7 +352,10 @@ def request_for(
 
 def send(api: APIClient, method: str, url: str, body: Any) -> Any:
     verb = getattr(api, method.lower())
-    return verb(url, body, format="json") if body is not None else verb(url)
+    if body is None:
+        return verb(url)
+    uploading = any(hasattr(value, "read") for value in body.values())
+    return verb(url, body, format="multipart" if uploading else "json")
 
 
 def normalized(response: Any) -> Any:
@@ -438,7 +480,7 @@ def test_a_third_clients_object_is_not_found_either(ctx, key) -> None:
     """A user of client A cannot reach a client they have never heard of (not only Meridian)."""
     s = SCENARIOS[key]
     api = ctx.api(ctx.users["admin"])
-    target = ctx.extra if s.target == "client" else ctx.extra_campaign
+    target = {"client": ctx.extra, "batch": ctx.extra_batch}.get(s.target, ctx.extra_campaign)
     if s.archived:
         archive = services.archive_client if s.target == "client" else services.archive_campaign
         archive(target)
