@@ -35,7 +35,13 @@ from tests.factories import (
 )
 from tests.factories_core import make_job, make_job_item
 from tests.factories_imports import make_import_batch, make_import_row
-from tests.factories_integrations import make_connection
+from tests.factories_integrations import (
+    make_budget,
+    make_cached_response,
+    make_connection,
+    make_provider_call,
+    make_raw_payload,
+)
 
 
 def label(model: type[models.Model]) -> str:
@@ -99,6 +105,10 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
     )
     membership = grant_membership(client, user, "viewer")
     integration = make_connection(client, user)
+    provider_call = make_provider_call(integration, campaign=campaign, job=job)
+    budget = make_budget(integration)
+    cached_response = make_cached_response(integration)
+    raw_payload = make_raw_payload(provider_call)
     audit = AuditLog.objects.filter(client=client).first()
     assert audit is not None, "creating a campaign must write an audit row for its client"
 
@@ -108,6 +118,10 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
         campaign.current_profile._meta.label: campaign.current_profile,
         membership._meta.label: membership,
         integration._meta.label: integration,
+        provider_call._meta.label: provider_call,
+        budget._meta.label: budget,
+        cached_response._meta.label: cached_response,
+        raw_payload._meta.label: raw_payload,
         company._meta.label: company,
         source._meta.label: source,
         research._meta.label: research,
