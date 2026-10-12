@@ -766,7 +766,7 @@ Mutable working state while it runs; change it only through `apps/imports/servic
 | status | enum | `pending`, `processing`, `completed`, `partial`, `failed`, `cancelled` |
 | original_filename | text, blank | base name only, CSV |
 | file_size | bigint, null | bytes, CSV |
-| file_sha256 | text, blank | hex digest of the uploaded bytes; required (CHECK) when `source` is `csv`. The file itself is not kept |
+| file_sha256 | text, blank | hex digest of the uploaded bytes; required (CHECK) when `source` is `csv`. The file itself waits in private storage only until the batch ends, then it is deleted (`apps/imports/uploads.py`) |
 | column_mapping | jsonb | free-form: which column fed which company field |
 | total_count | int | rows expected; set when known (a CSV after parsing) |
 | created_count, duplicate_count, restored_count, skipped_count, failed_count | int | one counter per row outcome; disjoint |

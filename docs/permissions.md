@@ -74,6 +74,17 @@ Archived clients are read-only (400) until restored.
 Reviewers (DECIDE) cannot edit rules: PUT/PATCH is 403 for them. There is no DELETE (405).
 Archived campaigns are read-only (400) until restored; their profile versions stay readable.
 
+### CSV import endpoints (issue #62)
+
+| Endpoint (action) | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `POST /campaigns/{campaign_id}/csv-import/preview/` (`preview`) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /campaigns/{campaign_id}/csv-import/` (`create`) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /imports/{batch_id}/cancel/` (`cancel`) | EDIT | no | no | yes | yes | yes | 404 |
+| `GET /imports/csv-template/` | signed in | yes | yes | yes | yes | yes | yes (a static file, no client data; listed in `PUBLIC_ENDPOINTS` of the isolation test) |
+
+Importing adds companies to a campaign, so it needs the same level as creating a company.
+
 Other rules:
 
 - Anonymous requests get 401. An inactive user (or inactive global admin) gets nothing, even with
