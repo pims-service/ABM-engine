@@ -219,6 +219,30 @@ if supports(adapter, "enrich_company"):
 - **Fakes** (`framework.fakes`, one per category, `register_fakes(registry)`) are for tests and
   local development only.
 
+### LLM adapter and structured output (`apps/integrations/llm`, `adapters/anthropic`, issue #81)
+
+Every AI feature goes through one entry point (Brief section 18, [ADR 0003](../docs/adr/0003-structured-llm-output.md)):
+
+```python
+from apps.integrations.llm import pydantic_schema, structured_call, wrap_untrusted
+
+result = structured_call(adapter, PromptSpec("fit", "1", user_text), pydantic_schema(FitVerdict))
+verdict = result.data  # a validated FitVerdict; result.usage has summed tokens and the model
+```
+
+- `pydantic_schema(Model)` builds the `StructuredSchema`; a failure is a `StructuredOutputError`
+  listing field paths and codes only, never model text.
+- `structured_call` validates, makes at most one repair attempt (paths and codes fed back, never
+  the rejected text), sums usage over attempts, logs prompt name and version, then raises.
+- `AnthropicAdapter` (key `anthropic`) uses the Messages API with `output_config.format`
+  JSON-schema outputs. `model` is a required setting with no default. The HTTP transport is
+  injectable; the real one allow-lists the host, verifies TLS, caps time and size.
+- `wrap_untrusted` delimits external text; `assert_grounded` checks quoted facts against evidence.
+
+No models, migrations or API. Details and the verified documentation links:
+[docs/integrations/llm.md](../docs/integrations/llm.md). Tests: `tests/test_llm_structured.py`,
+`tests/test_anthropic_adapter.py`.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
