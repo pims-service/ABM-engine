@@ -44,6 +44,7 @@ Open `.env` and replace the placeholders:
 | --- | --- |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Any local values you like. They only protect your own dev database. |
 | `SECRET_KEY` | A random string. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `INTEGRATION_ENCRYPTION_KEYS` | A Fernet key that encrypts provider credentials. Generate one with `docker compose run --rm --no-deps api python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (or `uv run python -c ...` in `backend/`). Keep it: credentials saved with a lost key cannot be read again. |
 
 The other values in `.env.example` have working defaults. Leave them unless a
 port clashes (see [Troubleshooting](#ports-already-in-use)).

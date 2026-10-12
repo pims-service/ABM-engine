@@ -79,6 +79,12 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "/api/v1/campaigns/{id}/profile-versions/{version}/",
         ),
         "campaigns_rules_summary": ("GET", "/api/v1/campaigns/{id}/rules-summary/"),
+        "campaign_companies_list": ("GET", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "campaign_companies_create": ("POST", "/api/v1/campaigns/{campaign_pk}/companies/"),
+        "companies_retrieve": ("GET", "/api/v1/companies/{id}/"),
+        "companies_analyze": ("POST", "/api/v1/companies/{id}/analyze/"),
+        "companies_archive": ("POST", "/api/v1/companies/{id}/archive/"),
+        "companies_restore": ("POST", "/api/v1/companies/{id}/restore/"),
         "client_campaigns_list": ("GET", "/api/v1/clients/{client_pk}/campaigns/"),
         "client_campaigns_create": ("POST", "/api/v1/clients/{client_pk}/campaigns/"),
         "clients_list": ("GET", "/api/v1/clients/"),
@@ -88,6 +94,30 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "clients_partial_update": ("PATCH", "/api/v1/clients/{id}/"),
         "clients_archive": ("POST", "/api/v1/clients/{id}/archive/"),
         "clients_restore": ("POST", "/api/v1/clients/{id}/restore/"),
+        "integration_connections_list": ("GET", "/api/v1/integrations/connections/"),
+        "integration_connections_create": ("POST", "/api/v1/integrations/connections/"),
+        "integration_connections_retrieve": ("GET", "/api/v1/integrations/connections/{id}/"),
+        "integration_connections_update": ("PUT", "/api/v1/integrations/connections/{id}/"),
+        "integration_connections_partial_update": (
+            "PATCH",
+            "/api/v1/integrations/connections/{id}/",
+        ),
+        "integration_connections_enable": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/enable/",
+        ),
+        "integration_connections_disable": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/disable/",
+        ),
+        "integration_connections_archive": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/archive/",
+        ),
+        "integration_connections_restore": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/restore/",
+        ),
         "campaigns_csv_import_preview": (
             "POST",
             "/api/v1/campaigns/{campaign_id}/csv-import/preview/",
@@ -104,8 +134,12 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             if "/auth/" in path
             else "imports"
             if "/imports/" in path or "/csv-import/" in path
+            else "companies"
+            if "/companies/" in path
             else "campaigns"
             if "/campaigns/" in path
+            else "integrations"
+            if "/integrations/" in path
             else "clients"
             if "/clients/" in path
             else "health"
@@ -117,6 +151,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "auth",
         "campaigns",
         "clients",
+        "companies",
+        "integrations",
         "health",
         "imports",
         "meta",

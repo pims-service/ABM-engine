@@ -85,6 +85,42 @@ Archived campaigns are read-only (400) until restored; their profile versions st
 
 Importing adds companies to a campaign, so it needs the same level as creating a company.
 
+### Company endpoints (issue #59)
+
+`/api/v1/campaigns/{campaign_id}/companies/` and `/api/v1/companies/{id}/`. The campaign of the
+URL (or the company's client) is looked up through the user's visible clients: another client's
+campaign or company is 404.
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list` (`GET campaigns/{id}/companies/`), `retrieve` | READ | yes | yes | yes | yes | yes | 404 |
+| `create` (manual entry, `POST campaigns/{id}/companies/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `analyze` (`POST companies/{id}/analyze/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `archive`, `restore` | MANAGE | no | no | no | yes | yes | 404 |
+
+There is no PUT, PATCH or DELETE (405 for MANAGE, 403 below it: an unrouted write fails closed).
+Archived campaigns and clients take no new companies, analysis, archive or restore (400).
+
+### Integration connection endpoints (`/api/v1/integrations/connections/`, issue #76)
+
+Connections hold provider credentials, so they are **stricter than the rest of the client API**:
+reading is limited to managers and admins, and only admins change anything. Viewers and reviewers
+never see that a connection exists beyond a 403 on a known id.
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list` | EDIT | 403 | 403 | yes (own clients where manager/admin) | yes | yes | not listed |
+| `retrieve` | EDIT | 403 | 403 | yes | yes | yes | 404 |
+| `create` | MANAGE in the target client | 403 | 403 | 403 | yes | yes | 404 |
+| `update`, `partial_update` (name, config, credentials) | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+| `enable`, `disable`, `archive`, `restore` | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+
+Credentials are write-only: no response contains them, only `has_credentials` and a masked hint
+(`****abcd` for secrets of 16 characters or more, `****` otherwise). There is no DELETE (405):
+connections are archived. Not even the admin role can read a secret back; the only reader is
+`apps.integrations.services.get_credentials`, used by adapters. See
+[backend/README.md](../backend/README.md#integration-credentials-issue-76).
+
 Other rules:
 
 - Anonymous requests get 401. An inactive user (or inactive global admin) gets nothing, even with

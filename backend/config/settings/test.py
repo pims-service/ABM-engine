@@ -20,3 +20,9 @@ REST_FRAMEWORK = {**REST_FRAMEWORK, "DEFAULT_THROTTLE_CLASSES": []}
 Q_CLUSTER = {**Q_CLUSTER, "sync": True}
 # Uploaded CSV files of the tests go to a throwaway directory, never into the working tree.
 IMPORT_UPLOAD_DIR = Path(tempfile.mkdtemp(prefix="abm-test-import-uploads-"))
+
+# A throwaway Fernet key per test process (never a real secret). Tests that need specific keys
+# override settings.INTEGRATION_ENCRYPTION_KEYS.
+from cryptography.fernet import Fernet
+
+INTEGRATION_ENCRYPTION_KEYS = [Fernet.generate_key().decode("ascii")]

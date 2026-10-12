@@ -23,7 +23,7 @@ The Docker image installs with `uv sync --frozen --no-dev`, so it fails if `uv.l
 ```
 config/settings/{base,dev,test,prod}.py   settings, all driven by env vars
 config/urls.py                            /admin/, /api/v1/, /healthz, /readyz
-apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models; others are empty AppConfigs)
+apps/{accounts,campaigns,companies,research,integrations,ai,core}   apps (campaigns has the tenancy models, integrations the encrypted provider connections; others are mostly empty AppConfigs)
 tests/                                    pytest smoke tests, fixtures, factories, examples/
 ```
 
@@ -159,7 +159,65 @@ out of git.
 External data, email, LLM and CRM providers are reached through adapters (ADR 0002). The provider
 shortlist, licensing notes and the requirements every adapter must meet are in
 [docs/integrations/](../docs/integrations/README.md); the first-provider choice is a proposed
-decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No adapter code exists yet.
+decision in [ADR 0012](../docs/adr/0012-first-provider-selection.md). No vendor adapter exists yet;
+the framework they plug into is described next.
+
+### Integration framework (`apps/integrations/framework`, issues #74 and #75, [ADR 0013](../docs/adr/0013-integration-framework.md))
+
+One adapter model for the nine Brief section 17 categories (`IntegrationCategory`: `llm`,
+`company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`,
+`storage`, `automation`). Pure Python: no models, no migrations, no endpoints, no network, no vendor
+SDK. Importing it registers nothing. Tests: `tests/test_integration_framework.py`; the reusable
+suite adapters import is `tests/adapter_contract.py`. Step-by-step guide:
+[docs/integrations/framework.md](../docs/integrations/framework.md).
+
+```python
+from apps.integrations.framework import (
+    AdapterRegistry,
+    ConnectionSpec,
+    CompanyRef,
+    execute,
+    supports,
+)
+
+registry = AdapterRegistry()  # or default_registry (empty until you register)
+registry.register(MyCompanyAdapter)  # explicit, validated: terms, features, config schema
+adapter = registry.resolve(
+    ConnectionSpec("company_data", "my-vendor", {"region": "eu"}, {"api_key": secret})
+)  # credentials: str or SecretStr
+if supports(adapter, "enrich_company"):
+    result = execute(adapter, adapter.enrich_company, CompanyRef(domain="acme.com"))
+    company = result.data  # NormalizedCompany or None (unknown, never invented)
+    result.provenance  # provider, category, source, retrieved_at, terms, ...
+    result.usage  # credits / cost / tokens / latency_ms
+```
+
+- **Adapter** (`Adapter` ABC plus one base class per category) declares `key`, `display_name`,
+  `version`, `terms` (`licensed_api` | `public_data` | `manual`; scraping is refused),
+  `capabilities` (`AdapterCapabilities`: features of its category, allowed hosts, rate limit,
+  page size) and `config_schema` (settings plus credential NAMES under `x-credentials`; secrets
+  are never settings). `validate_config()` reports field names and codes, never values.
+  `test_connection()` returns a `ConnectionTestResult` with a fixed safe message and latency.
+- **Operations** return `AdapterResult[T]`: company `search` / `enrich_company` /
+  `list_job_postings`, people `find_people`, email `find_email` and `verify`, LLM
+  `generate_structured`, CRM `push_contact` / `push_company` (idempotent by `external_key`),
+  outreach `export_prospects` (export only in V1), storage `put_object` / `get_object` /
+  `delete_object`, automation `trigger` / `run_status`. Always call through `execute()`: it checks
+  the declared feature, turns stray exceptions into `ProviderUnavailable`, checks the result's
+  stamp and fills `usage.latency_ms`.
+- **Envelope** (`AdapterResult`, `Provenance`, `Usage`) and **normalized types**
+  (`NormalizedCompany`, `NormalizedPerson`, `SignalCandidate`, `EmailVerification`, ...):
+  `None` means unknown; evidence-bearing data requires provenance with a source and a
+  timezone-aware `retrieved_at`; text is bounded and scrubbed of secrets.
+- **Errors**: the #66 family plus `ProviderNotConfigured`, `ProviderNotFound`, `ProviderConflict`,
+  `ProviderTimeout`, `ProviderUpstreamError` (and `ProviderInvalidOutput`). Each has a stable
+  `code`, `retryable`, `retry_after` and a safe `as_dict()`; `map_http_status(status)` is the one
+  HTTP table.
+- **Compatibility**: `apps.imports.providers` keeps working unchanged; its errors and terms
+  check now live in the framework and are re-exported. `framework.bridge.as_company_search_provider`
+  lets a `CompanyDataAdapter` serve the #66 import contract.
+- **Fakes** (`framework.fakes`, one per category, `register_fakes(registry)`) are for tests and
+  local development only.
 
 ## Background jobs (Django-Q2)
 
@@ -420,6 +478,125 @@ the URL). No DELETE: archive instead. Per-action levels: [docs/permissions.md](.
   `custom_rules`, `structured_rules` (reserved, always `[]`). Changing the shape means bumping
   `RULES_SUMMARY_SCHEMA_VERSION`; `tests/test_campaign_api.py::test_rules_summary_shape_snapshot`
   pins it.
+
+### Company API (`/api/v1/campaigns/{id}/companies/`, `/api/v1/companies/{id}/`, issue #59)
+
+`apps/companies/api/companies.py` (`CampaignCompanyViewSet` and `CompanyViewSet`, both
+`ClientScopedViewSet`s), serializers in `serializers.py`. Companies are added by hand, listed,
+read, archived/restored and sent to analysis; they are never edited or deleted through the API
+(an import never rewrites a company, ADR 0009). Per-action levels:
+[docs/permissions.md](../docs/permissions.md#company-endpoints-issue-59).
+
+| Route | Action | Level |
+| --- | --- | --- |
+| `GET /campaigns/{id}/companies/` | list (filters `status`, `archived=false|true|all`, `possible_duplicate`, `input_source`, `search` on name/domain/website, `ordering`, `page`, `page_size`) | READ |
+| `POST /campaigns/{id}/companies/` | manual entry (below) | EDIT |
+| `GET /companies/{id}/` | detail with `latest_research` and `possible_duplicate_of` | READ |
+| `POST /companies/{id}/analyze/` | Analyze Company (202) | EDIT |
+| `POST /companies/{id}/archive/`, `restore/` | archive, restore (idempotent, audited) | MANAGE |
+
+- **Manual entry** (`apps/imports/manual.py`): body `{name?, website?, profile_url?, country?,
+  input?, analyze?}`. The rule is `validate_company_input(require_identifier=True)`: a `name`
+  and at least one of `website` or `profile_url` (country optional). `input` is one free-text
+  box routed by `classify_input` (URL or domain -> `website`, recognised profile URL ->
+  `profile_url`, anything else -> `name`); it only fills a field left empty, otherwise
+  `input_conflicts_with_field`; a `javascript:`-style value is `input_invalid`. Unknown fields
+  (e.g. `notes`: companies have no notes column) are 400s. The entry runs through a one-row
+  `ImportBatch` (source `manual`) with `process_row`, so history and counters match CSV and
+  provider imports, and the create or restore is audited (`company`, actions `create`/`restore`).
+- **Outcomes**: `201` `outcome: "created"` (a weak name+country match still creates the company,
+  `possible_duplicate: true`, `possible_duplicate_of` points at the candidate); `200`
+  `outcome: "duplicate"` (strong match on domain or profile URL, inside the campaign: the existing
+  company is returned unchanged, nothing submitted is copied onto it); `200` `outcome: "restored"`
+  (the strong match was archived and is back). Response keys: `outcome`, `created`, `duplicate`,
+  `restored`, `possible_duplicate`, `possible_duplicate_of`, `company`, `batch_id`,
+  `import_row {id,row_number,outcome,match_strength,matched_on}`, `analysis` (job or null).
+- **Errors**: standard envelope. Invalid input is a `400 validation_error` whose
+  `details.<field>` is a list of `{code, message}` objects with the stable codes of
+  `apps/imports/schema.py` (not plain strings, unlike the campaign API) and creates nothing, not
+  even a batch. Archived campaign or client: 400 `non_field_errors`. Another client's campaign or
+  company: 404. Wrong role: 403.
+- **Analyze Company** (`apps/companies/analysis.py`): creates a `core.Job` of type
+  `company_analysis` (client and campaign scoped, `created_by` the caller) with one `JobItem`
+  (`subject_type=company`), then queues `apps/companies/tasks.py::analyze_company` on Django-Q2.
+  Returns `202 {company_id, job, already_queued}`. Idempotent: while the company has a queued or
+  running analysis job that job is returned (`already_queued: true`). An archived company,
+  campaign or client is a 400. `analyze: true` on the create call does the same afterwards.
+  **The research engine is milestone M4.** Until then the task body is a placeholder that ends
+  the item and job `failed` with `ANALYSIS_NOT_IMPLEMENTED` in `error_summary`; it researches
+  nothing and writes no company data, and `Company.status` stays `pending`. M4 replaces the task
+  body only; the endpoint, job rows and tests of the contract stay. (A job left queued forever
+  would have blocked archiving the campaign, `campaign_has_active_jobs`, hence fail-fast.)
+- **Throttling**: the default per-user DRF throttle applies; dedicated import throttles are
+  issue #69.
+- **List cost**: constant number of queries per page (the newest analysis job per company is
+  loaded in one query for the page); `tests/test_company_api.py` pins it.
+
+### Integration credentials (`apps/integrations`, issue #76)
+
+Per-client provider connections (`IntegrationConnection`, categories from Brief §17) with the
+non-secret `config` in plain JSON and the secrets in an **encrypted, write-only** column. This is
+the security design; adapters (#74, #82 to #85) and the settings UI (#77) build on it.
+
+**Encryption.** `EncryptedCredentialsField` (`fields.py`) stores only Fernet ciphertext (AES + HMAC,
+`cryptography`). Keys come from `INTEGRATION_ENCRYPTION_KEYS` (comma-separated, newest first;
+`MultiFernet`): the first key encrypts, all keys decrypt. The ORM, `values()`, fixtures and
+`bulk_update` can never write plaintext because the field refuses anything that is not a
+`Credentials` object. Loading a row does not decrypt (listing needs no key); `reveal()` does.
+It fails closed: a wrong, missing or malformed key, or a tampered value, raises `DecryptionError` /
+`EncryptionConfigError` with a safe message, never a plaintext fallback.
+
+**Never printed.** Secrets live in `apps.integrations.crypto.Credentials`: `repr`, `str` and
+f-strings give `Credentials([redacted])`, it cannot be pickled (so it cannot reach a cache or the
+task queue), hashed or iterated, and read access is explicit (`.get("api_key")`, `.reveal()`).
+`mask()` shows `****abcd` only for secrets of 16 characters or more.
+
+**Where secrets are kept out.**
+
+| Place | How |
+| --- | --- |
+| API responses and errors | `credentials` is a write-only serializer field; responses carry `has_credentials` and `credentials_hint` only. Validation errors never echo values. |
+| Audit log | Credential changes are `credentials_change: set / replaced / cleared / reencrypted` (an allow-listed marker, `SAFE_MARKERS` in `apps/core/audit.py`); the values never enter the snapshot. |
+| Logs and tracebacks | The wrapper prints redacted; `get_credentials` logs connection id, category, provider and purpose to `apps.integrations.access`, never values. The log redactor also masks `credential`-named keys. |
+| Django admin | Read-only and superuser-only; the `credentials` column is in no view, only `Credentials set` and the masked hint. |
+| `config` | Rejected if any key looks secret (`password`, `token`, `api_key`, ...), so secrets cannot hide in the plain JSON or its audit diff. |
+
+**Using a connection (adapters).**
+
+```python
+from apps.integrations import services
+from apps.integrations.models import IntegrationCategory
+
+connection = services.resolve_connection(client, IntegrationCategory.LLM, provider="openai")
+if connection is not None:  # active, non-archived, oldest first
+    creds = services.get_credentials(connection, purpose="icp_assessment")
+    api_key = creds.get("api_key")  # use it now; never store, log or return it
+    settings_for_provider = connection.config  # non-secret settings
+    ...
+    services.record_test_result(connection, ok=False, message="HTTP 401")  # safe, scrubbed text
+```
+
+`get_credentials` refuses archived connections (`ConnectionUnavailableError`), connections with no
+credentials (`CredentialsNotSetError`) and undecryptable ones (`DecryptionError`, message safe to
+show). Write through `services` only (`create_connection`, `update_connection`, `set_credentials`,
+`clear_credentials`, `enable_connection`, `disable_connection`, `archive_connection`,
+`restore_connection`): each is audited with the acting user.
+
+**API** (`/api/v1/integrations/connections/`, `apps/integrations/api/views.py`): `GET/POST`,
+`GET/PUT/PATCH /{id}/`, `POST /{id}/enable|disable|archive|restore/`. Reading needs manager or
+admin, every write needs admin (see [permissions](../docs/permissions.md#integration-connection-endpoints-apiv1integrationsconnections-issue-76)).
+No DELETE (archive). Filters `client`, `category`, `provider`, `status`, `test_status`,
+`archived`, `search`, `ordering`.
+
+**Key rotation.** `python manage.py rotate_credentials [--dry-run]` re-encrypts every row with the
+newest key (runbook in [environment.md](../docs/environment.md#secrets-handling)): prepend the new
+key, run the command, then drop the old key. Rows that cannot be decrypted are left untouched and
+reported by id, and the command exits with an error.
+
+**Tests.** `tests/test_integration_crypto.py`, `test_integration_services.py` (raw column holds
+ciphertext, audit and log carry no secret, rotation), `test_integration_api.py` (role matrix,
+no secret in any response), `test_integration_admin.py`, plus the invariant registry row and the
+tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist secret`.
 
 ### Companies, research history and data sources (`apps/companies`)
 
@@ -810,7 +987,8 @@ view, task. The task example uses Django-Q2 in sync mode (see "Background jobs")
 ### Company input and import batches (`apps/imports`, issue #56)
 
 Manual entry, CSV upload and provider import all land in the same two tables and the same input
-schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). No API yet (see #59, #62, #63).
+schema. Data model: `docs/data-model.md` (ImportBatch, ImportRow). The manual entry API is
+documented in "Company API" below; CSV and provider imports have none yet (#62, #63).
 
 - **Input schema** (`apps/imports/schema.py`): `validate_company_input(raw, *,
   require_identifier=False)` returns a `CompanyInput` (`name`, `website`, `profile_url`,
@@ -1128,7 +1306,7 @@ DATABASE_URL=postgres://postgres:YOUR_DB_PASSWORD@localhost:55432/abm_dev uv run
 ```bash
 docker build -t abm-backend backend
 docker run --rm -p 8000:8000 \
-  -e SECRET_KEY=YOUR_SECRET_KEY -e DATABASE_URL=postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@HOST:5432/YOUR_DB_NAME \
+  -e SECRET_KEY=YOUR_SECRET_KEY -e INTEGRATION_ENCRYPTION_KEYS=YOUR_INTEGRATION_ENCRYPTION_KEYS -e DATABASE_URL=postgres://YOUR_DB_USER:YOUR_DB_PASSWORD@HOST:5432/YOUR_DB_NAME \
   -e ALLOWED_HOSTS=localhost -e SECURE_SSL_REDIRECT=False abm-backend
 ```
 

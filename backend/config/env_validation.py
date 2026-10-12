@@ -63,6 +63,33 @@ def _cors_origin_problem(origin: str) -> str | None:
     return None
 
 
+def _encryption_key_problems(raw: str) -> list[str]:
+    """Problems with ``INTEGRATION_ENCRYPTION_KEYS`` (comma-separated Fernet keys, newest first).
+
+    Required in every environment but tests: stored credentials are unreadable without a key, so
+    a missing or malformed key must stop the deploy, not the first provider call. Messages give
+    the position of a bad entry, never its value.
+    """
+    from cryptography.fernet import Fernet
+
+    entries = [e.strip() for e in raw.split(",") if e.strip()]
+    name = "INTEGRATION_ENCRYPTION_KEYS"
+    if not entries:
+        return [f"{name}: missing (required, comma-separated Fernet keys, newest first)"]
+    problems: list[str] = []
+    for index, entry in enumerate(entries, start=1):
+        if _is_placeholder(entry):
+            problems.append(f"{name}: entry {index} is still a YOUR_* placeholder; generate a key")
+            continue
+        try:
+            Fernet(entry.encode("ascii"))
+        except (ValueError, TypeError):
+            problems.append(
+                f"{name}: entry {index} is not a valid Fernet key (32 url-safe base64 bytes)"
+            )
+    return problems
+
+
 def _parse_int(value: str) -> int | None:
     try:
         return int(value)
@@ -90,6 +117,8 @@ def validate_environment(environ: Mapping[str, str], *, settings_module: str) ->
         problems.append("DATABASE_URL: missing (required)")
     elif urlsplit(database_url).scheme not in POSTGRES_SCHEMES:
         problems.append("DATABASE_URL: invalid, expected postgres://USER:PASSWORD@HOST:PORT/NAME")
+
+    problems.extend(_encryption_key_problems(environ.get("INTEGRATION_ENCRYPTION_KEYS", "")))
 
     if is_prod and not [h for h in environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]:
         problems.append("ALLOWED_HOSTS: missing (required in production, comma-separated)")

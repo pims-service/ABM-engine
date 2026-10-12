@@ -19,11 +19,21 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+from apps.integrations.framework.categories import ALLOWED_TERMS
+
 from .errors import ProviderBadRequest, ProviderError, ProviderUnavailable
 from .types import MAX_PAGE_SIZE, CompanySearchRequest, CompanySearchResult
 
+__all__ = [
+    "ALLOWED_TERMS",
+    "CompanySearchProvider",
+    "FilterSupport",
+    "ProviderCapabilities",
+    "Terms",
+    "execute_search",
+]
+
 Terms = Literal["licensed_api", "public_data", "manual"]
-ALLOWED_TERMS: frozenset[str] = frozenset({"licensed_api", "public_data", "manual"})
 
 
 @dataclass(frozen=True)

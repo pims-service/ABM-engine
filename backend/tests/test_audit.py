@@ -26,6 +26,19 @@ from tests.factories_core import make_audit_log
 
 pytestmark = pytest.mark.django_db
 
+
+def test_credentials_change_marker_survives_redaction_only_with_a_fixed_word() -> None:
+    """``credentials_change`` is allow-listed (issue #76) but never carries user data."""
+    assert redact_value({"credentials_change": "replaced"}) == {"credentials_change": "replaced"}
+    assert redact_value({"credentials_change": None}) == {"credentials_change": None}
+    assert redact_value({"credentials_change": "hunter2"}) == {"credentials_change": REDACTED}
+    assert redact_value({"credentials_change": {"k": "v"}}) == {"credentials_change": REDACTED}
+    assert redact_value({"credentials": "replaced"}) == {"credentials": REDACTED}
+    assert redact_value({"nested": {"credentials_change": ["x"]}}) == {
+        "nested": {"credentials_change": REDACTED}
+    }
+
+
 SECRET_KEYS = [
     "password",
     "new_password",

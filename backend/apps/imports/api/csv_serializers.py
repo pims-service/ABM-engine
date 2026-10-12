@@ -17,6 +17,9 @@ class ImportBatchSerializer(serializers.ModelSerializer[ImportBatch]):
     """One import batch with its counters. The counters are the source of truth for the outcome;
     ``job`` is the background run (``/jobs`` progress is derived from the same counters)."""
 
+    source = serializers.CharField(  # type: ignore[assignment]
+        read_only=True, help_text="How the batch was fed: `manual`, `csv` or `provider`."
+    )
     processed_count = serializers.IntegerField(read_only=True)
     progress_percent = serializers.IntegerField(
         read_only=True, help_text="0 to 100: processed rows over total rows."
