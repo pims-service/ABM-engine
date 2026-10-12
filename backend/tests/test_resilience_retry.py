@@ -137,7 +137,7 @@ def test_backoff_is_deterministic_without_jitter_and_sleeps_in_order() -> None:
 
 def test_jitter_only_shortens_and_stays_within_bounds_with_a_seeded_rng() -> None:
     policy = RetryPolicy(base_delay=4.0, factor=2.0, max_delay=100.0, jitter=0.25)
-    rng = random.Random(1234)
+    rng = random.Random(1234)  # noqa: S311
     for retry in range(1, 6):
         raw = min(100.0, 4.0 * 2.0 ** (retry - 1))
         for _ in range(200):
@@ -160,7 +160,7 @@ def test_same_seed_gives_the_same_delays() -> None:
             flaky(*[ProviderUnavailable() for _ in range(5)]),
             policy,
             sleep=clock.sleep,
-            rng=random.Random(seed).random,
+            rng=random.Random(seed).random,  # noqa: S311,
         )
         return clock.sleeps
 

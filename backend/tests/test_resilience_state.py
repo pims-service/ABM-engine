@@ -105,7 +105,8 @@ def test_all_windows_must_have_a_token_and_a_refusal_takes_nothing() -> None:
 def test_daily_limit() -> None:
     clock, state = FakeClock(), local_state()
     rl = limiter(clock, state, per_day=2)
-    assert rl.try_acquire().allowed and rl.try_acquire().allowed
+    assert rl.try_acquire().allowed
+    assert rl.try_acquire().allowed
     denied = rl.try_acquire()
     assert not denied.allowed
     assert denied.retry_after == pytest.approx(43_200, abs=1)  # half a day per token
@@ -520,7 +521,8 @@ def test_open_circuit_raises_unavailable_with_retry_after_and_never_calls_the_pr
     assert adapter.attempts == calls  # no call went out
     assert clock.sleeps == sleeps  # and nothing slept on it
     assert isinstance(caught.value, ProviderUnavailable)
-    assert caught.value.retry_after is not None and caught.value.retry_after > 0
+    assert caught.value.retry_after is not None
+    assert caught.value.retry_after > 0
 
 
 def test_circuit_recovers_after_the_cooldown() -> None:
@@ -611,7 +613,7 @@ def test_client_id_builds_the_shared_limiter_and_breaker(db: None) -> None:
     status = connection_status(adapter, "client-1")
     assert status["breaker"]["state"] == "closed"
     window = status["rate_limit"]["windows"][0]
-    assert window["limit"] == 60 and window["remaining"] == 58  # two attempts took two tokens
+    assert (window["limit"], window["remaining"]) == (60, 58)  # two attempts took two tokens
 
 
 def test_operation_arguments_pass_through_search() -> None:
@@ -624,7 +626,8 @@ def test_operation_arguments_pass_through_search() -> None:
 def test_resilience_bundle_for_adapter_uses_settings(settings: Any) -> None:
     adapter = ScriptedAdapter()
     bundle = Resilience.for_adapter(adapter, "c1")
-    assert bundle.breaker is not None and bundle.limiter is not None
+    assert bundle.breaker is not None
+    assert bundle.limiter is not None
     settings.INTEGRATION_RESILIENCE = {"breaker_enabled": False}
     assert Resilience.for_adapter(adapter, "c1").breaker is None
 
