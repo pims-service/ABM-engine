@@ -545,6 +545,42 @@ ciphertext, audit and log carry no secret, rotation), `test_integration_api.py` 
 no secret in any response), `test_integration_admin.py`, plus the invariant registry row and the
 tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist secret`.
 
+### Usage tracking and budgets (`apps/integrations/usage.py`, issue #79)
+
+Run every adapter operation through `tracked_execute` instead of `execute`:
+
+```python
+from apps.integrations.usage import tracked_execute, BudgetExceeded
+
+result = tracked_execute(connection, adapter, adapter.enrich_company, ref, job=job, user=user)
+```
+
+It checks the connection's monthly budget first (`BudgetExceeded`, a `ProviderQuotaExceeded` with
+code `budget_exceeded`, and no provider request), runs `execute`, and writes exactly one
+`ProviderCall` row for a success, a failure or a refusal. `job`, `campaign` (default: the job's) and
+`user` are reserved keyword names. Logging never raises: a failed insert is logged, swallowed and
+counted (`usage.logging_failure_count()`). Rows hold no body and no secret.
+
+Budgets: `usage.set_budget(connection, user, credit_limit=..., cost_limit=..., currency=...,
+warn_at_percent=80, hard_stop=True)` (audited); `usage.check_budget(connection)` returns a
+`BudgetStatus` (`allow`, `warn`, `deny`). The check is not a reservation, so concurrent calls can
+overshoot a limit by what they cost. Aggregations live in `apps/integrations/reporting.py`
+(`summarize`, `totals`, `run_totals`, `cost_per_accepted_account` placeholder).
+API: `GET /api/v1/integrations/usage/`, `.../usage/summary/?group_by=provider,day`,
+`GET|PUT /api/v1/integrations/connections/{id}/budget/` (levels in docs/permissions.md).
+Full guide: [docs/integrations/usage-and-cache.md](../docs/integrations/usage-and-cache.md).
+
+### Provider response cache (`apps/integrations/caching.py`, issue #80)
+
+`cached_execute(connection, adapter, operation, *args, force_refresh=False, job=..., user=...)` is
+`tracked_execute` with a per-client cache in front. Nothing is cached or kept unless the
+provider's `CachePolicy` opts in (`register_cache_policy(category, provider, CachePolicy(...))` or
+`settings.INTEGRATION_CACHE_POLICIES["<category>/<provider>"]`); a connection can only narrow it
+through `config["cache"]`. Adapters hand the raw answer to `attach_raw_payload(payload)`; it is
+kept (redacted, size capped, with `retention_days`) only when `allow_store_raw` is true.
+Run `python manage.py purge_provider_cache` daily (or schedule
+`apps.integrations.caching.purge_task` with Django-Q2).
+
 ### Companies, research history and data sources (`apps/companies`)
 
 `Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a

@@ -52,6 +52,9 @@ Project documentation lives here. If you are new, start with onboarding.
 - [Integration framework](integrations/framework.md): the adapter model, registry,
   result envelope and error types, and how to write an adapter
   ([ADR 0013](adr/0013-integration-framework.md)).
+- [Usage, budgets and provider cache](integrations/usage-and-cache.md): per-call cost
+  logging, monthly budgets, the per-client response cache, raw payload retention and the
+  purge command (issues #79 and #80).
 
 ## Reference for each part of the repo
 
