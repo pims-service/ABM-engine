@@ -11,6 +11,8 @@ on one vendor. Unauthorized LinkedIn scraping is never a dependency (Brief §4).
 | [Adapter requirements](adapter-requirements.md) | What every adapter must do: auth, rate limits, errors, cost reporting, caching and retention, personal data, idempotency, fixtures and provenance. |
 | [Integration framework](framework.md) | The adapter base classes, registry, result envelope, normalized types and errors, and a step-by-step guide to writing an adapter (issues #74 and #75, [ADR 0013](../adr/0013-integration-framework.md)). |
 | [Usage, budgets and provider cache](usage-and-cache.md) | `tracked_execute` and `cached_execute`, the `ProviderCall` log, monthly budgets, per-provider `CachePolicy`, raw payload retention and `purge_provider_cache` (issues #79 and #80). |
+| [Resilience and provider jobs](resilience.md) | Retries, timeouts, rate limiting and the circuit breaker (`resilient_execute`), and the `provider_task` job base (issues #78 and #86, [ADR 0014](../adr/0014-resilience-and-provider-jobs.md)). |
+| [LLM adapter and structured output](llm.md) | Pydantic schemas, `structured_call` with one bounded repair, prompt-injection hygiene, grounding checks and the Anthropic adapter, with the verified documentation links (issue #81). |
 | [ADR 0012: first provider selection](../adr/0012-first-provider-selection.md) | Proposed decision, waiting on the owner's commercial choices. |
 
 ## Status
