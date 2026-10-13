@@ -122,6 +122,16 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/integrations/connections/{id}/restore/",
         ),
+        "integration_connections_budget_retrieve": (
+            "GET",
+            "/api/v1/integrations/connections/{id}/budget/",
+        ),
+        "integration_connections_budget_update": (
+            "PUT",
+            "/api/v1/integrations/connections/{id}/budget/",
+        ),
+        "integration_usage_list": ("GET", "/api/v1/integrations/usage/"),
+        "integration_usage_summary": ("GET", "/api/v1/integrations/usage/summary/"),
         "campaigns_csv_import_preview": (
             "POST",
             "/api/v1/campaigns/{campaign_id}/csv-import/preview/",

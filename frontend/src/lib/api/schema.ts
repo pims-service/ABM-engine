@@ -710,6 +710,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/integrations/connections/{id}/budget/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get the monthly budget of a connection
+     * @description The limits (none when unset: `configured` is false) and this month's usage against them (UTC calendar month), with the `state` the next call would get. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404.
+     */
+    get: operations["integration_connections_budget_retrieve"];
+    /**
+     * Set the monthly budget of a connection
+     * @description Replaces the whole budget: omitted limits mean no cap. At `warn_at_percent` of a limit calls are logged as warnings; at the limit and with `hard_stop` they are refused (`budget_exceeded`) before any provider request. Audited. An archived connection answers 400. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    put: operations["integration_connections_budget_update"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/integrations/connections/{id}/disable/": {
     parameters: {
       query?: never;
@@ -764,6 +788,46 @@ export interface paths {
      * @description 400 on `name` if another active connection now uses the name. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
      */
     post: operations["integration_connections_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/usage/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List provider calls
+     * @description One row per provider call, cache hit or budget refusal (never a request or response body). Newest first. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404 (their rows are simply absent).
+     */
+    get: operations["integration_usage_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/usage/summary/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Summarize provider usage
+     * @description Totals of the logged rows grouped by `group_by` (default `provider`). Money is never added across currencies: each row has its `currency`. Credits are the provider's own unit. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404 (their rows are simply absent).
+     */
+    get: operations["integration_usage_summary"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -892,6 +956,57 @@ export interface components {
       name: string;
       version: string;
       links: components["schemas"]["ApiLinks"];
+    };
+    /** @description The budget of a connection and where this month stands against it. */
+    Budget: {
+      /** Format: uuid */
+      connection: string;
+      /** @description False when no budget row exists yet. */
+      configured: boolean;
+      /** Format: decimal */
+      credit_limit: string | null;
+      /** Format: decimal */
+      cost_limit: string | null;
+      currency: string;
+      warn_at_percent: number;
+      hard_stop: boolean;
+      /**
+       * Format: date-time
+       * @description Start of the UTC calendar month.
+       */
+      period_start: string;
+      /** Format: date-time */
+      period_end: string;
+      /** Format: decimal */
+      used_credits: string;
+      /** Format: decimal */
+      used_cost: string;
+      /**
+       * @description What the next call would get: `deny` only with `hard_stop` at a reached limit.
+       *
+       *     * `allow` - allow
+       *     * `warn` - warn
+       *     * `deny` - deny
+       */
+      state: components["schemas"]["StateEnum"];
+      /** Format: date-time */
+      updated_at: string | null;
+    };
+    /** @description Body of the budget PUT: a full replacement (omitted limits mean no cap). */
+    BudgetWriteRequest: {
+      /** Format: decimal */
+      credit_limit?: string | null;
+      /** Format: decimal */
+      cost_limit?: string | null;
+      /** @description Required with `cost_limit`. */
+      currency?: string;
+      /** @default 80 */
+      warn_at_percent: number;
+      /**
+       * @description False: reaching a limit only warns, calls are never blocked.
+       * @default true
+       */
+      hard_stop: boolean;
     };
     /**
      * @description * `b2b` - B2B
@@ -1637,6 +1752,21 @@ export interface components {
       previous?: string | null;
       results: components["schemas"]["Connection"][];
     };
+    PaginatedProviderCallList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ProviderCall"][];
+    };
     PaginatedProviderCapabilitiesList: {
       /** @example 123 */
       count: number;
@@ -1707,6 +1837,46 @@ export interface components {
       dedupe: components["schemas"]["Dedupe"];
       importable: boolean;
     };
+    ProviderCall: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly client: string;
+      /** Format: uuid */
+      readonly connection: string;
+      /** Format: uuid */
+      readonly campaign: string | null;
+      /** Format: uuid */
+      readonly job: string | null;
+      /** Format: uuid */
+      readonly triggered_by: string | null;
+      readonly category: components["schemas"]["CategoryEnum"];
+      readonly provider: string;
+      readonly operation: string;
+      readonly status: components["schemas"]["ProviderCallStatusEnum"];
+      readonly error_code: string;
+      readonly latency_ms: number | null;
+      /** Format: decimal */
+      readonly credits: string | null;
+      /** Format: decimal */
+      readonly cost: string | null;
+      readonly currency: string;
+      readonly input_tokens: number | null;
+      readonly output_tokens: number | null;
+      readonly model: string;
+      readonly cache_hit: boolean;
+      readonly request_id: string;
+      /** @description True while a raw payload is still retained for this call. The payload itself is never served by the API. */
+      readonly has_raw_payload: boolean;
+      /** Format: date-time */
+      readonly created_at: string;
+    };
+    /**
+     * @description * `ok` - OK
+     *     * `error` - Error
+     * @enum {string}
+     */
+    ProviderCallStatusEnum: "ok" | "error";
     ProviderCapabilities: {
       name: string;
       /** @description licensed_api, public_data or manual. */
@@ -1965,6 +2135,13 @@ export interface components {
      */
     SortEnum:
       "relevance" | "name" | "employee_count_desc" | "employee_count_asc";
+    /**
+     * @description * `allow` - allow
+     *     * `warn` - warn
+     *     * `deny` - deny
+     * @enum {string}
+     */
+    StateEnum: "allow" | "warn" | "deny";
     TokenObtainPairRequest: {
       email: string;
       password: string;
@@ -1975,6 +2152,42 @@ export interface components {
       access: string;
       /** @description Refresh token. Omitted when the refresh cookie is enabled (it is then delivered as an httpOnly cookie). */
       refresh?: string;
+    };
+    /** @description One group of the summary: the requested group keys (only those) plus the numbers. */
+    UsageRow: {
+      provider?: string;
+      category?: string;
+      operation?: string;
+      /** Format: uuid */
+      connection_id?: string;
+      /** Format: uuid */
+      campaign_id?: string | null;
+      /** Format: uuid */
+      job_id?: string | null;
+      status?: string;
+      model?: string;
+      /** Format: date */
+      day?: string;
+      /** Format: date */
+      month?: string;
+      /** @description ISO 4217 code of `cost`; empty when no cost. */
+      currency: string;
+      calls: number;
+      error_calls: number;
+      cache_hits: number;
+      /** Format: decimal */
+      credits: string | null;
+      /** Format: decimal */
+      cost: string | null;
+      input_tokens: number | null;
+      output_tokens: number | null;
+    };
+    UsageSummary: {
+      group_by: string[];
+      /** @description Grand totals, one row per currency. */
+      totals: components["schemas"]["UsageRow"][];
+      /** @description At most 1000 groups. */
+      results: components["schemas"]["UsageRow"][];
     };
     User: {
       /** Format: uuid */
@@ -5366,6 +5579,153 @@ export interface operations {
       };
     };
   };
+  integration_connections_budget_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Budget"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_budget_update: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["BudgetWriteRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Budget"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   integration_connections_disable: {
     parameters: {
       query?: never;
@@ -5567,6 +5927,220 @@ export interface operations {
       };
       /** @description Not found (`not_found`). */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_usage_list: {
+    parameters: {
+      query?: {
+        cache_hit?: boolean;
+        campaign?: string;
+        /**
+         * @description * `llm` - LLM
+         *     * `company_data` - Company data
+         *     * `people_data` - People data
+         *     * `email_enrichment` - Email enrichment
+         *     * `email_verification` - Email verification
+         *     * `crm` - CRM
+         *     * `outreach` - Outreach
+         *     * `storage` - Storage
+         *     * `automation` - Automation
+         */
+        category?:
+          | "llm"
+          | "company_data"
+          | "people_data"
+          | "email_enrichment"
+          | "email_verification"
+          | "crm"
+          | "outreach"
+          | "storage"
+          | "automation";
+        /** @description Only this client's calls. */
+        client?: string;
+        connection?: string;
+        /** @description First day (UTC, inclusive) of the range. */
+        date_from?: string;
+        /** @description Last day (UTC, inclusive) of the range. */
+        date_to?: string;
+        job?: string;
+        operation?: string;
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        provider?: string;
+        /**
+         * @description * `ok` - OK
+         *     * `error` - Error
+         */
+        status?: "ok" | "error";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedProviderCallList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_usage_summary: {
+    parameters: {
+      query?: {
+        cache_hit?: boolean;
+        campaign?: string;
+        /**
+         * @description * `llm` - LLM
+         *     * `company_data` - Company data
+         *     * `people_data` - People data
+         *     * `email_enrichment` - Email enrichment
+         *     * `email_verification` - Email verification
+         *     * `crm` - CRM
+         *     * `outreach` - Outreach
+         *     * `storage` - Storage
+         *     * `automation` - Automation
+         */
+        category?:
+          | "llm"
+          | "company_data"
+          | "people_data"
+          | "email_enrichment"
+          | "email_verification"
+          | "crm"
+          | "outreach"
+          | "storage"
+          | "automation";
+        /** @description Only this client's calls. */
+        client?: string;
+        connection?: string;
+        /** @description First day (UTC, inclusive) of the range. */
+        date_from?: string;
+        /** @description Last day (UTC, inclusive) of the range. */
+        date_to?: string;
+        /** @description Comma-separated grouping, any of: provider, category, operation, connection, campaign, job, status, model, day, month. Default: provider. Money is always split by `currency` as well. */
+        group_by?: string;
+        job?: string;
+        operation?: string;
+        provider?: string;
+        /**
+         * @description * `ok` - OK
+         *     * `error` - Error
+         */
+        status?: "ok" | "error";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UsageSummary"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
         headers: {
           [name: string]: unknown;
         };

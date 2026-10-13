@@ -449,6 +449,29 @@ Indexes:
 - `imp_row_client`: (client)
 - `imp_row_company`: (company)
 
+### CachedResponse
+
+`integrations.CachedResponse`, mutable, tenant, table `integrations_cachedresponse`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| client_id | uuid | no | FK to campaigns.Client |
+| connection_id | uuid | no | FK to integrations.IntegrationConnection |
+| category | text(32) | no | one of: `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| provider | text(64) | no |  |
+| operation | text(64) | no |  |
+| cache_key | text(64) | no |  |
+| payload | jsonb | no |  |
+| size_bytes | int | no |  |
+| created_at | timestamptz | no |  |
+| expires_at | timestamptz | no |  |
+
+Constraints:
+
+- `integrations_cache_category_valid`: check
+- `integrations_cache_connection_key_unique`: unique (connection, cache_key)
+
 ### IntegrationConnection
 
 `integrations.IntegrationConnection`, mutable, archivable, tenant, table `integrations_integrationconnection`.
@@ -483,6 +506,89 @@ Constraints:
 Indexes:
 
 - `integ_conn_client_cat_idx`: (client, category, status)
+
+### ProviderCall
+
+`integrations.ProviderCall`, append-only, tenant, table `integrations_providercall`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| client_id | uuid | no | FK to campaigns.Client |
+| connection_id | uuid | no | FK to integrations.IntegrationConnection |
+| campaign_id | uuid | yes | FK to campaigns.Campaign |
+| job_id | uuid | yes | FK to core.Job |
+| triggered_by_id | uuid | yes | FK to accounts.User |
+| category | text(32) | no | one of: `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| provider | text(64) | no |  |
+| operation | text(64) | no |  |
+| status | text(8) | no | one of: `ok`, `error` |
+| error_code | text(64) | no |  |
+| latency_ms | int | yes |  |
+| credits | numeric(18,4) | yes |  |
+| cost | numeric(18,6) | yes |  |
+| currency | text(3) | no |  |
+| input_tokens | int | yes |  |
+| output_tokens | int | yes |  |
+| model | text(100) | no |  |
+| cache_hit | bool | no |  |
+| request_id | text(200) | no |  |
+| created_at | timestamptz | no |  |
+
+Constraints:
+
+- `integrations_call_cache_hit_is_ok`: check
+- `integrations_call_category_valid`: check
+- `integrations_call_error_code_iff_error`: check
+- `integrations_call_status_valid`: check
+- `integrations_call_usage_not_negative`: check
+
+Indexes:
+
+- `integ_call_camp_time_idx`: (campaign, -created_at)
+- `integ_call_client_prov_idx`: (client, provider, -created_at)
+- `integ_call_client_time_idx`: (client, -created_at)
+- `integ_call_conn_time_idx`: (connection, -created_at)
+- `integ_call_job_idx`: (job)
+
+### RawPayload
+
+`integrations.RawPayload`, mutable, tenant, table `integrations_rawpayload`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| client_id | uuid | no | FK to campaigns.Client |
+| call_id | uuid | no | FK to integrations.ProviderCall; unique |
+| payload | jsonb | no |  |
+| size_bytes | int | no |  |
+| created_at | timestamptz | no |  |
+| expires_at | timestamptz | no |  |
+
+### UsageBudget
+
+`integrations.UsageBudget`, mutable, tenant, table `integrations_usagebudget`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| created_at | timestamptz | no |  |
+| updated_at | timestamptz | no |  |
+| client_id | uuid | no | FK to campaigns.Client |
+| connection_id | uuid | no | FK to integrations.IntegrationConnection; unique |
+| credit_limit | numeric(18,4) | yes |  |
+| cost_limit | numeric(18,6) | yes |  |
+| currency | text(3) | no |  |
+| warn_at_percent | smallint | no |  |
+| hard_stop | bool | no |  |
+| updated_by_id | uuid | yes | FK to accounts.User |
+
+Constraints:
+
+- `integrations_budget_cost_limit_valid`: check
+- `integrations_budget_cost_needs_currency`: check
+- `integrations_budget_credit_limit_valid`: check
+- `integrations_budget_warn_percent_valid`: check
 
 ### Activity
 
