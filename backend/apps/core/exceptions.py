@@ -111,8 +111,9 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
         wait = getattr(exc, "wait", None)
         details = {"retry_after": int(wait)} if wait is not None else None
     elif getattr(exc, "error_details", None) is not None:
-        # An APIException that carries structured details of its own (e.g. a rejected CSV).
-        details = _jsonable(exc.error_details)  # type: ignore[attr-defined]
+        # An APIException that carries structured details of its own (a rejected CSV, a provider
+        # failure). Kept as given: JSON-ready values, numbers stay numbers.
+        details = exc.error_details  # type: ignore[attr-defined]
     response.data = error_payload(code, _message_for(exc, code), details)
     return response
 

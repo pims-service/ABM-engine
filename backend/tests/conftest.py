@@ -21,6 +21,24 @@ def _clear_cache() -> Iterator[None]:
     cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _fake_provider_registered() -> Iterator[None]:
+    """A fresh ``fake`` provider in the default registry for every test (other tests may clear
+    the registry); put the registry back as it was afterwards."""
+    from django.conf import settings
+
+    from apps.imports.providers import default_registry
+    from apps.imports.providers.dev import register_dev_providers
+
+    saved = default_registry.list()
+    if settings.PROVIDER_FAKE_ENABLED:
+        register_dev_providers(replace=True)
+    yield
+    default_registry.clear()
+    for provider in saved:
+        default_registry.register(provider)
+
+
 @pytest.fixture
 def api_client() -> APIClient:
     """Unauthenticated DRF test client."""

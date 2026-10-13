@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from apps.companies.models import Company
@@ -157,8 +157,13 @@ class CompanyRefSerializer(serializers.ModelSerializer[Company]):
         read_only_fields = fields
 
 
+@extend_schema_serializer(component_name="ImportBatchRow")
 class ImportRowSerializer(serializers.ModelSerializer[ImportRow]):
-    """One row result: what was submitted, what validation made of it and what happened."""
+    """One row result: what was submitted, what validation made of it and what happened.
+
+    The OpenAPI component is named ``ImportBatchRow`` because the provider-import API has its
+    own, different ``ImportRow`` component.
+    """
 
     company = CompanyRefSerializer(
         read_only=True,
