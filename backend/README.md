@@ -219,6 +219,30 @@ if supports(adapter, "enrich_company"):
 - **Fakes** (`framework.fakes`, one per category, `register_fakes(registry)`) are for tests and
   local development only.
 
+### LLM adapter and structured output (`apps/integrations/llm`, `adapters/anthropic`, issue #81)
+
+Every AI feature goes through one entry point (Brief section 18, [ADR 0003](../docs/adr/0003-structured-llm-output.md)):
+
+```python
+from apps.integrations.llm import pydantic_schema, structured_call, wrap_untrusted
+
+result = structured_call(adapter, PromptSpec("fit", "1", user_text), pydantic_schema(FitVerdict))
+verdict = result.data  # a validated FitVerdict; result.usage has summed tokens and the model
+```
+
+- `pydantic_schema(Model)` builds the `StructuredSchema`; a failure is a `StructuredOutputError`
+  listing field paths and codes only, never model text.
+- `structured_call` validates, makes at most one repair attempt (paths and codes fed back, never
+  the rejected text), sums usage over attempts, logs prompt name and version, then raises.
+- `AnthropicAdapter` (key `anthropic`) uses the Messages API with `output_config.format`
+  JSON-schema outputs. `model` is a required setting with no default. The HTTP transport is
+  injectable; the real one allow-lists the host, verifies TLS, caps time and size.
+- `wrap_untrusted` delimits external text; `assert_grounded` checks quoted facts against evidence.
+
+No models, migrations or API. Details and the verified documentation links:
+[docs/integrations/llm.md](../docs/integrations/llm.md). Tests: `tests/test_llm_structured.py`,
+`tests/test_anthropic_adapter.py`.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
@@ -314,6 +338,21 @@ counts (`set_total`, `record_progress`, or items).
   (system)". `worker_healthcheck` and `/readyz` do not touch the Job table.
 - Archiving a client or campaign (`services.archive_client` / `archive_campaign`) is refused
   while it has `queued` or `running` jobs.
+
+### Resilience and provider jobs (`apps/integrations/resilience`, `apps/integrations/tasks.py`, issues #78 and #86, [ADR 0014](../docs/adr/0014-resilience-and-provider-jobs.md))
+
+Call adapters through `resilient_execute(adapter, adapter.op, *args, client_id=client.pk)`: retries
+with backoff and jitter (only `retryable` errors, `Retry-After` honoured), a per (client, adapter)
+rate limit from `AdapterCapabilities.rate_limit` and a circuit breaker, both shared by all worker
+processes through the `q_stats` database cache (no Redis, no new table), and a hard deadline for a
+hung call. Tune with the optional `INTEGRATION_RESILIENCE` dict (no environment variables).
+
+Background provider work uses `@provider_task(job_type=..., category=...)` instead of bare
+`@tracked_job`: it fails closed on a missing connection or credentials, runs calls through
+`resilient_execute`, re-queues retryable errors with the provider's delay instead of waiting,
+fails only the item for item-specific errors (job ends `partial`), is idempotent on redelivery,
+and supports a soft time limit, cancellation (`request_cancel`) and `worker_health()`.
+Full guide: [docs/integrations/resilience.md](../docs/integrations/resilience.md).
 
 ### Audit log (`apps/core/audit.py`, `AuditLog`, issue #44)
 
@@ -597,6 +636,42 @@ reported by id, and the command exits with an error.
 ciphertext, audit and log carry no secret, rotation), `test_integration_api.py` (role matrix,
 no secret in any response), `test_integration_admin.py`, plus the invariant registry row and the
 tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist secret`.
+
+### Usage tracking and budgets (`apps/integrations/usage.py`, issue #79)
+
+Run every adapter operation through `tracked_execute` instead of `execute`:
+
+```python
+from apps.integrations.usage import tracked_execute, BudgetExceeded
+
+result = tracked_execute(connection, adapter, adapter.enrich_company, ref, job=job, user=user)
+```
+
+It checks the connection's monthly budget first (`BudgetExceeded`, a `ProviderQuotaExceeded` with
+code `budget_exceeded`, and no provider request), runs `execute`, and writes exactly one
+`ProviderCall` row for a success, a failure or a refusal. `job`, `campaign` (default: the job's) and
+`user` are reserved keyword names. Logging never raises: a failed insert is logged, swallowed and
+counted (`usage.logging_failure_count()`). Rows hold no body and no secret.
+
+Budgets: `usage.set_budget(connection, user, credit_limit=..., cost_limit=..., currency=...,
+warn_at_percent=80, hard_stop=True)` (audited); `usage.check_budget(connection)` returns a
+`BudgetStatus` (`allow`, `warn`, `deny`). The check is not a reservation, so concurrent calls can
+overshoot a limit by what they cost. Aggregations live in `apps/integrations/reporting.py`
+(`summarize`, `totals`, `run_totals`, `cost_per_accepted_account` placeholder).
+API: `GET /api/v1/integrations/usage/`, `.../usage/summary/?group_by=provider,day`,
+`GET|PUT /api/v1/integrations/connections/{id}/budget/` (levels in docs/permissions.md).
+Full guide: [docs/integrations/usage-and-cache.md](../docs/integrations/usage-and-cache.md).
+
+### Provider response cache (`apps/integrations/caching.py`, issue #80)
+
+`cached_execute(connection, adapter, operation, *args, force_refresh=False, job=..., user=...)` is
+`tracked_execute` with a per-client cache in front. Nothing is cached or kept unless the
+provider's `CachePolicy` opts in (`register_cache_policy(category, provider, CachePolicy(...))` or
+`settings.INTEGRATION_CACHE_POLICIES["<category>/<provider>"]`); a connection can only narrow it
+through `config["cache"]`. Adapters hand the raw answer to `attach_raw_payload(payload)`; it is
+kept (redacted, size capped, with `retention_days`) only when `allow_store_raw` is true.
+Run `python manage.py purge_provider_cache` daily (or schedule
+`apps.integrations.caching.purge_task` with Django-Q2).
 
 ### Companies, research history and data sources (`apps/companies`)
 

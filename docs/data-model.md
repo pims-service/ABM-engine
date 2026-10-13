@@ -55,6 +55,7 @@ columns. The full field lists are in the [field reference](data-model-reference.
 erDiagram
     AIRecommendation |o--o{ HumanDecision : "ai_recommendation"
     Campaign |o--o{ Job : "campaign"
+    Campaign |o--o{ ProviderCall : "campaign"
     Campaign ||--o{ Activity : "campaign"
     Campaign ||--o{ CampaignProfile : "campaign"
     Campaign ||--o{ Company : "campaign"
@@ -83,7 +84,11 @@ erDiagram
     DataSource ||--o{ Signal : "data_source"
     ICPAssessment ||--o{ AIRecommendation : "icp_assessment"
     ImportBatch ||--o{ ImportRow : "batch"
+    IntegrationConnection ||--o{ CachedResponse : "connection"
+    IntegrationConnection ||--o{ ProviderCall : "connection"
+    IntegrationConnection ||--o| UsageBudget : "connection"
     Job |o--o{ ImportBatch : "job"
+    Job |o--o{ ProviderCall : "job"
     Job ||--o{ JobItem : "job"
     Message |o--o| Message : "supersedes"
     Message ||--o{ MessageSignal : "message"
@@ -91,9 +96,12 @@ erDiagram
     OutreachAngle ||--o{ AngleSignal : "angle"
     OutreachAngle ||--o{ AngleSource : "angle"
     OutreachAngle ||--o{ Message : "angle"
+    ProviderCall ||--o| RawPayload : "call"
     Signal |o--o| Signal : "supersedes"
     Signal ||--o{ AngleSignal : "signal"
     Signal ||--o{ MessageSignal : "signal"
+    User |o--o{ ProviderCall : "triggered_by"
+    User |o--o{ UsageBudget : "updated_by"
     User ||--o{ ClientMembership : "user"
     User ||--o{ HumanDecision : "decided_by"
     User {
@@ -192,6 +200,12 @@ erDiagram
         text_8 match_strength
         uuid candidate_id FK
     }
+    CachedResponse {
+        uuid id PK
+        uuid client_id FK
+        uuid connection_id FK
+        text_32 category
+    }
     IntegrationConnection {
         uuid id PK
         uuid client_id FK
@@ -199,6 +213,27 @@ erDiagram
         text_16 status
         text_16 last_test_status
         uuid created_by_id FK
+    }
+    ProviderCall {
+        uuid id PK
+        uuid client_id FK
+        uuid connection_id FK
+        uuid campaign_id FK
+        uuid job_id FK
+        uuid triggered_by_id FK
+        text_32 category
+        text_8 status
+    }
+    RawPayload {
+        uuid id PK
+        uuid client_id FK
+        uuid call_id FK
+    }
+    UsageBudget {
+        uuid id PK
+        uuid client_id FK
+        uuid connection_id FK
+        uuid updated_by_id FK
     }
     Activity {
         uuid id PK
@@ -350,7 +385,11 @@ this page and the reference disagree, the reference is right: fix the table.
 | JobItem | core | mutable, tenant | `core_jobitem` |
 | ImportBatch | imports | mutable, tenant | `imports_importbatch` |
 | ImportRow | imports | append-only, tenant | `imports_importrow` |
+| CachedResponse | integrations | mutable, tenant | `integrations_cachedresponse` |
 | IntegrationConnection | integrations | mutable, archivable, tenant | `integrations_integrationconnection` |
+| ProviderCall | integrations | append-only, tenant | `integrations_providercall` |
+| RawPayload | integrations | mutable, tenant | `integrations_rawpayload` |
+| UsageBudget | integrations | mutable, tenant | `integrations_usagebudget` |
 | Activity | outreach | append-only, tenant | `outreach_activity` |
 | AngleSignal | outreach | append-only, tenant | `outreach_angle_signals` |
 | AngleSource | outreach | append-only, tenant | `outreach_angle_sources` |
@@ -851,6 +890,77 @@ archived connection is read-only until restored; adapters resolve the oldest act
 connection of a category with `services.resolve_connection`. Credential changes are audited as
 `credentials_change: replaced | set | cleared | reencrypted` (the values never are).
 Security design: [backend/README.md](../backend/README.md#integration-credentials-issue-76).
+
+### ProviderCall (issue #79), append-only
+
+One row per provider call made through `tracked_execute`: success, failure, cache hit (`cache_hit`,
+zero cost) and a call refused by a budget (`error_code = budget_exceeded`). No request or response
+body and no secret: see [usage-and-cache.md](integrations/usage-and-cache.md).
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | copied from the connection (`tenant_parent`) |
+| connection_id | FK IntegrationConnection | PROTECT |
+| campaign_id, job_id | FK, null | optional; must belong to the same client |
+| triggered_by_id | FK User, null | |
+| category, provider, operation | text | category is an integration category: `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| status | enum | `ok`, `error` |
+| error_code | text | a `ProviderError.code`; set exactly when status is `error` |
+| latency_ms | int, null | |
+| credits | numeric(18,4), null | provider units, null when unknown, 0 for a cache hit |
+| cost, currency | numeric(18,6), null; text | money; currency ISO 4217 |
+| input_tokens, output_tokens, model | int, null; text | LLM calls |
+| cache_hit | bool | served from the cache, no provider request |
+| request_id | text | provider request id from `Provenance` |
+| created_at | timestamptz | |
+
+### UsageBudget (issue #79)
+
+Optional monthly (UTC calendar month) limits of one connection. Mutable, audited, one per
+connection.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | copied from the connection |
+| connection_id | one to one IntegrationConnection | |
+| credit_limit, cost_limit | numeric, null | no cap on a measure when null |
+| currency | text | required with `cost_limit` |
+| warn_at_percent | smallint | 1 to 100, default 80 |
+| hard_stop | bool | true: refuse calls at the limit; false: only warn |
+| updated_by_id | FK User, null | |
+| created_at, updated_at | timestamptz | |
+
+### CachedResponse (issue #80)
+
+A cached adapter answer, per client and connection. A cache, not history: a refresh replaces the
+row (the `ProviderCall` log keeps every call). Written only when the provider's `CachePolicy` allows
+it; removed by `purge_provider_cache`.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id, connection_id | FK | unique `(connection_id, cache_key)`; the key hashes client, connection, provider, operation and request |
+| category, provider, operation | text | category: `llm`, `company_data`, `people_data`, `email_enrichment`, `email_verification`, `crm`, `outreach`, `storage`, `automation` |
+| cache_key | text | SHA-256 hex |
+| payload | jsonb | encoded result, credential-like keys masked, not encrypted at application level |
+| size_bytes | int | capped by the policy (default 256 KiB) |
+| created_at, expires_at | timestamptz | |
+
+### RawPayload (issue #80)
+
+The redacted raw provider answer of one call, for audit and re-parsing, only when the policy allows
+(`allow_store_raw`). Removed after `expires_at`; the `ProviderCall` stays.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| client_id | FK Client | copied from the call |
+| call_id | one to one ProviderCall | PROTECT; referenced as `rawpayload:<id>` in `Provenance.raw_ref` |
+| payload | jsonb | secrets masked |
+| size_bytes | int | |
+| created_at, expires_at | timestamptz | |
 
 ### AuditLog (issue #44), append-only
 

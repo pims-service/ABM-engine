@@ -40,7 +40,7 @@ from apps.core.seed_sample import SeededWorld, load_seeded_world
 from apps.imports.models import ImportBatch
 from apps.imports.services import create_batch
 from apps.integrations import services as services_integrations
-from apps.integrations.models import IntegrationConnection
+from apps.integrations.models import IntegrationConnection, ProviderCall, UsageBudget
 from tests.factories import make_campaign, make_client, make_company, make_user
 from tests.factories_integrations import make_connection
 from tests.fixtures_seed import run_all_seeders
@@ -405,6 +405,19 @@ def _scenarios() -> dict[str, Scenario]:
             "connection",
             archived=True,
         ),
+        # Usage and budgets (issue #79): reading needs EDIT, setting a budget needs MANAGE.
+        Scenario("GET /api/v1/integrations/usage/", "list", Level.EDIT),
+        Scenario("GET /api/v1/integrations/usage/summary/", "list", Level.EDIT),
+        Scenario(
+            "GET /api/v1/integrations/connections/{pk}/budget/", "item", Level.EDIT, "connection"
+        ),
+        Scenario(
+            "PUT /api/v1/integrations/connections/{pk}/budget/",
+            "item",
+            Level.MANAGE,
+            "connection",
+            body=lambda: {"credit_limit": "50", "warn_at_percent": 90},
+        ),
     ]
     return {s.key: s for s in items}
 
@@ -507,6 +520,8 @@ def tenant_state(*clients: Client) -> dict[str, Any]:
             ),
             "profiles": CampaignProfile.objects.filter(client=client).count(),
             "audit": AuditLog.objects.filter(client=client).count(),
+            "budgets": UsageBudget.objects.filter(client=client).count(),
+            "calls": ProviderCall.objects.filter(client=client).count(),
             "companies": sorted(
                 map(
                     str,
