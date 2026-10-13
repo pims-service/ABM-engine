@@ -1343,6 +1343,170 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/provider-import/:
+    post:
+      operationId: campaigns_provider_import
+      description: 'Imports the selection into the campaign as one `provider` import
+        batch. Give `companies` (the `items[].company` objects of a preview) or `provider_ids`
+        (found again with `search`, default the campaign''s rules). At most `max_import_selection`
+        (see `/providers/`, default 100) per request, else 400. Every company goes
+        through the same validation and duplicate handling as manual and CSV rows:
+        strong duplicates link to the existing company (never edited), weak ones are
+        created and flagged, and a provider id already imported into the campaign
+        is always a `duplicate` row, never a second company. Each created company
+        records the provider, provider id and `retrieved_at` as a data source. Up
+        to `inline_import_max` (25) companies are processed in the request (**201**,
+        batch finished); larger selections run in a background job (**202**, poll
+        `GET /provider-imports/{id}/`). A provider failure while finding ids leaves
+        the batch `partial` or `failed` with the safe provider error code on the affected
+        rows. Throttled per user (scope `provider_import`). Needs the `EDIT` level:
+        manager and admin. Others get 403; campaigns of clients you are not a member
+        of give 404.'
+      summary: Import selected provider companies
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - provider import
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderImportRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderImportBatch'
+          description: ''
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderImportBatch'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/provider-search/:
+    post:
+      operationId: campaigns_provider_search
+      description: 'Searches the provider with the campaign''s rules as default filters
+        (`filters` override them, `query` adds free text) and returns one page of
+        companies annotated with what an import would do: `dedupe.status` is `new`,
+        `duplicate` (strong match with a company already in the campaign), `possible_duplicate`
+        (weak match), `already_imported` (this provider id was imported into the campaign
+        before) or `invalid`. **Nothing is written.** Page with `cursor` = the previous
+        `next_cursor`. Provider failures: 429 `provider_rate_limited` (`details.retry_after`),
+        503 `provider_unavailable`, 502 `provider_auth` / `provider_quota_exceeded`,
+        400 `provider_bad_request`; the messages are fixed and never contain upstream
+        text. Throttled per user (scope `provider_search`). Needs the `EDIT` level:
+        manager and admin. Others get 403; campaigns of clients you are not a member
+        of give 404.'
+      summary: Preview a provider search
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - provider import
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderSearchRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderSearchResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{id}/restore/:
     post:
       operationId: campaigns_restore
@@ -2973,6 +3137,133 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/budget/:
+    get:
+      operationId: integration_connections_budget_retrieve
+      description: 'The limits (none when unset: `configured` is false) and this month''s
+        usage against them (UTC calendar month), with the `state` the next call would
+        get. Needs the `EDIT` level: manager and admin. Others get 403; clients you
+        are not a member of give 404.'
+      summary: Get the monthly budget of a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    put:
+      operationId: integration_connections_budget_update
+      description: 'Replaces the whole budget: omitted limits mean no cap. At `warn_at_percent`
+        of a limit calls are logged as warnings; at the limit and with `hard_stop`
+        they are refused (`budget_exceeded`) before any provider request. Audited.
+        An archived connection answers 400. Needs the `MANAGE` level: admin. Others
+        get 403; clients you are not a member of give 404.'
+      summary: Set the monthly budget of a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/integrations/connections/{id}/disable/:
     post:
       operationId: integration_connections_disable
@@ -3231,6 +3522,419 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/usage/:
+    get:
+      operationId: integration_usage_list
+      description: 'One row per provider call, cache hit or budget refusal (never
+        a request or response body). Newest first. Needs the `EDIT` level: manager
+        and admin. Others get 403; clients you are not a member of give 404 (their
+        rows are simply absent).'
+      summary: List provider calls
+      parameters:
+      - in: query
+        name: cache_hit
+        schema:
+          type: boolean
+      - in: query
+        name: campaign
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: category
+        schema:
+          enum:
+          - llm
+          - company_data
+          - people_data
+          - email_enrichment
+          - email_verification
+          - crm
+          - outreach
+          - storage
+          - automation
+          type: string
+          minLength: 1
+        description: |-
+          * `llm` - LLM
+          * `company_data` - Company data
+          * `people_data` - People data
+          * `email_enrichment` - Email enrichment
+          * `email_verification` - Email verification
+          * `crm` - CRM
+          * `outreach` - Outreach
+          * `storage` - Storage
+          * `automation` - Automation
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only this client's calls.
+      - in: query
+        name: connection
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: First day (UTC, inclusive) of the range.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC, inclusive) of the range.
+      - in: query
+        name: job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: operation
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: provider
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: status
+        schema:
+          enum:
+          - ok
+          - error
+          type: string
+          minLength: 1
+        description: |-
+          * `ok` - OK
+          * `error` - Error
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProviderCallList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/usage/summary/:
+    get:
+      operationId: integration_usage_summary
+      description: 'Totals of the logged rows grouped by `group_by` (default `provider`).
+        Money is never added across currencies: each row has its `currency`. Credits
+        are the provider''s own unit. Needs the `EDIT` level: manager and admin. Others
+        get 403; clients you are not a member of give 404 (their rows are simply absent).'
+      summary: Summarize provider usage
+      parameters:
+      - in: query
+        name: cache_hit
+        schema:
+          type: boolean
+      - in: query
+        name: campaign
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: category
+        schema:
+          enum:
+          - llm
+          - company_data
+          - people_data
+          - email_enrichment
+          - email_verification
+          - crm
+          - outreach
+          - storage
+          - automation
+          type: string
+          minLength: 1
+        description: |-
+          * `llm` - LLM
+          * `company_data` - Company data
+          * `people_data` - People data
+          * `email_enrichment` - Email enrichment
+          * `email_verification` - Email verification
+          * `crm` - CRM
+          * `outreach` - Outreach
+          * `storage` - Storage
+          * `automation` - Automation
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only this client's calls.
+      - in: query
+        name: connection
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: First day (UTC, inclusive) of the range.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC, inclusive) of the range.
+      - in: query
+        name: group_by
+        schema:
+          type: string
+          minLength: 1
+        description: 'Comma-separated grouping, any of: provider, category, operation,
+          connection, campaign, job, status, model, day, month. Default: provider.
+          Money is always split by `currency` as well.'
+      - in: query
+        name: job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: operation
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: provider
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: status
+        schema:
+          enum:
+          - ok
+          - error
+          type: string
+          minLength: 1
+        description: |-
+          * `ok` - OK
+          * `error` - Error
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/provider-imports/{id}/:
+    get:
+      operationId: provider_imports_retrieve
+      description: 'Status, counters and the outcome of every row of a provider import
+        batch (`background` is true while a job processes it: poll until `status`
+        is `completed`, `partial` or `failed`). Needs the `READ` level: any member.
+        Others get 403; campaigns of clients you are not a member of give 404.'
+      summary: Get a provider import batch
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - provider import
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderImportBatch'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/providers/:
+    get:
+      operationId: providers_list
+      description: 'The providers registered in this deployment, with their capabilities
+        (which filters they apply, page size, terms). No credentials or settings are
+        ever included. The `fake` provider exists in dev and test only. An empty list
+        means no provider is configured. Needs the `READ` level: any member. Others
+        get 403; campaigns of clients you are not a member of give 404.'
+      summary: List company data providers
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - provider import
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProviderCapabilitiesList'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /healthz:
     get:
       operationId: health_live
@@ -3378,6 +4082,103 @@ components:
       - links
       - name
       - version
+    Budget:
+      type: object
+      description: The budget of a connection and where this month stands against
+        it.
+      properties:
+        connection:
+          type: string
+          format: uuid
+        configured:
+          type: boolean
+          description: False when no budget row exists yet.
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          nullable: true
+        cost_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          nullable: true
+        currency:
+          type: string
+        warn_at_percent:
+          type: integer
+        hard_stop:
+          type: boolean
+        period_start:
+          type: string
+          format: date-time
+          description: Start of the UTC calendar month.
+        period_end:
+          type: string
+          format: date-time
+        used_credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,20}(?:\.\d{0,4})?$
+        used_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,18}(?:\.\d{0,6})?$
+        state:
+          allOf:
+          - $ref: '#/components/schemas/StateEnum'
+          description: |-
+            What the next call would get: `deny` only with `hard_stop` at a reached limit.
+
+            * `allow` - allow
+            * `warn` - warn
+            * `deny` - deny
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - configured
+      - connection
+      - cost_limit
+      - credit_limit
+      - currency
+      - hard_stop
+      - period_end
+      - period_start
+      - state
+      - updated_at
+      - used_cost
+      - used_credits
+      - warn_at_percent
+    BudgetWriteRequest:
+      type: object
+      description: 'Body of the budget PUT: a full replacement (omitted limits mean
+        no cap).'
+      properties:
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          nullable: true
+        cost_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          nullable: true
+        currency:
+          type: string
+          description: Required with `cost_limit`.
+          maxLength: 3
+        warn_at_percent:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 80
+        hard_stop:
+          type: boolean
+          default: true
+          description: 'False: reaching a limit only warns, calls are never blocked.'
     BusinessModelEnum:
       enum:
       - b2b
@@ -4401,6 +5202,45 @@ components:
             out, the mapping suggested from the headers is used.'
       required:
       - file
+    Dedupe:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/DedupeStatusEnum'
+        matched_on:
+          type: string
+          nullable: true
+          description: domain, profile, name_country or provider_key.
+        company:
+          allOf:
+          - $ref: '#/components/schemas/MatchedCompany'
+          nullable: true
+        field_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties:
+              type: string
+          description: Field errors when status is `invalid`.
+      required:
+      - company
+      - field_errors
+      - matched_on
+      - status
+    DedupeStatusEnum:
+      enum:
+      - new
+      - duplicate
+      - possible_duplicate
+      - already_imported
+      - invalid
+      type: string
+      description: |-
+        * `new` - new
+        * `duplicate` - duplicate
+        * `possible_duplicate` - possible_duplicate
+        * `already_imported` - already_imported
+        * `invalid` - invalid
     ErrorBody:
       type: object
       description: The `error` object of the standard envelope (apps/core/exceptions.py).
@@ -4581,6 +5421,47 @@ components:
         * `partial` - Partially completed
         * `failed` - Failed
         * `cancelled` - Cancelled
+    ImportRow:
+      type: object
+      properties:
+        row_number:
+          type: integer
+        name:
+          type: string
+        outcome:
+          type: string
+          description: created, duplicate, restored, skipped or failed.
+        error_code:
+          type: string
+        error_message:
+          type: string
+        company_id:
+          type: string
+          format: uuid
+          nullable: true
+        match_strength:
+          type: string
+          description: strong, weak or blank.
+        matched_on:
+          type: string
+        possible_duplicate:
+          type: boolean
+          description: Created, but flagged as a possible duplicate of `candidate_id`.
+        candidate_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - candidate_id
+      - company_id
+      - error_code
+      - error_message
+      - match_strength
+      - matched_on
+      - name
+      - outcome
+      - possible_duplicate
+      - row_number
     ImportRowSummary:
       type: object
       description: What the one-row manual import batch recorded for this entry.
@@ -4752,6 +5633,26 @@ components:
         * `created` - created
         * `duplicate` - duplicate
         * `restored` - restored
+    MatchedCompany:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        website:
+          type: string
+        country:
+          type: string
+        archived:
+          type: boolean
+      required:
+      - archived
+      - country
+      - id
+      - name
+      - website
     NullEnum:
       enum:
       - null
@@ -4870,6 +5771,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Connection'
+    PaginatedProviderCallList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCall'
+    PaginatedProviderCapabilitiesList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCapabilities'
     PatchedCampaignWriteRequest:
       type: object
       description: |-
@@ -4957,6 +5904,471 @@ components:
       - id
       - name
       - website
+    PreviewItem:
+      type: object
+      properties:
+        provider_key:
+          type: string
+          nullable: true
+        company:
+          $ref: '#/components/schemas/ProviderCompany'
+        dedupe:
+          $ref: '#/components/schemas/Dedupe'
+        importable:
+          type: boolean
+      required:
+      - company
+      - dedupe
+      - importable
+      - provider_key
+    ProviderCall:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        connection:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        triggered_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          readOnly: true
+        provider:
+          type: string
+          readOnly: true
+        operation:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ProviderCallStatusEnum'
+          readOnly: true
+        error_code:
+          type: string
+          readOnly: true
+        latency_ms:
+          type: integer
+          readOnly: true
+          nullable: true
+        credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          readOnly: true
+          nullable: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          readOnly: true
+          nullable: true
+        currency:
+          type: string
+          readOnly: true
+        input_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+        output_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+        model:
+          type: string
+          readOnly: true
+        cache_hit:
+          type: boolean
+          readOnly: true
+        request_id:
+          type: string
+          readOnly: true
+        has_raw_payload:
+          type: boolean
+          readOnly: true
+          description: True while a raw payload is still retained for this call. The
+            payload itself is never served by the API.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cache_hit
+      - campaign
+      - category
+      - client
+      - connection
+      - cost
+      - created_at
+      - credits
+      - currency
+      - error_code
+      - has_raw_payload
+      - id
+      - input_tokens
+      - job
+      - latency_ms
+      - model
+      - operation
+      - output_tokens
+      - provider
+      - request_id
+      - status
+      - triggered_by
+    ProviderCallStatusEnum:
+      enum:
+      - ok
+      - error
+      type: string
+      description: |-
+        * `ok` - OK
+        * `error` - Error
+    ProviderCapabilities:
+      type: object
+      properties:
+        name:
+          type: string
+        terms:
+          type: string
+          description: licensed_api, public_data or manual.
+        supports_search:
+          type: boolean
+        supports_filters:
+          type: object
+          additionalProperties:
+            type: boolean
+        max_page_size:
+          type: integer
+        requires_credentials:
+          type: boolean
+        max_import_selection:
+          type: integer
+          description: Most companies per import.
+        inline_import_max:
+          type: integer
+          description: Imports up to this size finish inside the request (201); larger
+            run in a background job (202).
+      required:
+      - inline_import_max
+      - max_import_selection
+      - max_page_size
+      - name
+      - requires_credentials
+      - supports_filters
+      - supports_search
+      - terms
+    ProviderCompany:
+      type: object
+      description: 'One provider company: the output of a search and the inline input
+        of an import.'
+      properties:
+        name:
+          type: string
+          maxLength: 2000
+        website:
+          type: string
+          nullable: true
+          maxLength: 2000
+        domain_hint:
+          type: string
+          nullable: true
+          maxLength: 2000
+        profile_url:
+          type: string
+          nullable: true
+          maxLength: 2000
+        country:
+          type: string
+          nullable: true
+          maxLength: 50
+        industry:
+          type: string
+          nullable: true
+          maxLength: 2000
+        employee_count:
+          type: integer
+          minimum: 0
+          nullable: true
+        employee_range:
+          type: string
+          nullable: true
+          maxLength: 2000
+        headquarters:
+          type: string
+          nullable: true
+          maxLength: 2000
+        description:
+          type: string
+          nullable: true
+          maxLength: 5000
+        provider_id:
+          type: string
+          nullable: true
+          maxLength: 200
+        provider_url:
+          type: string
+          nullable: true
+          maxLength: 2000
+        confidence:
+          type: number
+          format: double
+          nullable: true
+        extra:
+          type: object
+          additionalProperties: {}
+      required:
+      - name
+    ProviderCompanyRequest:
+      type: object
+      description: 'One provider company: the output of a search and the inline input
+        of an import.'
+      properties:
+        name:
+          type: string
+          maxLength: 2000
+        website:
+          type: string
+          nullable: true
+          maxLength: 2000
+        domain_hint:
+          type: string
+          nullable: true
+          maxLength: 2000
+        profile_url:
+          type: string
+          nullable: true
+          maxLength: 2000
+        country:
+          type: string
+          nullable: true
+          maxLength: 50
+        industry:
+          type: string
+          nullable: true
+          maxLength: 2000
+        employee_count:
+          type: integer
+          minimum: 0
+          nullable: true
+        employee_range:
+          type: string
+          nullable: true
+          maxLength: 2000
+        headquarters:
+          type: string
+          nullable: true
+          maxLength: 2000
+        description:
+          type: string
+          nullable: true
+          maxLength: 5000
+        provider_id:
+          type: string
+          nullable: true
+          maxLength: 200
+        provider_url:
+          type: string
+          nullable: true
+          maxLength: 2000
+        confidence:
+          type: number
+          format: double
+          nullable: true
+        extra:
+          type: object
+          additionalProperties: {}
+      required:
+      - name
+    ProviderImportBatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign:
+          type: string
+          format: uuid
+        provider:
+          type: string
+        status:
+          type: string
+          description: pending, processing, completed, partial, failed.
+        background:
+          type: boolean
+          description: Processed by a background job.
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+        total_count:
+          type: integer
+        created_count:
+          type: integer
+        duplicate_count:
+          type: integer
+        restored_count:
+          type: integer
+        skipped_count:
+          type: integer
+        failed_count:
+          type: integer
+        processed_count:
+          type: integer
+        progress_percent:
+          type: integer
+        error_summary:
+          type: string
+        provider_error:
+          type: object
+          additionalProperties: {}
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportRow'
+      required:
+      - background
+      - campaign
+      - created_count
+      - duplicate_count
+      - error_summary
+      - failed_count
+      - finished_at
+      - id
+      - job_id
+      - processed_count
+      - progress_percent
+      - provider
+      - restored_count
+      - rows
+      - skipped_count
+      - started_at
+      - status
+      - total_count
+    ProviderImportRequestRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          minLength: 1
+          maxLength: 64
+        provider_ids:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+          description: Provider ids to import; they are re-found with `search` (or
+            the campaign defaults). Give this or `companies`.
+        companies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCompanyRequest'
+          description: Provider companies exactly as a preview returned them (`items[].company`).
+        search:
+          allOf:
+          - $ref: '#/components/schemas/SearchParamsRequest'
+          description: 'The search the selection came from (same shape as the search
+            body without `provider`): stored as provenance and used to find `provider_ids`.'
+        retrieved_at:
+          type: string
+          format: date-time
+          description: '`retrieved_at` of the preview (inline companies).'
+      required:
+      - provider
+    ProviderSearchRequestRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          maxLength: 200
+        filters:
+          $ref: '#/components/schemas/SearchFiltersRequest'
+        page_size:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 25
+        cursor:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 512
+        provider:
+          type: string
+          minLength: 1
+          description: Provider name from `/providers/`.
+          maxLength: 64
+      required:
+      - provider
+    ProviderSearchResponse:
+      type: object
+      properties:
+        provider:
+          type: string
+        retrieved_at:
+          type: string
+          format: date-time
+        search:
+          allOf:
+          - $ref: '#/components/schemas/SearchEcho'
+          description: The effective search (campaign defaults + overrides).
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreviewItem'
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+        next_cursor:
+          type: string
+          nullable: true
+        total_estimate:
+          type: integer
+          nullable: true
+        warnings:
+          type: array
+          items:
+            type: string
+      required:
+      - counts
+      - items
+      - next_cursor
+      - provider
+      - retrieved_at
+      - search
+      - total_estimate
+      - warnings
     Readiness:
       type: object
       description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
@@ -5179,6 +6591,146 @@ components:
       - company_size
       - countries
       - industries
+    SearchEcho:
+      type: object
+      properties:
+        query:
+          type: string
+        countries:
+          type: array
+          items:
+            type: string
+        industries:
+          type: array
+          items:
+            type: string
+        employee_min:
+          type: integer
+          nullable: true
+        employee_max:
+          type: integer
+          nullable: true
+        business_model:
+          type: string
+        excluded_industries:
+          type: array
+          items:
+            type: string
+        excluded_company_types:
+          type: array
+          items:
+            type: string
+        sort:
+          type: string
+        page_size:
+          type: integer
+        limit:
+          type: integer
+        cursor:
+          type: string
+          nullable: true
+      required:
+      - business_model
+      - countries
+      - cursor
+      - employee_max
+      - employee_min
+      - excluded_company_types
+      - excluded_industries
+      - industries
+      - limit
+      - page_size
+      - query
+      - sort
+    SearchFiltersRequest:
+      type: object
+      description: |-
+        Filters that replace the campaign-derived defaults. A key that is present wins: an empty
+        list or `null` clears that filter; a key left out keeps the campaign value.
+      properties:
+        countries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          description: ISO 3166-1 alpha-2 codes.
+          maxItems: 50
+        industries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          maxItems: 50
+        employee_min:
+          type: integer
+          minimum: 0
+          nullable: true
+        employee_max:
+          type: integer
+          minimum: 0
+          nullable: true
+        business_model:
+          type: string
+          description: '`b2b`, `b2c`, `both` or empty for any.'
+          maxLength: 10
+        excluded_industries:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          maxItems: 50
+        excluded_company_types:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+          maxItems: 50
+        sort:
+          $ref: '#/components/schemas/SortEnum'
+    SearchParamsRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          maxLength: 200
+        filters:
+          $ref: '#/components/schemas/SearchFiltersRequest'
+        page_size:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 25
+        cursor:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 512
+    SortEnum:
+      enum:
+      - relevance
+      - name
+      - employee_count_desc
+      - employee_count_asc
+      type: string
+      description: |-
+        * `relevance` - relevance
+        * `name` - name
+        * `employee_count_desc` - employee_count_desc
+        * `employee_count_asc` - employee_count_asc
+    StateEnum:
+      enum:
+      - allow
+      - warn
+      - deny
+      type: string
+      description: |-
+        * `allow` - allow
+        * `warn` - warn
+        * `deny` - deny
     TokenObtainPairRequest:
       type: object
       properties:
@@ -5206,6 +6758,93 @@ components:
             is then delivered as an httpOnly cookie).
       required:
       - access
+    UsageRow:
+      type: object
+      description: 'One group of the summary: the requested group keys (only those)
+        plus the numbers.'
+      properties:
+        provider:
+          type: string
+        category:
+          type: string
+        operation:
+          type: string
+        connection_id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+        model:
+          type: string
+        day:
+          type: string
+          format: date
+        month:
+          type: string
+          format: date
+        currency:
+          type: string
+          description: ISO 4217 code of `cost`; empty when no cost.
+        calls:
+          type: integer
+        error_calls:
+          type: integer
+        cache_hits:
+          type: integer
+        credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,20}(?:\.\d{0,4})?$
+          nullable: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,18}(?:\.\d{0,6})?$
+          nullable: true
+        input_tokens:
+          type: integer
+          nullable: true
+        output_tokens:
+          type: integer
+          nullable: true
+      required:
+      - cache_hits
+      - calls
+      - cost
+      - credits
+      - currency
+      - error_calls
+      - input_tokens
+      - output_tokens
+    UsageSummary:
+      type: object
+      properties:
+        group_by:
+          type: array
+          items:
+            type: string
+        totals:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+          description: Grand totals, one row per currency.
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+          description: At most 1000 groups.
+      required:
+      - group_by
+      - results
+      - totals
     User:
       type: object
       properties:
@@ -5263,3 +6902,5 @@ tags:
   description: 'Company import: CSV template, upload, batches.'
 - name: meta
   description: API metadata.
+- name: provider import
+  description: 'Company data providers: search preview and import into a campaign.'

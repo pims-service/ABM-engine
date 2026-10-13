@@ -74,6 +74,17 @@ Archived clients are read-only (400) until restored.
 Reviewers (DECIDE) cannot edit rules: PUT/PATCH is 403 for them. There is no DELETE (405).
 Archived campaigns are read-only (400) until restored; their profile versions stay readable.
 
+### Provider import endpoints (issue #67)
+
+| Endpoint | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `GET /providers/` (registered providers and capabilities, no secrets) | READ | yes | yes | yes | yes | yes | yes (not tenant data) |
+| `GET /provider-imports/{batch_id}/` (batch status and rows) | READ | yes | yes | yes | yes | yes | 404 |
+| `POST /campaigns/{id}/provider-search/` (preview, writes nothing) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /campaigns/{id}/provider-import/` (import selected) | EDIT | no | no | yes | yes | yes | 404 |
+
+Search and import are throttled per user (`provider_search`, `provider_import` rates in
+`DEFAULT_THROTTLE_RATES`; #69 hardens and makes them configurable).
 ### CSV import endpoints (issue #62)
 
 | Endpoint (action) | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
@@ -125,6 +136,21 @@ Credentials are write-only: no response contains them, only `has_credentials` an
 connections are archived. Not even the admin role can read a secret back; the only reader is
 `apps.integrations.services.get_credentials`, used by adapters. See
 [backend/README.md](../backend/README.md#integration-credentials-issue-76).
+
+### Usage and budget endpoints (issues #79 and #80)
+
+Spend data is commercial, so it follows the connection levels: manager and admin read, admin sets
+budgets. The usage log has no write endpoints at all (rows are written by `tracked_execute`).
+
+| Endpoint | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `GET /api/v1/integrations/usage/` | EDIT | 403 | 403 | yes (own clients where manager/admin) | yes | yes | not listed |
+| `GET /api/v1/integrations/usage/summary/` | EDIT | 403 | 403 | yes | yes | yes | not listed |
+| `GET /api/v1/integrations/connections/{id}/budget/` | EDIT | 403 | 403 | yes | yes | yes | 404 |
+| `PUT /api/v1/integrations/connections/{id}/budget/` | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+
+Cached responses and raw payloads are not served by the API at all (they may hold personal data);
+only a superuser sees their metadata in the admin, never the payload.
 
 Other rules:
 

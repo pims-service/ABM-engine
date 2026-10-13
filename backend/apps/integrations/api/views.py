@@ -33,7 +33,7 @@ from apps.core.permissions import ClientScopedViewSet, request_roles
 from apps.core.roles import Level, role_allows
 from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
-from apps.integrations import services
+from apps.integrations import services, usage
 from apps.integrations.models import IntegrationConnection
 from apps.integrations.testing import check_connection
 
@@ -45,6 +45,7 @@ from .serializers import (
     ConnectionUpdateSerializer,
 )
 from .throttles import ConnectionTestThrottle
+from .usage_serializers import BudgetSerializer, BudgetWriteSerializer
 
 TAGS = ["integrations"]
 
@@ -147,6 +148,8 @@ class ConnectionViewSet(
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
         "test": Level.MANAGE,
+        "budget": Level.EDIT,
+        "set_budget": Level.MANAGE,
     }
 
     def _user(self) -> User:
@@ -321,3 +324,46 @@ class ConnectionViewSet(
                 }
             ).data
         )
+
+    # ---------------------------------------------------------------- budget (issue #79)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="integration_connections_budget_retrieve",
+        summary="Get the monthly budget of a connection",
+        description="The limits (none when unset: `configured` is false) and this month's usage "
+        "against them (UTC calendar month), with the `state` the next call would get. " + _READ,
+        responses={200: BudgetSerializer, **error_responses(401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["get"], url_path="budget")
+    def budget(self, request: Request, pk: str | None = None) -> Response:
+        return Response(BudgetSerializer(usage.budget_summary(self.get_object())).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="integration_connections_budget_update",
+        summary="Set the monthly budget of a connection",
+        description="Replaces the whole budget: omitted limits mean no cap. At `warn_at_percent` "
+        "of a limit calls are logged as warnings; at the limit and with `hard_stop` they are "
+        "refused (`budget_exceeded`) before any provider request. Audited. An archived "
+        "connection answers 400. " + _WRITE,
+        request=BudgetWriteSerializer,
+        responses={200: BudgetSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @budget.mapping.put
+    def set_budget(self, request: Request, pk: str | None = None) -> Response:
+        connection = self.get_object()
+        serializer = BudgetWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        with api_validation():
+            usage.set_budget(
+                connection,
+                self._user(),
+                credit_limit=data.get("credit_limit"),
+                cost_limit=data.get("cost_limit"),
+                currency=data.get("currency", ""),
+                warn_at_percent=data["warn_at_percent"],
+                hard_stop=data["hard_stop"],
+            )
+        return Response(BudgetSerializer(usage.budget_summary(connection)).data)

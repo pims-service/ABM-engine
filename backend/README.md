@@ -653,6 +653,42 @@ ciphertext, audit and log carry no secret, rotation), `test_integration_api.py` 
 no secret in any response), `test_integration_admin.py`, plus the invariant registry row and the
 tenant-isolation scenarios. Fake secrets in tests carry `# pragma: allowlist secret`.
 
+### Usage tracking and budgets (`apps/integrations/usage.py`, issue #79)
+
+Run every adapter operation through `tracked_execute` instead of `execute`:
+
+```python
+from apps.integrations.usage import tracked_execute, BudgetExceeded
+
+result = tracked_execute(connection, adapter, adapter.enrich_company, ref, job=job, user=user)
+```
+
+It checks the connection's monthly budget first (`BudgetExceeded`, a `ProviderQuotaExceeded` with
+code `budget_exceeded`, and no provider request), runs `execute`, and writes exactly one
+`ProviderCall` row for a success, a failure or a refusal. `job`, `campaign` (default: the job's) and
+`user` are reserved keyword names. Logging never raises: a failed insert is logged, swallowed and
+counted (`usage.logging_failure_count()`). Rows hold no body and no secret.
+
+Budgets: `usage.set_budget(connection, user, credit_limit=..., cost_limit=..., currency=...,
+warn_at_percent=80, hard_stop=True)` (audited); `usage.check_budget(connection)` returns a
+`BudgetStatus` (`allow`, `warn`, `deny`). The check is not a reservation, so concurrent calls can
+overshoot a limit by what they cost. Aggregations live in `apps/integrations/reporting.py`
+(`summarize`, `totals`, `run_totals`, `cost_per_accepted_account` placeholder).
+API: `GET /api/v1/integrations/usage/`, `.../usage/summary/?group_by=provider,day`,
+`GET|PUT /api/v1/integrations/connections/{id}/budget/` (levels in docs/permissions.md).
+Full guide: [docs/integrations/usage-and-cache.md](../docs/integrations/usage-and-cache.md).
+
+### Provider response cache (`apps/integrations/caching.py`, issue #80)
+
+`cached_execute(connection, adapter, operation, *args, force_refresh=False, job=..., user=...)` is
+`tracked_execute` with a per-client cache in front. Nothing is cached or kept unless the
+provider's `CachePolicy` opts in (`register_cache_policy(category, provider, CachePolicy(...))` or
+`settings.INTEGRATION_CACHE_POLICIES["<category>/<provider>"]`); a connection can only narrow it
+through `config["cache"]`. Adapters hand the raw answer to `attach_raw_payload(payload)`; it is
+kept (redacted, size capped, with `retention_days`) only when `allow_store_raw` is true.
+Run `python manage.py purge_provider_cache` daily (or schedule
+`apps.integrations.caching.purge_task` with Django-Q2).
+
 ### Companies, research history and data sources (`apps/companies`)
 
 `Campaign` -> `Company` -> `CompanyResearch` (append-only snapshots), each pointing at a
@@ -1278,7 +1314,51 @@ while True:
 - **`FakeCompanyProvider(name="fake", fail_with=None, max_page_size=50)`**: 25 placeholder
   companies on `example.com` (some Arabic names), every filter, sort, cursor paging and `limit`.
   Errors on demand: `fail_with=` an error instance, or the queries `!auth`, `!rate_limited`,
-  `!unavailable`, `!bad_request`, `!quota`. `calls` records requests. Not registered by default.
+  `!unavailable`, `!bad_request`, `!quota`. `calls` records requests. Not registered by default
+(see "Provider import service" for the dev/test registration).
+
+### Provider import service (`apps/imports/provider_import.py`, issue #67)
+
+Preview, select and import companies from any registered provider; nothing in it names a vendor.
+Tests: `tests/test_provider_import.py`, `tests/test_provider_import_api.py`.
+
+- **`preview_provider_search(campaign, provider_name, request | query | None, *, user)`**: one page
+  of results annotated per item with `new`, `duplicate` (strong match, an import links to it),
+  `possible_duplicate` (weak match), `already_imported` (same `provider_company_key` imported into
+  the campaign before) or `invalid`. Writes nothing. The default search is
+  `CompanySearchRequest.from_campaign_rules(build_rules_summary(campaign))`; `filters` replace
+  parts of it. Provider failures raise the typed `ProviderError`s.
+- **`import_provider_companies(campaign, provider_name, provider_ids=... | companies=..., search=,
+  retrieved_at=, user=)`**: one `ImportBatch` (source `provider`; `column_mapping` holds the
+  provenance: provider, terms, selection mode, search request snapshot, `retrieved_at`). Rows go
+  through `process_row` / `create_company` like manual and CSV, so validation, strong duplicates
+  (never edited) and weak flags are identical. A provider id already imported into the campaign
+  is always a `duplicate` row (`restored` if archived), even when its website changed.
+  Each company the import *creates* gets a `DataSource` (type `provider`, `name` the provider,
+  `provider_reference` the provider id, `retrieved_at`) plus a `CompanyResearch` snapshot with the
+  facts the provider gave. Duplicates are not edited and get no source. `provider_ids` are found
+  again by walking the search (the contract has no get-by-id); `companies` are inline payloads
+  copied from a preview (judgment call: they are user-supplied like manual entry, so the data
+  source records the provider as claimed; signing previews is a possible #69 hardening).
+- **Limits**: `settings.PROVIDER_IMPORT_MAX_SELECTION` (default 100; more is a 400) and
+  `settings.PROVIDER_IMPORT_INLINE_MAX` (default 25). Up to 25 rows run inside the request (HTTP
+  201); more run in the `provider_import` Django-Q2 task (`apps/imports/tasks.py`) tracked by a
+  `core.Job` (HTTP 202, poll `GET /provider-imports/{id}/`). Re-running a task skips recorded rows.
+- **Errors**: while finding ids a provider failure does not raise: unresolved rows fail with the
+  stable code (`provider_rate_limited`, `provider_unavailable`, `provider_auth`,
+  `provider_quota_exceeded`, or `provider_company_not_found`), the batch ends `partial` or
+  `failed` with the safe message as `error_summary`. Preview failures are API errors: 429
+  `provider_rate_limited` (`details.retry_after`, `Retry-After`), 503 `provider_unavailable`, 502
+  `provider_auth` / `provider_quota_exceeded`, 400 `provider_bad_request`. Upstream text is never
+  stored, logged or returned.
+- **Audit**: one `create` and one `update` entry per batch.
+- **Fake provider**: `PROVIDER_FAKE_ENABLED` (env, default true in dev and test settings, false
+  elsewhere; `docs/environment.md`) registers `fake` in `ImportsConfig.ready`
+  (`apps/imports/providers/dev.py`). Production never lists it.
+- **API** (`apps/imports/api`, levels in `docs/permissions.md`): `GET /api/v1/providers/`,
+  `POST /api/v1/campaigns/{id}/provider-search/`, `POST /api/v1/campaigns/{id}/provider-import/`,
+  `GET /api/v1/provider-imports/{id}/`. Per-user throttle scopes `provider_search` and
+  `provider_import` (`DEFAULT_THROTTLE_RATES`) are the rate limiting hook; #69 hardens them.
 
 ### Invariant tests (`tests/invariants`, issue #53)
 

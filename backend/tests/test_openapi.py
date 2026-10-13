@@ -94,6 +94,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "clients_partial_update": ("PATCH", "/api/v1/clients/{id}/"),
         "clients_archive": ("POST", "/api/v1/clients/{id}/archive/"),
         "clients_restore": ("POST", "/api/v1/clients/{id}/restore/"),
+        "providers_list": ("GET", "/api/v1/providers/"),
+        "campaigns_provider_search": ("POST", "/api/v1/campaigns/{id}/provider-search/"),
+        "campaigns_provider_import": ("POST", "/api/v1/campaigns/{id}/provider-import/"),
+        "provider_imports_retrieve": ("GET", "/api/v1/provider-imports/{id}/"),
         "integration_connections_list": ("GET", "/api/v1/integrations/connections/"),
         "integration_connections_create": ("POST", "/api/v1/integrations/connections/"),
         "integration_connections_retrieve": ("GET", "/api/v1/integrations/connections/{id}/"),
@@ -122,6 +126,16 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/integrations/connections/{id}/test/",
         ),
+        "integration_connections_budget_retrieve": (
+            "GET",
+            "/api/v1/integrations/connections/{id}/budget/",
+        ),
+        "integration_connections_budget_update": (
+            "PUT",
+            "/api/v1/integrations/connections/{id}/budget/",
+        ),
+        "integration_usage_list": ("GET", "/api/v1/integrations/usage/"),
+        "integration_usage_summary": ("GET", "/api/v1/integrations/usage/summary/"),
         "campaigns_csv_import_preview": (
             "POST",
             "/api/v1/campaigns/{campaign_id}/csv-import/preview/",
@@ -136,6 +150,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "provider import"
+            if "provider" in path
             else "imports"
             if "/imports/" in path or "/csv-import/" in path
             else "companies"
@@ -160,6 +176,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "health",
         "imports",
         "meta",
+        "provider import",
     }
 
 
