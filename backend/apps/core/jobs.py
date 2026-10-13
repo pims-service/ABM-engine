@@ -43,6 +43,7 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
@@ -71,8 +72,10 @@ JobFunc = Callable[..., dict[str, Any] | None]
 __all__ = [
     "ITEM_TERMINAL",
     "JOB_TERMINAL",
+    "FailJob",
     "InvalidTransitionError",
     "JobStateError",
+    "RetryLater",
     "add_items",
     "complete_item",
     "complete_job",
@@ -94,6 +97,25 @@ class JobStateError(ValueError):
     """The job or item is not in a state where this call makes sense (finished, unprocessed
     items left, counts that exceed the total)."""
 
+
+class RetryLater(Exception):
+    """Raise from a task to re-queue the job after ``delay`` seconds (a provider said "later", a
+    circuit is open). Counts as an attempt (so ``max_attempts`` still bounds it) but the delay is
+    the one asked for instead of the exponential backoff. ``free=True`` gives the attempt back (use
+    it only when the run made progress, e.g. a soft time limit between items, so it cannot loop)."""
+
+    def __init__(self, delay: float, reason: str = "", *, free: bool = False) -> None:
+        super().__init__(reason)
+        self.delay = min(max(0.0, float(delay)), MAX_RETRY_LATER_SECONDS)
+        self.free = free
+
+
+class FailJob(Exception):
+    """Raise from a task to end the job as ``failed`` now, without retries (a condition that
+    cannot get better by itself, such as rejected credentials)."""
+
+
+MAX_RETRY_LATER_SECONDS = 3600.0
 
 # ------------------------------------------------------------------ registry of job types
 
@@ -422,14 +444,25 @@ def tracked_job(
                 except Exception as exc:
                     job.refresh_from_db()
                     error = f"{type(exc).__name__}: {exc}"
-                    if job.attempts < max_attempts:
-                        delay = backoff_delay(job.attempts, base_delay)
+                    if job.attempts < max_attempts and not isinstance(exc, FailJob):
+                        delay = (
+                            timedelta(seconds=exc.delay)
+                            if isinstance(exc, RetryLater)
+                            else backoff_delay(job.attempts, base_delay)
+                        )
                         requeue_job(job, error)
+                        suffix = ""
+                        if isinstance(exc, RetryLater) and exc.free:
+                            suffix = f"-{uuid.uuid4().hex[:6]}"  # attempts repeat after a refund
+                            Job.objects.filter(pk=job.pk, attempts__gt=0).update(
+                                attempts=F("attempts") - 1
+                            )
+                            job.attempts -= 1
                         schedule(
                             func_path(task),
                             job_id,
                             *args,
-                            name=f"retry-{job_id}-{job.attempts}",
+                            name=f"retry-{job_id}-{job.attempts}{suffix}",
                             schedule_type=Schedule.ONCE,
                             next_run=timezone.now() + delay,
                             **kwargs,

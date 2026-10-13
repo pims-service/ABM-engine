@@ -49,6 +49,14 @@ Project documentation lives here. If you are new, start with onboarding.
   review (issue #73), the requirements every adapter must meet, and the
   proposed first-provider decision
   ([ADR 0012](adr/0012-first-provider-selection.md)).
+- [Integration framework](integrations/framework.md): the adapter model, registry,
+  result envelope and error types, and how to write an adapter
+  ([ADR 0013](adr/0013-integration-framework.md)).
+- [Resilience and provider jobs](integrations/resilience.md): retries, timeouts, rate
+  limiting, circuit breaker and the provider job base
+  ([ADR 0014](adr/0014-resilience-and-provider-jobs.md)).
+- [LLM adapter and structured output](integrations/llm.md): Pydantic schemas,
+  `structured_call`, prompt-injection hygiene and the Anthropic adapter.
 
 ## Reference for each part of the repo
 

@@ -74,6 +74,33 @@ Archived clients are read-only (400) until restored.
 Reviewers (DECIDE) cannot edit rules: PUT/PATCH is 403 for them. There is no DELETE (405).
 Archived campaigns are read-only (400) until restored; their profile versions stay readable.
 
+### CSV import endpoints (issue #62)
+
+| Endpoint (action) | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `POST /campaigns/{campaign_id}/csv-import/preview/` (`preview`) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /campaigns/{campaign_id}/csv-import/` (`create`) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /imports/{batch_id}/cancel/` (`cancel`) | EDIT | no | no | yes | yes | yes | 404 |
+| `GET /imports/csv-template/` | signed in | yes | yes | yes | yes | yes | yes (a static file, no client data; listed in `PUBLIC_ENDPOINTS` of the isolation test) |
+
+Importing adds companies to a campaign, so it needs the same level as creating a company.
+
+### Company endpoints (issue #59)
+
+`/api/v1/campaigns/{campaign_id}/companies/` and `/api/v1/companies/{id}/`. The campaign of the
+URL (or the company's client) is looked up through the user's visible clients: another client's
+campaign or company is 404.
+
+| Action | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `list` (`GET campaigns/{id}/companies/`), `retrieve` | READ | yes | yes | yes | yes | yes | 404 |
+| `create` (manual entry, `POST campaigns/{id}/companies/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `analyze` (`POST companies/{id}/analyze/`) | EDIT | no | no | yes | yes | yes | 404 |
+| `archive`, `restore` | MANAGE | no | no | no | yes | yes | 404 |
+
+There is no PUT, PATCH or DELETE (405 for MANAGE, 403 below it: an unrouted write fails closed).
+Archived campaigns and clients take no new companies, analysis, archive or restore (400).
+
 ### Integration connection endpoints (`/api/v1/integrations/connections/`, issue #76)
 
 Connections hold provider credentials, so they are **stricter than the rest of the client API**:
