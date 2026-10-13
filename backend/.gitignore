@@ -5,6 +5,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 staticfiles/
+var/
 *.sqlite3
 .coverage
 coverage.xml

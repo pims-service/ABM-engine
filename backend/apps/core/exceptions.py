@@ -110,10 +110,10 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
         # The DRF stubs omit ``Throttled.wait``.
         wait = getattr(exc, "wait", None)
         details = {"retry_after": int(wait)} if wait is not None else None
-    elif isinstance(exc, exceptions.APIException) and (
-        extra := getattr(exc, "error_details", None)
-    ):
-        details = extra  # an exception may carry safe, JSON-ready structured details
+    elif getattr(exc, "error_details", None) is not None:
+        # An APIException that carries structured details of its own (a rejected CSV, a provider
+        # failure). Kept as given: JSON-ready values, numbers stay numbers.
+        details = exc.error_details  # type: ignore[attr-defined]
     response.data = error_payload(code, _message_for(exc, code), details)
     return response
 

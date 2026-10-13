@@ -219,6 +219,30 @@ if supports(adapter, "enrich_company"):
 - **Fakes** (`framework.fakes`, one per category, `register_fakes(registry)`) are for tests and
   local development only.
 
+### LLM adapter and structured output (`apps/integrations/llm`, `adapters/anthropic`, issue #81)
+
+Every AI feature goes through one entry point (Brief section 18, [ADR 0003](../docs/adr/0003-structured-llm-output.md)):
+
+```python
+from apps.integrations.llm import pydantic_schema, structured_call, wrap_untrusted
+
+result = structured_call(adapter, PromptSpec("fit", "1", user_text), pydantic_schema(FitVerdict))
+verdict = result.data  # a validated FitVerdict; result.usage has summed tokens and the model
+```
+
+- `pydantic_schema(Model)` builds the `StructuredSchema`; a failure is a `StructuredOutputError`
+  listing field paths and codes only, never model text.
+- `structured_call` validates, makes at most one repair attempt (paths and codes fed back, never
+  the rejected text), sums usage over attempts, logs prompt name and version, then raises.
+- `AnthropicAdapter` (key `anthropic`) uses the Messages API with `output_config.format`
+  JSON-schema outputs. `model` is a required setting with no default. The HTTP transport is
+  injectable; the real one allow-lists the host, verifies TLS, caps time and size.
+- `wrap_untrusted` delimits external text; `assert_grounded` checks quoted facts against evidence.
+
+No models, migrations or API. Details and the verified documentation links:
+[docs/integrations/llm.md](../docs/integrations/llm.md). Tests: `tests/test_llm_structured.py`,
+`tests/test_anthropic_adapter.py`.
+
 ## Background jobs (Django-Q2)
 
 Slow or bulk work never runs in a web request (ADR 0005). Django-Q2 uses the Django ORM broker, so
@@ -1073,6 +1097,89 @@ Example Trading Co,example.com,https://www.linkedin.com/company/example-trading,
 - **Formula injection**: raw values are stored as typed (`=cmd|' /C calc'!A0` stays as is). Every
   value written to a CSV or XLSX export must go through `safe_cell(value)` (or `safe_row`), which
   prefixes `'` to values starting with `=`, `+`, `-`, `@`, tab or CR.
+### CSV bulk upload (`apps/imports/csv_import.py`, issue #62)
+
+A 500-row file never blocks a request: the API validates the whole file, queues a Django-Q2 task
+and answers 202; the worker then imports the rows in the background. Code: `csv_import.py`
+(service and task body), `tasks.py` (`process_csv_import`), `uploads.py` (file storage),
+`api/csv_views.py` and `api/batches.py` (endpoints). Levels per action: `docs/permissions.md`.
+
+| Endpoint | Level | Purpose |
+| --- | --- | --- |
+| `GET /api/v1/imports/csv-template/` | any signed-in user | download the template (`?examples=true` adds 3 placeholder rows) |
+| `POST /api/v1/campaigns/{campaign_id}/csv-import/preview/` | EDIT | multipart `file` (+ optional `mapping`): validate, show headers, suggested mapping, first 10 rows, totals, warnings, SHA-256. Stores nothing |
+| `POST /api/v1/campaigns/{campaign_id}/csv-import/` | EDIT | same body: store, create the batch and job, queue the task, **202** |
+| `POST /api/v1/imports/{batch_id}/cancel/` | EDIT | stop a `pending`/`processing` batch (reading a batch and its error report is #63) |
+
+- **Request**: `multipart/form-data`, field `file` (any content type and extension: the bytes
+  decide, see "CSV import format") and optional `mapping`, a JSON string `{"<file column>":
+  "<field>"}`; left out, the mapping suggested from the headers is used.
+- **Preview 200**: `{file: {name, size_bytes, sha256, encoding, delimiter}, headers,
+  suggested_mapping, mapping, unmapped_headers, fuzzy_headers, company_fields, rows: [{row_number,
+  raw, mapped, errors: [{field, code, message, detail}]}], total_rows, blank_rows, error_rows,
+  warnings, limits, active_import}`. Row `errors` hold the parser's errors plus the company
+  validation errors the import would record; `active_import` is the id of a pending/processing batch of
+  this same file (an import would be refused with 409), else `null`.
+- **Import 202**: `{batch: <ImportBatch>, job_id, status_url}` and a `Location` header. Poll
+  `status_url` (`/api/v1/imports/{batch_id}/`, served by #63) until `status` is `completed`,
+  `partial` (some rows failed), `failed` or `cancelled`. The batch has `total_count`, one counter
+  per outcome, `processed_count` and `progress_percent`. `batch.job` is the `core.Job` of the run.
+- **Rejections** use the standard error envelope with the csvparse code as `error.code` and every
+  problem in `error.details.issues` (`{code, message, detail}`): 400 `empty_file`, `no_header`,
+  `no_data_rows`, `binary_file`, `unsupported_format`, `undecodable`, `too_many_columns`,
+  `header_too_long`, `too_many_rows` (over 5000 rows), `name_column_missing`, `unknown_column`,
+  `unknown_field`, `duplicate_target`; 413 `file_too_large` (over 10 MiB; also answered from the
+  `Content-Length` header before the body is read); 400 `validation_error` for a missing `file`
+  or a `mapping` that is not a JSON object of strings, and for an archived campaign or client; 409
+  `import_in_progress` (below); 415 for a JSON body. Nothing is queued, stored or created on
+  any of them. The size and row limits are enforced server-side, whatever the client says
+  (`csv_import.csv_limits()`, 10 MiB and 5000 rows; `DATA_UPLOAD_MAX_MEMORY_SIZE` only covers
+  non-file fields, and the web server in front should also cap request bodies).
+- **Duplicate upload guard**: the same file (SHA-256) into the same campaign while a batch of it is
+  `pending` or `processing` is 409 `import_in_progress` with the existing batch in
+  `error.details.batch` (and `status_url`); concurrent identical requests are serialised by a row
+  lock on the campaign. Once that batch ended (or was cancelled) the same file can be imported
+  again; its rows then come back as duplicates of the companies already there.
+- **File storage** (`uploads.py`): the bytes wait in a private `FileSystemStorage` under
+  `IMPORT_UPLOAD_DIR` (default `backend/var/import-uploads`, git-ignored), one file per batch
+  named `<batch id>.csv` (random uuid4, never the user's file name; mode 0600, and no route
+  serves it). The API writes it and the worker reads it, so both must see the same directory: the
+  dev compose stack shares it through the `./backend` bind mount; in production mount one shared
+  volume at `IMPORT_UPLOAD_DIR`. The file is deleted when the batch ends (completed, partial,
+  failed or cancelled; at once on cancel). `manage.py cleanup_import_uploads [--max-age-hours 24]`
+  sweeps files of ended or unknown batches and files older than the cut-off (a worker that never
+  came back); run it from cron. Files rather than a model field keep ten megabyte blobs out of
+  Postgres and out of every `SELECT *`; the cost is the shared directory.
+- **The task** `process_csv_import(job_id, batch_id=...)` is a `@tracked_job` (3 attempts, backoff
+  5 s). It streams rows with `iter_rows`; each goes through `process_row` (validation, dedupe,
+  weak-duplicate flags, company creation, outcome recorded, all in one transaction). A row the
+  parser rejected (ragged, over-long cell) is recorded `failed` with the parser's code; an
+  unexpected exception on a row is recorded `failed` (`internal_error`, no message text kept).
+  Neither stops the batch. Every `IMPORT_CHUNK_SIZE` rows (default 100) the job counters are set
+  from the batch counters (absolute values under a row lock) and the batch is checked for
+  cancellation. At the end `finalize_batch` sets `completed` (no failed rows), `partial` or
+  `failed` (all failed); a whole-file failure (file gone, undecodable midway, file changed) ends
+  the batch `failed` with a reason and keeps the rows already recorded.
+- **Idempotent and resumable**: rows already recorded are skipped, and `process_row` is
+  idempotent per `(batch, row_number)` anyway, so a redelivered task, a Django-Q2 retry or a
+  retry after a worker crash carries on where the last run stopped and never creates a company
+  twice. A task for a finished batch only cleans up. After the last attempt fails the batch is
+  `failed` ("stopped after repeated errors", the exception type only).
+- **Cancel**: `cancel_csv_import` cancels the batch (audited, file deleted); the worker notices at its
+  next chunk edge or when its next row is refused, closes the job from the rows done so far and
+  stops. Companies already created stay. Cancelling a cancelled batch is a 200; any other
+  finished batch is 409 `batch_already_finished`.
+- **Audit**: one `create` entry (actor, file facts, total) when the upload is accepted, one
+  `update` entry from the worker when the batch ends (status and counters; no actor), one `update`
+  on cancel. Per-row outcomes are the `ImportRow`s.
+- **Privacy**: logs carry batch, job and campaign ids and counts only (no file names, cell values
+  or company names). `ImportRow.raw_data` is scrubbed as before. Formula-looking cells are stored
+  as typed and never evaluated; exports must use `safe_cell`.
+- **Testing**: `Q_CLUSTER` is in sync mode under the test settings, so `POST .../csv-import/`
+  runs the whole import inline. To test the queued state replace `csv_import.async_task` with a
+  stub and call `process_csv_import(str(job.pk), batch_id=str(batch.pk))` like the worker does
+  (see `tests/test_csv_import.py`). Tests write uploads to a temp directory.
+
 ### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
 
 What a company data provider adapter implements, so M2 imports (#67, #68) and M3 adapters meet

@@ -384,6 +384,179 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_id}/csv-import/:
+    post:
+      operationId: campaigns_csv_import_create
+      description: 'Validates the whole file (same rules and errors as the preview),
+        stores it privately, creates the import batch (source `csv`) and a background
+        job, and returns 202 at once; rows are processed by the worker in chunks.
+        Poll `status_url` (the batch: `status`, counters, `progress_percent`) until
+        `status` is `completed`, `partial` (some rows failed), `failed` or `cancelled`.
+        Each row is validated and de-duplicated like a manual entry; a bad row is
+        recorded as failed and never stops the batch. Re-uploading the same file (SHA-256)
+        into the same campaign while an earlier batch of it is pending or processing
+        is 409 `import_in_progress` with the existing batch in `details.batch`; once
+        it ended the same file may be imported again (rows then come back as duplicates).
+        The optional `mapping` field is `{file column: field}` JSON; left out, the
+        suggestion is used. 400 for an archived campaign or client. Needs the `EDIT`
+        level: manager and admin. Others get 403; campaigns of clients you are not
+        a member of give 404.'
+      summary: Start a CSV import
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - imports
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CsvUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvImportAccepted'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Conflict with the current state (e.g. `client_has_active_jobs`).
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Upload larger than the allowed size (`file_too_large`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_id}/csv-import/preview/:
+    post:
+      operationId: campaigns_csv_import_preview
+      description: 'Reads the whole file (nothing is stored or created) and returns
+        what the mapping screen needs: the headers, the mapping suggested from them,
+        the first rows with the problems the import would record, totals, warnings
+        (e.g. a legacy encoding), the file''s SHA-256 and the limits. Whole-file problems
+        are 400 with a stable `error.code` (`empty_file`, `no_header`, `no_data_rows`,
+        `binary_file`, `unsupported_format`, `undecodable`, `too_many_columns`, `header_too_long`,
+        `too_many_rows` (over 5000), `name_column_missing`, `unknown_column`, `unknown_field`,
+        `duplicate_target`); a file over the size limit (10 MiB) is 413 `file_too_large`.
+        `details.issues` lists every problem. The optional `mapping` field is applied
+        to the rows shown. Needs the `EDIT` level: manager and admin. Others get 403;
+        campaigns of clients you are not a member of give 404.'
+      summary: Preview a CSV upload
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - imports
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CsvUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsvPreview'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '413':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Upload larger than the allowed size (`file_too_large`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/companies/:
     get:
       operationId: campaign_companies_list
@@ -2390,6 +2563,117 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/imports/{batch_id}/cancel/:
+    post:
+      operationId: imports_cancel
+      description: 'A `pending` or `processing` batch becomes `cancelled`: the worker
+        stops at its next chunk (at most one chunk of rows, 100 by default, is still
+        processed), the stored upload is deleted, and rows already imported stay (their
+        companies exist). Idempotent: cancelling a cancelled batch returns it again
+        (200). A batch that ended any other way is 409 `batch_already_finished`. Needs
+        the `EDIT` level: manager and admin. Others get 403; batches of clients you
+        are not a member of give 404.'
+      summary: Cancel an import batch
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatch'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Conflict with the current state (e.g. `client_has_active_jobs`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/imports/csv-template/:
+    get:
+      operationId: imports_csv_template
+      description: 'The CSV file customers fill in: header `company_name, website,
+        profile_url, country, industry, notes`, UTF-8 with BOM (Excel shows Arabic
+        correctly). With `examples=true` it holds three placeholder rows. Any signed-in
+        user may download it.'
+      summary: Download the CSV template
+      parameters:
+      - in: query
+        name: examples
+        schema:
+          type: boolean
+        description: Add three placeholder rows. Default false (header only).
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/integrations/connections/:
     get:
       operationId: integration_connections_list
@@ -4106,6 +4390,192 @@ components:
           writeOnly: true
           description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
             update they replace all stored credentials. Never returned.'
+    CsvImportAccepted:
+      type: object
+      description: '202 response: the work is queued (or, in tests, already done).'
+      properties:
+        batch:
+          $ref: '#/components/schemas/ImportBatch'
+        job_id:
+          type: string
+          format: uuid
+        status_url:
+          type: string
+          description: 'Where to poll the batch: `GET {status_url}`.'
+      required:
+      - batch
+      - job_id
+      - status_url
+    CsvIssue:
+      type: object
+      properties:
+        field:
+          type: string
+          description: Company field the problem is about; blank for the row.
+        code:
+          type: string
+          description: Stable code (`apps.imports.csvparse` / `schema`).
+        message:
+          type: string
+        detail:
+          type: string
+      required:
+      - code
+      - detail
+      - field
+      - message
+    CsvLimits:
+      type: object
+      properties:
+        max_file_bytes:
+          type: integer
+        max_rows:
+          type: integer
+        max_columns:
+          type: integer
+        max_cell_length:
+          type: integer
+      required:
+      - max_cell_length
+      - max_columns
+      - max_file_bytes
+      - max_rows
+    CsvPreview:
+      type: object
+      description: 200 response of the preview. Nothing was stored.
+      properties:
+        file:
+          $ref: '#/components/schemas/CsvPreviewFile'
+        headers:
+          type: array
+          items:
+            type: string
+        suggested_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: Guessed from the headers.
+        mapping:
+          type: object
+          additionalProperties:
+            type: string
+          description: The mapping the rows below were read with (yours, else the
+            suggestion).
+        unmapped_headers:
+          type: array
+          items:
+            type: string
+        fuzzy_headers:
+          type: array
+          items:
+            type: string
+          description: 'Matched only approximately: worth a look.'
+        company_fields:
+          type: array
+          items:
+            type: string
+          description: The company fields a column may be mapped to.
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CsvPreviewRow'
+        total_rows:
+          type: integer
+          description: Non-blank data rows in the whole file.
+        blank_rows:
+          type: integer
+        error_rows:
+          type: integer
+          description: Rows of the whole file the parser can already tell are broken.
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/CsvIssue'
+        limits:
+          $ref: '#/components/schemas/CsvLimits'
+        active_import:
+          type: string
+          format: uuid
+          nullable: true
+          description: Id of a pending/processing batch of this same file in this
+            campaign (the import would be refused with 409), else null.
+      required:
+      - active_import
+      - blank_rows
+      - company_fields
+      - error_rows
+      - file
+      - fuzzy_headers
+      - headers
+      - limits
+      - mapping
+      - rows
+      - suggested_mapping
+      - total_rows
+      - unmapped_headers
+      - warnings
+    CsvPreviewFile:
+      type: object
+      properties:
+        name:
+          type: string
+        size_bytes:
+          type: integer
+        sha256:
+          type: string
+        encoding:
+          type: string
+        delimiter:
+          type: string
+      required:
+      - delimiter
+      - encoding
+      - name
+      - sha256
+      - size_bytes
+    CsvPreviewRow:
+      type: object
+      properties:
+        row_number:
+          type: integer
+          description: Record position after the header (1-based).
+        raw:
+          type: object
+          additionalProperties:
+            type: string
+          description: Every column.
+        mapped:
+          type: object
+          additionalProperties:
+            type: string
+          description: The company fields (empty for a broken row).
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/CsvIssue'
+          description: Why the import would fail this row.
+      required:
+      - errors
+      - mapped
+      - raw
+      - row_number
+    CsvUploadRequest:
+      type: object
+      description: '``multipart/form-data`` body of the preview and the import.'
+      properties:
+        file:
+          type: string
+          format: binary
+          description: The CSV file. Any content type is accepted; the bytes decide
+            (see the limits in the preview response).
+        mapping:
+          type: string
+          writeOnly: true
+          description: 'Optional JSON object `{"<file column>": "<field>"}` with fields
+            `name`, `website`, `profile_url`, `country`; `name` is required. Left
+            out, the mapping suggested from the headers is used.'
+      required:
+      - file
     Dedupe:
       type: object
       properties:
@@ -4189,6 +4659,142 @@ components:
       - ok
       type: string
       description: '* `ok` - ok'
+    ImportBatch:
+      type: object
+      description: |-
+        One import batch with its counters. The counters are the source of truth for the outcome;
+        ``job`` is the background run (``/jobs`` progress is derived from the same counters).
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        source:
+          type: string
+          readOnly: true
+          description: 'How the batch was fed: `manual`, `csv` or `provider`.'
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ImportBatchStatusEnum'
+          readOnly: true
+        original_filename:
+          type: string
+          readOnly: true
+        file_size:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Bytes.
+        file_sha256:
+          type: string
+          readOnly: true
+          description: Hex digest, CSV only.
+        column_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          readOnly: true
+          description: '`{file column: company field}`.'
+        total_count:
+          type: integer
+          readOnly: true
+        created_count:
+          type: integer
+          readOnly: true
+        duplicate_count:
+          type: integer
+          readOnly: true
+        restored_count:
+          type: integer
+          readOnly: true
+        skipped_count:
+          type: integer
+          readOnly: true
+        failed_count:
+          type: integer
+          readOnly: true
+        processed_count:
+          type: integer
+          readOnly: true
+        progress_percent:
+          type: integer
+          readOnly: true
+          description: '0 to 100: processed rows over total rows.'
+        error_summary:
+          type: string
+          readOnly: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - campaign
+      - client
+      - column_mapping
+      - created_at
+      - created_by
+      - created_count
+      - duplicate_count
+      - error_summary
+      - failed_count
+      - file_sha256
+      - file_size
+      - finished_at
+      - id
+      - job
+      - original_filename
+      - processed_count
+      - progress_percent
+      - restored_count
+      - skipped_count
+      - source
+      - started_at
+      - status
+      - total_count
+    ImportBatchStatusEnum:
+      enum:
+      - pending
+      - processing
+      - completed
+      - partial
+      - failed
+      - cancelled
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `processing` - Processing
+        * `completed` - Completed
+        * `partial` - Partially completed
+        * `failed` - Failed
+        * `cancelled` - Cancelled
     ImportRow:
       type: object
       properties:
@@ -5412,6 +6018,8 @@ tags:
   description: Per-client provider connections; credentials are write-only.
 - name: health
   description: Liveness and readiness probes (no auth).
+- name: imports
+  description: 'Company import: CSV template, upload, batches.'
 - name: meta
   description: API metadata.
 - name: provider import

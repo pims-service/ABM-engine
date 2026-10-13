@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from rest_framework.schemas.generators import EndpointEnumerator
 from rest_framework.test import APIClient
@@ -37,6 +38,7 @@ from apps.core.permissions import ClientScopedMixin
 from apps.core.roles import Level, role_allows
 from apps.core.seed_sample import SeededWorld, load_seeded_world
 from apps.imports.models import ImportBatch
+from apps.imports.services import create_batch
 from apps.integrations import services as services_integrations
 from apps.integrations.models import IntegrationConnection
 from tests.factories import make_campaign, make_client, make_company, make_user
@@ -58,6 +60,7 @@ PUBLIC_ENDPOINTS = {
     "/api/v1/auth/refresh/": "authentication",
     "/api/v1/auth/logout/": "authentication",
     "/api/v1/auth/me/": "the caller's own profile",
+    "/api/v1/imports/csv-template/": "static CSV template, no client data (login required)",
 }
 
 HTTP = tuple[str, str]  # (METHOD, path template)
@@ -109,6 +112,9 @@ class Ctx:
     b_archived_campaign: Campaign
     b_archived_client: Client
     extra_campaign: Campaign
+    a_batch: ImportBatch
+    b_batch: ImportBatch
+    extra_batch: ImportBatch
     a_company: Company
     a_archived_company: Company
     b_company: Company
@@ -121,9 +127,6 @@ class Ctx:
     b_archived_connection: IntegrationConnection
     extra_connection: IntegrationConnection
     outsider: User = field(default=None)  # type: ignore[assignment]
-    a_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
-    b_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
-    extra_batch: ImportBatch = field(default=None)  # type: ignore[assignment]
 
     def api(self, user: User | None) -> APIClient:
         client = APIClient()
@@ -178,9 +181,6 @@ def build_ctx(world: SeededWorld) -> Ctx:
     b_conn_archived = make_connection(b, name="B archived connection")
     services_integrations.archive_connection(b_conn_archived)
     return Ctx(
-        a_batch=ImportBatch.objects.create(campaign=world.campaigns["skylight"], source="provider"),
-        b_batch=ImportBatch.objects.create(campaign=world.campaigns["meridian"], source="provider"),
-        extra_batch=ImportBatch.objects.create(campaign=extra_campaign, source="provider"),
         world=world,
         extra=extra,
         users=users,
@@ -193,6 +193,9 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
         extra_campaign=extra_campaign,
+        a_batch=create_batch(world.campaigns["skylight"], "provider", total_count=1),
+        b_batch=create_batch(world.campaigns["meridian"], "provider", total_count=1),
+        extra_batch=create_batch(extra_campaign, "provider", total_count=1),
         a_company=companies["a"],
         a_archived_company=companies["a_archived"],
         b_company=companies["b"],
@@ -333,6 +336,21 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"provider": "fake", "companies": [{"name": unique("Probe")}]},
         ),
         Scenario("GET /api/v1/provider-imports/{pk}/", "item", Level.READ, "batch"),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_id}/csv-import/preview/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: csv_upload(),
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_id}/csv-import/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: csv_upload(),
+        ),
+        Scenario("POST /api/v1/imports/{batch_id}/cancel/", "item", Level.EDIT, "batch"),
         Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
         Scenario(
             "POST /api/v1/campaigns/{campaign_pk}/companies/",
@@ -404,12 +422,20 @@ def _scenarios() -> dict[str, Scenario]:
     return {s.key: s for s in items}
 
 
+def csv_upload() -> dict[str, Any]:
+    """A multipart body: ``send`` switches to multipart when a value is a file."""
+    content = b"company_name,website\nProbe Co,probe.example.com\n"
+    return {"file": SimpleUploadedFile("probe.csv", content, content_type="text/csv")}
+
+
 SCENARIOS = _scenarios()
 SCENARIO_IDS = list(SCENARIOS)
 
 
 def fill(path: str, **values: str) -> str:
     out = path.replace("{version}", "1")
+    if "pk" in values:  # routes whose id is named after the object
+        out = out.replace("{campaign_id}", values["pk"]).replace("{batch_id}", values["pk"])
     for name, value in values.items():
         out = out.replace("{" + name + "}", value)
     return out
@@ -464,7 +490,10 @@ def request_for(
 
 def send(api: APIClient, method: str, url: str, body: Any) -> Any:
     verb = getattr(api, method.lower())
-    return verb(url, body, format="json") if body is not None else verb(url)
+    if body is None:
+        return verb(url)
+    uploading = any(hasattr(value, "read") for value in body.values())
+    return verb(url, body, format="multipart" if uploading else "json")
 
 
 def normalized(response: Any) -> Any:
@@ -616,11 +645,11 @@ def test_a_third_clients_object_is_not_found_either(ctx, key) -> None:
     target: Any = {
         "client": ctx.extra,
         "campaign": ctx.extra_campaign,
-        "connection": ctx.extra_connection,
         "batch": ctx.extra_batch,
+        "connection": ctx.extra_connection,
         "company": ctx.extra_archived_company if s.archived else ctx.extra_company,
     }[s.target]
-    if s.archived and s.target != "company":
+    if s.archived and s.target not in {"company", "batch"}:
         archive: Any = {
             "client": services.archive_client,
             "campaign": services.archive_campaign,
