@@ -31,6 +31,7 @@ from apps.imports.api.batch_serializers import (
     capped_raw_data,
 )
 from apps.imports.models import ImportBatch, ImportBatchStatus, ImportRow
+from apps.imports.services import process_row
 from tests.factories import make_campaign, make_client, make_company, make_user
 from tests.factories_imports import make_import_batch, make_import_row
 
@@ -133,9 +134,13 @@ def history_url(campaign: Campaign | str, query: str = "") -> str:
     return f"/api/v1/campaigns/{pk}/imports/{'?' + query if query else ''}"
 
 
+def chunks_of(response: Any) -> Iterator[bytes]:
+    return iter(response.streaming_content)
+
+
 def report_text(response: Any) -> str:
     assert response.status_code == 200, response.content
-    return b"".join(response.streaming_content).decode("utf-8")
+    return b"".join(chunks_of(response)).decode("utf-8")
 
 
 def report_table(response: Any) -> list[list[str]]:
@@ -179,7 +184,7 @@ def test_detail_has_status_counters_progress_job_and_summary(
     assert body["processed_count"] == 7
     assert body["progress_percent"] == 100
     assert body["job"] == str(batch.job_id)
-    assert body["job_status"] == batch.job.status
+    assert body["job_status"] == batch.job.status  # type: ignore[union-attr]
     assert body["finished_at"] is not None
     assert body["summary"]["outcomes"] == {
         "created": 3,
@@ -198,7 +203,7 @@ def test_detail_has_status_counters_progress_job_and_summary(
 def test_counters_always_match_the_row_outcomes(api: APIClient, mixed: str) -> None:
     body = api.get(detail_url(mixed)).json()
     by_outcome: dict[str, int] = {}
-    for row in ImportRow.objects.filter(batch_id=mixed):
+    for row in ImportRow.objects.filter(batch_id=uuid.UUID(mixed)):
         by_outcome[row.outcome] = by_outcome.get(row.outcome, 0) + 1
     outcomes = body["summary"]["outcomes"]
     assert {k: v for k, v in outcomes.items() if v} == by_outcome
@@ -220,7 +225,7 @@ def test_the_detail_shows_the_status_transitions_while_the_import_runs(
 ) -> None:
     """Sync mode: poll the status url from inside the worker, before each row is processed."""
     seen: list[tuple[str, int, int]] = []
-    original = csv_import.process_row
+    original = process_row
 
     def spy(batch: ImportBatch, *args: Any, **kwargs: Any) -> Any:
         body = api.get(detail_url(batch.pk)).json()
@@ -541,7 +546,7 @@ def test_rows_are_visible_while_the_batch_is_still_running(
     api: APIClient, campaign: Campaign, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seen: list[int] = []
-    original = csv_import.process_row
+    original = process_row
 
     def spy(batch: ImportBatch, *args: Any, **kwargs: Any) -> Any:
         seen.append(api.get(rows_url(batch.pk)).json()["count"])
@@ -592,7 +597,7 @@ def test_the_report_download_headers(api: APIClient, mixed: str) -> None:
     assert response["Content-Disposition"] == f'attachment; filename="import-{mixed}-errors.csv"'
     assert "no-store" in response["Cache-Control"]
     assert response["X-Content-Type-Options"] == "nosniff"
-    assert next(iter(response.streaming_content)).startswith(b"\xef\xbb\xbf")
+    assert next(iter(chunks_of(response))).startswith(b"\xef\xbb\xbf")
 
 
 def test_the_report_lists_the_failed_rows_as_entered(api: APIClient, mixed: str) -> None:
@@ -662,7 +667,7 @@ def test_the_report_is_utf8_with_bom_and_keeps_arabic(api: APIClient, campaign: 
         error_message="الموقع غير صالح",
         raw_data={"name": "شركة المثال", "website": "bad site", "country": "SA"},
     )
-    raw = b"".join(api.get(report_url(batch.pk)).streaming_content)
+    raw = b"".join(chunks_of(api.get(report_url(batch.pk))))
     assert raw.startswith(b"\xef\xbb\xbf")
     row = list(csv.reader(io.StringIO(raw.decode("utf-8-sig"))))[1]
     assert row[1] == "شركة المثال"
@@ -772,7 +777,7 @@ def test_a_large_report_streams_in_chunks_with_constant_queries(
     chunks = 0
     lines = 0
     with CaptureQueriesContext(connection) as queries:
-        for chunk in response.streaming_content:
+        for chunk in chunks_of(response):
             chunks += 1
             lines += chunk.count(b"\r\n")
     assert lines == count + 1

@@ -1085,7 +1085,7 @@ and answers 202; the worker then imports the rows in the background. Code: `csv_
 | `GET /api/v1/imports/csv-template/` | any signed-in user | download the template (`?examples=true` adds 3 placeholder rows) |
 | `POST /api/v1/campaigns/{campaign_id}/csv-import/preview/` | EDIT | multipart `file` (+ optional `mapping`): validate, show headers, suggested mapping, first 10 rows, totals, warnings, SHA-256. Stores nothing |
 | `POST /api/v1/campaigns/{campaign_id}/csv-import/` | EDIT | same body: store, create the batch and job, queue the task, **202** |
-| `POST /api/v1/imports/{batch_id}/cancel/` | EDIT | stop a `pending`/`processing` batch (reading a batch and its error report is #63) |
+| `POST /api/v1/imports/{batch_id}/cancel/` | EDIT | stop a `pending`/`processing` batch |
 
 - **Request**: `multipart/form-data`, field `file` (any content type and extension: the bytes
   decide, see "CSV import format") and optional `mapping`, a JSON string `{"<file column>":
@@ -1097,7 +1097,7 @@ and answers 202; the worker then imports the rows in the background. Code: `csv_
   validation errors the import would record; `active_import` is the id of a pending/processing batch of
   this same file (an import would be refused with 409), else `null`.
 - **Import 202**: `{batch: <ImportBatch>, job_id, status_url}` and a `Location` header. Poll
-  `status_url` (`/api/v1/imports/{batch_id}/`, served by #63) until `status` is `completed`,
+  `status_url` (`/api/v1/imports/{batch_id}/`, see "Import batch status") until `status` is `completed`,
   `partial` (some rows failed), `failed` or `cancelled`. The batch has `total_count`, one counter
   per outcome, `processed_count` and `progress_percent`. `batch.job` is the `core.Job` of the run.
 - **Rejections** use the standard error envelope with the csvparse code as `error.code` and every
@@ -1155,6 +1155,38 @@ and answers 202; the worker then imports the rows in the background. Code: `csv_
   runs the whole import inline. To test the queued state replace `csv_import.async_task` with a
   stub and call `process_csv_import(str(job.pk), batch_id=str(batch.pk))` like the worker does
   (see `tests/test_csv_import.py`). Tests write uploads to a temp directory.
+
+### Import batch status, rows and error report (issue #63)
+
+Read-only, client-scoped (READ level: any member of the batch's client; another client's batch or
+campaign is 404). Code: `api/batches.py`, `api/batch_serializers.py`, `error_report.py`.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/v1/imports/{batch_id}/` | the `status_url`: status, counters, `progress_percent`, `job` + `job_status`, `error_summary`, `campaign_name`, and `summary` |
+| `GET /api/v1/campaigns/{campaign_id}/imports/` | history, newest first. Filters `source`, `status`, `created_by`, `created_from`/`created_to` (dates, inclusive), `ordering`; paginated |
+| `GET /api/v1/imports/{batch_id}/rows/` | row results, paginated (`page_size` up to 100). Filters `outcome`, `has_error`, `error_code`, `match_strength`, `search` (normalized name or domain), `ordering=row_number\|-row_number` |
+| `GET /api/v1/imports/{batch_id}/errors.csv` | the error report download (`?include=duplicates`) |
+
+- **Summary** (in the detail, so no separate route): `summary: {outcomes: {created, duplicate,
+  restored, skipped, failed}, error_codes: [{code, count}] (top 10), weak_duplicates}`. The
+  outcome counts are the batch counters, which the worker keeps equal to the row outcomes.
+- **Row**: `id, row_number, outcome, match_strength, matched_on, name, website, domain, profile_url,
+  country, error_code, error_message, company {id, name, domain}, candidate {id, name, domain},
+  raw_data`. Failed rows are often not normalized, so `name`/`domain` (and `search`) are blank for
+  them; `raw_data` is the stored, already scrubbed value, shortened to 30 keys and 300 characters
+  per value (`_truncated: true` when cut).
+- **Error report** (decision): rows with outcome `failed` or `skipped`; `?include=duplicates`
+  adds `duplicate` and `restored`. A created row flagged as a weak duplicate is never listed.
+  Columns `row_number, name, website, profile_url, country` (as entered: `raw_data`, or the file
+  column found through `column_mapping`), `outcome, error_code, error_message`. UTF-8 with BOM,
+  `text/csv; charset=utf-8`, `attachment; filename="import-<batch id>-errors.csv"`, streamed from a
+  database cursor in chunks of 500 rows, every cell through `safe_cell`. The company column names
+  are ones the importer maps by itself and the other columns are ignored, so the fixed file
+  uploads again as it is. It is available while the batch runs (the report so far).
+- Errors use the standard envelope; bad filter values are 400 `validation_error`.
+- Tests: `tests/test_import_batch_api.py` (roles, 404s, filters, report content, injection,
+  streaming, query counts) and the isolation scenarios.
 
 ### Provider import contract (`apps/imports/providers`, issue #66, [ADR 0011](../docs/adr/0011-company-search-provider-contract.md))
 

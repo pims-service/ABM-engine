@@ -96,10 +96,10 @@ class ImportBatchViewSet(ClientScopedViewSet):
             .order_by("-count", "error_code")[:TOP_ERROR_CODES]
         )
         weak = rows.filter(outcome=ImportRowOutcome.CREATED, match_strength="weak").count()
-        batch.summary = batch_summary(  # type: ignore[attr-defined]
+        batch.summary = batch_summary(
             batch, [{"code": c["error_code"], "count": c["count"]} for c in codes], weak
         )
-        batch.job_status = batch.job.status if batch.job else None  # type: ignore[attr-defined]
+        batch.job_status = batch.job.status if batch.job else None
         return Response(ImportBatchDetailSerializer(batch).data)
 
     # ---------------------------------------------------------------- rows
@@ -233,7 +233,7 @@ class CampaignImportBatchViewSet(ClientScopedViewSet):
     )
     def list(self, request: Request, campaign_id: str | None = None) -> Response:
         try:
-            campaign = Campaign.objects.for_user(request.user).get(pk=campaign_id)
+            campaign = Campaign.objects.for_user(request.user).get(pk=self.kwargs["campaign_id"])
         except Campaign.DoesNotExist as exc:
             raise Http404 from exc
         query = ImportBatchListQuerySerializer(data=request.query_params)

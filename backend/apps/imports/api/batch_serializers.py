@@ -102,8 +102,8 @@ class ImportBatchDetailSerializer(ImportBatchSerializer):
     campaign_name = serializers.CharField(read_only=True, source="campaign.name")
 
     class Meta(ImportBatchSerializer.Meta):
-        fields = (*ImportBatchSerializer.Meta.fields, "campaign_name", "job_status", "summary")
-        read_only_fields = fields
+        fields = (*ImportBatchSerializer.Meta.fields, "campaign_name", "job_status", "summary")  # type: ignore[assignment]
+        read_only_fields = fields  # type: ignore[assignment]
 
 
 # ------------------------------------------------------------------ history list
@@ -113,7 +113,7 @@ class ImportBatchListQuerySerializer(serializers.Serializer[dict[str, Any]]):
     """Query parameters of the campaign's import history (validated by the view; documents them
     for OpenAPI). Newest first unless `ordering` says otherwise."""
 
-    source = serializers.ChoiceField(
+    source = serializers.ChoiceField(  # type: ignore[assignment]
         choices=ImportSource.choices, required=False, help_text="`csv`, `manual` or `provider`."
     )
     status = serializers.ChoiceField(
