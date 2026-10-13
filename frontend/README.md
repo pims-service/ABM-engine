@@ -292,6 +292,41 @@ Behaviour worth knowing:
 - **Cross-origin note**: the browser calls the API directly. If the API is on another origin it must allow the `Authorization` header and expose `X-Profile-Version-Created` (`Access-Control-Expose-Headers`); otherwise the form falls back to comparing `profile_version` before and after.
 - **New primitives** in `src/components/ui/`: `Field`, `Textarea`, `SelectField`, `ChoiceGroup` (radios/checkboxes), `TagInput` (Enter or comma adds, Backspace removes, text is kept on blur), `MultiSelect` (searchable ARIA combobox), `OrderedList` (Move up/down buttons with focus following the item and a live-region announcement; native HTML5 drag as an extra). `TextField` accepts an `id` and `markRequired`.
 
+## Integration settings (`/settings/integrations`, issue #77)
+
+The sidebar's **Integrations** link opens the selected client's provider connections (code in
+`src/features/integrations/`). With no client selected the page asks to pick one in the header.
+
+| Piece                                      | What                                                                                                                                                                                                                  |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IntegrationsPage.tsx`                     | Connections grouped under the nine categories (llm, company_data, ..., automation): status badge (active/disabled/error), last test result and time, credentials stored or not with the masked hint, "Show archived". |
+| `ConnectionFormDialog.tsx`                 | "Add connection" (category, provider key validated as a slug with `fake` suggested, name, non-secret settings as validated JSON, write-only credential rows) and "Edit" (name and settings only).                     |
+| `CredentialsDialog.tsx`                    | "Replace credentials" (fields start empty; the existing credential names are pre-listed, never values) and "Clear credentials" (confirmation, sends `credentials: null`).                                             |
+| `useConnectionActions.tsx`                 | Add/edit/credentials dialogs, confirmations for enable/disable/archive/restore, and the **Test connection** action (running, ok/failed/"No test available" and 429 states).                                           |
+| `api.ts`, `validation.ts`, `categories.ts` | Typed client helpers; client-side checks mirroring the API; categories and per-provider hints (the seam for generating forms from adapter metadata once the API exposes it).                                          |
+
+Security rules the code follows (tests enforce them):
+
+- **Credentials are write-only.** The API never returns them, so no field is ever pre-filled and nothing can be revealed.
+  Inputs are `type="password"` with `autocomplete="new-password"` (and password-manager opt-outs).
+- **State is cleared after submit.** Secret values are blanked as soon as the request has gone out (success or failure);
+  after a failure the form says they were cleared. They are never put in a URL, `localStorage` or `sessionStorage`,
+  and never logged.
+- **Provider messages are untrusted.** Test results and `last_test_message` render as plain text nodes only.
+- **Roles.** Reading needs manager, writing and testing need admin (docs/permissions.md). As elsewhere, the API does not
+  tell the UI the role, so the page starts optimistic and learns from 403s: a 403 on the list shows "No access to
+  integrations" (and the sidebar link goes); a 403 on a write turns the page read-only (add/edit/test hidden).
+- **Test connection** (`POST .../{id}/test/`, admin, 5 per minute per connection) shows the result inline; a provider
+  without a registered tester answers "No test available for this provider yet." and is never shown as passing.
+- **Known gap.** Forms are generic (settings JSON plus credential name/secret rows) because there is no adapter metadata
+  endpoint yet (issue #74); `PROVIDER_HINTS` in `categories.ts` is where provider-specific fields plug in. There is no
+  "default provider per category" control: the API resolves the oldest active connection (see backend README).
+
+Tests: `*.test.tsx` next to the code (secrets never rendered back, state cleared, test states, role gating) and
+`e2e/integrations.spec.ts` against `e2e/mock-integrations.mjs` (its own in-memory layer, separate from `mock-data.mjs`;
+controls `POST /__integrations/reset`, `POST /__integrations/role {admin|manager|viewer}`, `GET /__integrations/state`,
+`GET /__integrations/log`; the `fake` provider fails when `config.simulate` is `auth_failed`, `rate_limited` or `error`).
+
 ## Tooling and testing
 
 | Command                | What it does                                                                                 |
