@@ -20,6 +20,7 @@ decided, what else we considered and what it costs us. See
 | [0011](0011-company-search-provider-contract.md) | Company search provider contract | Accepted |
 | [0012](0012-first-provider-selection.md) | First provider selection (needs the owner's commercial decision) | Proposed |
 | [0013](0013-integration-framework.md) | Integration framework: one adapter model for every category | Accepted |
+| [0014](0014-resilience-and-provider-jobs.md) | Resilience layer and provider jobs on Postgres only | Accepted |
 
 ## Adding a new ADR
 

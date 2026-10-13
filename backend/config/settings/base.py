@@ -102,6 +102,9 @@ CACHES = {
     "q_stats": {
         "BACKEND": "django.core.cache.backends.db.DatabaseCache",
         "LOCATION": Q_STATS_CACHE_TABLE,
+        # Also holds provider rate limit and circuit breaker state (apps/integrations/resilience,
+        # ADR 0014): keep a few thousand keys before the database cache starts culling.
+        "OPTIONS": {"MAX_ENTRIES": 10_000},
     },
 }
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -267,3 +270,8 @@ CORS_PREFLIGHT_MAX_AGE = env.int("CORS_PREFLIGHT_MAX_AGE", default=600)  # secon
 INTEGRATION_ENCRYPTION_KEYS = [
     key.strip() for key in env.list("INTEGRATION_ENCRYPTION_KEYS", default=[]) if key.strip()
 ]
+
+# Resilience layer for provider calls (issue #78, ADR 0014): retries, timeouts, rate limits and
+# circuit breaker. Override single keys here; defaults and keys are in
+# apps/integrations/resilience/config.py. No environment variables.
+INTEGRATION_RESILIENCE: dict[str, object] = {}
