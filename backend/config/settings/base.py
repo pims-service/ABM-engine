@@ -156,6 +156,9 @@ REST_FRAMEWORK = {
         # Login attempts (see apps/accounts/throttles.py): per client IP and per email.
         "login": env("API_THROTTLE_LOGIN", default="20/min"),
         "login_email": env("API_THROTTLE_LOGIN_EMAIL", default="5/min"),
+        # Provider search and import, per user (apps/imports/api; #69 makes these configurable).
+        "provider_search": "300/hour",
+        "provider_import": "60/hour",
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -165,6 +168,15 @@ REST_FRAMEWORK = {
 # endpoints /api/v1/schema/ and /api/v1/docs/ only answer while API_DOCS_ENABLED (dev: on,
 # everywhere else: off unless the env var says otherwise).
 API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
+
+# Provider import (apps/imports/provider_import.py). Not environment variables: plain settings.
+# The most companies one provider import may select, and the selection size up to which the
+# import runs inside the request (larger ones run in a background job).
+PROVIDER_IMPORT_MAX_SELECTION = 100
+PROVIDER_IMPORT_INLINE_MAX = 25
+# Register the fake provider (apps/imports/providers/dev.py). Off by default; dev and test
+# settings switch it on. Never enable it in production.
+PROVIDER_FAKE_ENABLED = env.bool("PROVIDER_FAKE_ENABLED", default=False)
 SPECTACULAR_SETTINGS = {
     "TITLE": "ABM Engine API",
     "DESCRIPTION": (
@@ -196,6 +208,10 @@ SPECTACULAR_SETTINGS = {
         {"name": "health", "description": "Liveness and readiness probes (no auth)."},
         {"name": "imports", "description": "Company import: CSV template, upload, batches."},
         {"name": "meta", "description": "API metadata."},
+        {
+            "name": "provider import",
+            "description": "Company data providers: search preview and import into a campaign.",
+        },
     ],
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayOperationId": True},
 }

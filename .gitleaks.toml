@@ -17,6 +17,8 @@ regexes = [
   # Deliberately fake value used by the admin audit-log redaction test
   # (backend/tests/test_admin.py): the test proves this string is masked on display.
   '''^sk-live-abc123$''',
+  # Earlier fake values of the provider import leak tests (still in the branch history).
+  '''^sk-live-(0123456789abcdef|abcdef0123456789)$''',
   # Fake credentials of the integration tests (tests/factories_integrations.py and the
   # tenant-isolation probe): the tests prove these never reach a response, log or audit entry.
   '''^(UNITTESTONLY|SECONDTESTONLY|ISOLATIONPROBE)SECRET[A-Za-z0-9]+$''',

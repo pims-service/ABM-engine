@@ -193,9 +193,9 @@ def build_ctx(world: SeededWorld) -> Ctx:
         b_archived_campaign=b_arch,
         b_archived_client=b_arch_client,
         extra_campaign=extra_campaign,
-        a_batch=create_batch(world.campaigns["skylight"], "manual", total_count=1),
-        b_batch=create_batch(world.campaigns["meridian"], "manual", total_count=1),
-        extra_batch=create_batch(extra_campaign, "manual", total_count=1),
+        a_batch=create_batch(world.campaigns["skylight"], "provider", total_count=1),
+        b_batch=create_batch(world.campaigns["meridian"], "provider", total_count=1),
+        extra_batch=create_batch(extra_campaign, "provider", total_count=1),
         a_company=companies["a"],
         a_archived_company=companies["a_archived"],
         b_company=companies["b"],
@@ -319,6 +319,23 @@ def _scenarios() -> dict[str, Scenario]:
             "GET /api/v1/campaigns/{pk}/profile-versions/{version}/", "item", Level.READ, "campaign"
         ),
         Scenario("GET /api/v1/campaigns/{pk}/rules-summary/", "item", Level.READ, "campaign"),
+        # Provider import (issue #67)
+        Scenario("GET /api/v1/providers/", "list", Level.READ),
+        Scenario(
+            "POST /api/v1/campaigns/{pk}/provider-search/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: {"provider": "fake"},
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{pk}/provider-import/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: {"provider": "fake", "companies": [{"name": unique("Probe")}]},
+        ),
+        Scenario("GET /api/v1/provider-imports/{pk}/", "item", Level.READ, "batch"),
         Scenario(
             "POST /api/v1/campaigns/{campaign_id}/csv-import/preview/",
             "item",
@@ -440,10 +457,10 @@ def fill(path: str, **values: str) -> str:
 def own_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.a_archived_client if s.archived else ctx.a_client).pk)
-    if s.target == "company":
-        return str((ctx.a_archived_company if s.archived else ctx.a_company).pk)
     if s.target == "batch":
         return str(ctx.a_batch.pk)
+    if s.target == "company":
+        return str((ctx.a_archived_company if s.archived else ctx.a_company).pk)
     if s.target == "connection":
         return str((ctx.a_archived_connection if s.archived else ctx.a_connection).pk)
     return str((ctx.a_archived_campaign if s.archived else ctx.a_campaign).pk)
@@ -452,10 +469,10 @@ def own_target(ctx: Ctx, s: Scenario) -> str:
 def foreign_target(ctx: Ctx, s: Scenario) -> str:
     if s.target == "client":
         return str((ctx.b_archived_client if s.archived else ctx.b_client).pk)
-    if s.target == "company":
-        return str((ctx.b_archived_company if s.archived else ctx.b_company).pk)
     if s.target == "batch":
         return str(ctx.b_batch.pk)
+    if s.target == "company":
+        return str((ctx.b_archived_company if s.archived else ctx.b_company).pk)
     if s.target == "connection":
         return str((ctx.b_archived_connection if s.archived else ctx.b_connection).pk)
     return str((ctx.b_archived_campaign if s.archived else ctx.b_campaign).pk)
