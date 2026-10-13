@@ -578,7 +578,11 @@ def test_a_credential_in_the_submitted_data_never_reaches_the_rows_endpoint(
     make_import_row(
         batch=batch,
         row_number=1,
-        raw_data={"name": "Acme", "api_key": "YOUR_API_KEY", "password": "YOUR_PASSWORD"},
+        raw_data={
+            "name": "Acme",
+            "api_key": "YOUR_API_KEY",  # pragma: allowlist secret
+            "password": "YOUR_PASSWORD",  # pragma: allowlist secret
+        },
     )
     body = api.get(rows_url(batch.pk)).json()["results"][0]["raw_data"]
     assert body["api_key"] == "[REDACTED]"
