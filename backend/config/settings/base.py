@@ -177,6 +177,8 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "CompanyStatusEnum": "apps.companies.models.CompanyStatus",
         "JobStatusEnum": "apps.core.models.JobStatus",
+        "ImportBatchStatusEnum": "apps.imports.models.ImportBatchStatus",
+        "ImportRowOutcomeEnum": "apps.imports.models.ImportRowOutcome",
     },
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
