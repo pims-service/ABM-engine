@@ -40,6 +40,7 @@ class KeyedCRM(FakeCRMAdapter):
     key = "fake_crm"
 
 
+KEY = "YOUR_KEY"  # pragma: allowlist secret
 POLICY = CachePolicy(allow_cache=True, allow_store_raw=True, default_ttl_seconds=3600)
 
 
@@ -191,10 +192,8 @@ def test_writes_are_never_cached() -> None:
     try:
         from apps.integrations.framework.operations import CRMContact
 
-        c = make_connection(
-            category="crm", provider="fake_crm", credentials={"api_key": "YOUR_KEY"}
-        )
-        adapter = KeyedCRM(credentials={"api_key": "YOUR_KEY"})
+        c = make_connection(category="crm", provider="fake_crm", credentials={"api_key": KEY})
+        adapter = KeyedCRM(credentials={"api_key": KEY})
         contact = CRMContact(external_key="k1", name="A", email="a@example.com")
         cached_execute(c, adapter, adapter.push_contact, contact)
         assert CachedResponse.objects.count() == 0
@@ -210,7 +209,7 @@ class RawAdapter(KeyedFake):
         payloads.attach_raw_payload(
             {
                 "name": "Acme",
-                "api_key": "YOUR_API_KEY",
+                "api_key": "YOUR_API_KEY",  # pragma: allowlist secret
                 "note": "Authorization: Bearer YOUR_TOKEN1234",
             }  # pragma: allowlist secret
         )
