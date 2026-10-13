@@ -92,6 +92,8 @@ Search and import are throttled per user (`provider_search`, `provider_import` r
 | `POST /campaigns/{campaign_id}/csv-import/preview/` (`preview`) | EDIT | no | no | yes | yes | yes | 404 |
 | `POST /campaigns/{campaign_id}/csv-import/` (`create`) | EDIT | no | no | yes | yes | yes | 404 |
 | `POST /imports/{batch_id}/cancel/` (`cancel`) | EDIT | no | no | yes | yes | yes | 404 |
+| `GET /imports/{batch_id}/` (`retrieve`), `GET /imports/{batch_id}/rows/` (`rows`), `GET /imports/{batch_id}/errors.csv` (`errors_csv`) | READ | yes | yes | yes | yes | yes | 404 |
+| `GET /campaigns/{campaign_id}/imports/` (`list`, import history) | READ | yes | yes | yes | yes | yes | 404 |
 | `GET /imports/csv-template/` | signed in | yes | yes | yes | yes | yes | yes (a static file, no client data; listed in `PUBLIC_ENDPOINTS` of the isolation test) |
 
 Importing adds companies to a campaign, so it needs the same level as creating a company.

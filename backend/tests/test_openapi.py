@@ -143,6 +143,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "campaigns_csv_import_create": ("POST", "/api/v1/campaigns/{campaign_id}/csv-import/"),
         "imports_csv_template": ("GET", "/api/v1/imports/csv-template/"),
         "imports_cancel": ("POST", "/api/v1/imports/{batch_id}/cancel/"),
+        "imports_retrieve": ("GET", "/api/v1/imports/{batch_id}/"),
+        "imports_rows_list": ("GET", "/api/v1/imports/{batch_id}/rows/"),
+        "imports_errors_csv": ("GET", "/api/v1/imports/{batch_id}/errors.csv"),
+        "campaign_imports_list": ("GET", "/api/v1/campaigns/{campaign_id}/imports/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
