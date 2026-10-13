@@ -351,6 +351,10 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: csv_upload(),
         ),
         Scenario("POST /api/v1/imports/{batch_id}/cancel/", "item", Level.EDIT, "batch"),
+        Scenario("GET /api/v1/imports/{batch_id}/", "item", Level.READ, "batch"),
+        Scenario("GET /api/v1/imports/{batch_id}/rows/", "item", Level.READ, "batch"),
+        Scenario("GET /api/v1/imports/{batch_id}/errors.csv", "item", Level.READ, "batch"),
+        Scenario("GET /api/v1/campaigns/{campaign_id}/imports/", "item", Level.READ, "campaign"),
         Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
         Scenario(
             "POST /api/v1/campaigns/{campaign_pk}/companies/",
