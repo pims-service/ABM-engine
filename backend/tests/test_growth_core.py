@@ -293,8 +293,13 @@ def test_default_tolerance_edges(months, offset, target):
         assert result.method == GrowthMethod.OBSERVED
         assert result.from_point.date == edge
         beyond = day + dt.timedelta(days=sign * (offset + 1))
+        # Interpolation is switched off (max gap 0) so this isolates the tolerance rule: for the
+        # 3 month window the points around the target can be close enough to interpolate.
         miss = compute_change(
-            series(HeadcountPoint(beyond, 100, "p"), pt("2026-10-13", 110)), months, as_of=AS_OF
+            series(HeadcountPoint(beyond, 100, "p"), pt("2026-10-13", 110)),
+            months,
+            as_of=AS_OF,
+            config=GrowthConfig(max_gap_days=0),
         )
         assert miss.status == GrowthStatus.INSUFFICIENT_DATA
         assert miss.percent is None
@@ -418,7 +423,9 @@ def test_interpolates_across_exactly_the_max_gap():
     baseline = Decimal(200) + Decimal(40) * Decimal(59) / Decimal(120)
     assert result.from_point.interpolated
     assert result.from_point.date == d("2026-04-13")
-    assert result.from_point.count == baseline
+    # The calculator works at a higher precision than the default context: compare to 6 places.
+    places = Decimal("0.000001")
+    assert result.from_point.count.quantize(places) == baseline.quantize(places)
     assert result.from_point.source == "provider:a, provider:b"
     assert [p.count for p in result.from_point.basis] == [200, 240]
     assert result.percent == quantize_percent((Decimal(250) - baseline) / baseline * 100)
