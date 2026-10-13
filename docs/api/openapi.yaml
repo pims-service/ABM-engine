@@ -2972,6 +2972,133 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/connections/{id}/budget/:
+    get:
+      operationId: integration_connections_budget_retrieve
+      description: 'The limits (none when unset: `configured` is false) and this month''s
+        usage against them (UTC calendar month), with the `state` the next call would
+        get. Needs the `EDIT` level: manager and admin. Others get 403; clients you
+        are not a member of give 404.'
+      summary: Get the monthly budget of a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    put:
+      operationId: integration_connections_budget_update
+      description: 'Replaces the whole budget: omitted limits mean no cap. At `warn_at_percent`
+        of a limit calls are logged as warnings; at the limit and with `hard_stop`
+        they are refused (`budget_exceeded`) before any provider request. Audited.
+        An archived connection answers 400. Needs the `MANAGE` level: admin. Others
+        get 403; clients you are not a member of give 404.'
+      summary: Set the monthly budget of a connection
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this integration connection.
+        required: true
+      tags:
+      - integrations
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetWriteRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Budget'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/integrations/connections/{id}/disable/:
     post:
       operationId: integration_connections_disable
@@ -3161,6 +3288,304 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/usage/:
+    get:
+      operationId: integration_usage_list
+      description: 'One row per provider call, cache hit or budget refusal (never
+        a request or response body). Newest first. Needs the `EDIT` level: manager
+        and admin. Others get 403; clients you are not a member of give 404 (their
+        rows are simply absent).'
+      summary: List provider calls
+      parameters:
+      - in: query
+        name: cache_hit
+        schema:
+          type: boolean
+      - in: query
+        name: campaign
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: category
+        schema:
+          enum:
+          - llm
+          - company_data
+          - people_data
+          - email_enrichment
+          - email_verification
+          - crm
+          - outreach
+          - storage
+          - automation
+          type: string
+          minLength: 1
+        description: |-
+          * `llm` - LLM
+          * `company_data` - Company data
+          * `people_data` - People data
+          * `email_enrichment` - Email enrichment
+          * `email_verification` - Email verification
+          * `crm` - CRM
+          * `outreach` - Outreach
+          * `storage` - Storage
+          * `automation` - Automation
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only this client's calls.
+      - in: query
+        name: connection
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: First day (UTC, inclusive) of the range.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC, inclusive) of the range.
+      - in: query
+        name: job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: operation
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: provider
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: status
+        schema:
+          enum:
+          - ok
+          - error
+          type: string
+          minLength: 1
+        description: |-
+          * `ok` - OK
+          * `error` - Error
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProviderCallList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/integrations/usage/summary/:
+    get:
+      operationId: integration_usage_summary
+      description: 'Totals of the logged rows grouped by `group_by` (default `provider`).
+        Money is never added across currencies: each row has its `currency`. Credits
+        are the provider''s own unit. Needs the `EDIT` level: manager and admin. Others
+        get 403; clients you are not a member of give 404 (their rows are simply absent).'
+      summary: Summarize provider usage
+      parameters:
+      - in: query
+        name: cache_hit
+        schema:
+          type: boolean
+      - in: query
+        name: campaign
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: category
+        schema:
+          enum:
+          - llm
+          - company_data
+          - people_data
+          - email_enrichment
+          - email_verification
+          - crm
+          - outreach
+          - storage
+          - automation
+          type: string
+          minLength: 1
+        description: |-
+          * `llm` - LLM
+          * `company_data` - Company data
+          * `people_data` - People data
+          * `email_enrichment` - Email enrichment
+          * `email_verification` - Email verification
+          * `crm` - CRM
+          * `outreach` - Outreach
+          * `storage` - Storage
+          * `automation` - Automation
+      - in: query
+        name: client
+        schema:
+          type: string
+          format: uuid
+        description: Only this client's calls.
+      - in: query
+        name: connection
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: date_from
+        schema:
+          type: string
+          format: date
+        description: First day (UTC, inclusive) of the range.
+      - in: query
+        name: date_to
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC, inclusive) of the range.
+      - in: query
+        name: group_by
+        schema:
+          type: string
+          minLength: 1
+        description: 'Comma-separated grouping, any of: provider, category, operation,
+          connection, campaign, job, status, model, day, month. Default: provider.
+          Money is always split by `currency` as well.'
+      - in: query
+        name: job
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: operation
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: provider
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+      - in: query
+        name: status
+        schema:
+          enum:
+          - ok
+          - error
+          type: string
+          minLength: 1
+        description: |-
+          * `ok` - OK
+          * `error` - Error
+      tags:
+      - integrations
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /healthz:
     get:
       operationId: health_live
@@ -3308,6 +3733,103 @@ components:
       - links
       - name
       - version
+    Budget:
+      type: object
+      description: The budget of a connection and where this month stands against
+        it.
+      properties:
+        connection:
+          type: string
+          format: uuid
+        configured:
+          type: boolean
+          description: False when no budget row exists yet.
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          nullable: true
+        cost_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          nullable: true
+        currency:
+          type: string
+        warn_at_percent:
+          type: integer
+        hard_stop:
+          type: boolean
+        period_start:
+          type: string
+          format: date-time
+          description: Start of the UTC calendar month.
+        period_end:
+          type: string
+          format: date-time
+        used_credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,20}(?:\.\d{0,4})?$
+        used_cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,18}(?:\.\d{0,6})?$
+        state:
+          allOf:
+          - $ref: '#/components/schemas/StateEnum'
+          description: |-
+            What the next call would get: `deny` only with `hard_stop` at a reached limit.
+
+            * `allow` - allow
+            * `warn` - warn
+            * `deny` - deny
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - configured
+      - connection
+      - cost_limit
+      - credit_limit
+      - currency
+      - hard_stop
+      - period_end
+      - period_start
+      - state
+      - updated_at
+      - used_cost
+      - used_credits
+      - warn_at_percent
+    BudgetWriteRequest:
+      type: object
+      description: 'Body of the budget PUT: a full replacement (omitted limits mean
+        no cap).'
+      properties:
+        credit_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          nullable: true
+        cost_limit:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          nullable: true
+        currency:
+          type: string
+          description: Required with `cost_limit`.
+          maxLength: 3
+        warn_at_percent:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 80
+        hard_stop:
+          type: boolean
+          default: true
+          description: 'False: reaching a limit only warns, calls are never blocked.'
     BusinessModelEnum:
       enum:
       - b2b
@@ -4766,6 +5288,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Connection'
+    PaginatedProviderCallList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderCall'
     PatchedCampaignWriteRequest:
       type: object
       description: |-
@@ -4852,6 +5397,129 @@ components:
       - id
       - name
       - website
+    ProviderCall:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        connection:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        triggered_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/CategoryEnum'
+          readOnly: true
+        provider:
+          type: string
+          readOnly: true
+        operation:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ProviderCallStatusEnum'
+          readOnly: true
+        error_code:
+          type: string
+          readOnly: true
+        latency_ms:
+          type: integer
+          readOnly: true
+          nullable: true
+        credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,14}(?:\.\d{0,4})?$
+          readOnly: true
+          nullable: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,6})?$
+          readOnly: true
+          nullable: true
+        currency:
+          type: string
+          readOnly: true
+        input_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+        output_tokens:
+          type: integer
+          readOnly: true
+          nullable: true
+        model:
+          type: string
+          readOnly: true
+        cache_hit:
+          type: boolean
+          readOnly: true
+        request_id:
+          type: string
+          readOnly: true
+        has_raw_payload:
+          type: boolean
+          readOnly: true
+          description: True while a raw payload is still retained for this call. The
+            payload itself is never served by the API.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cache_hit
+      - campaign
+      - category
+      - client
+      - connection
+      - cost
+      - created_at
+      - credits
+      - currency
+      - error_code
+      - has_raw_payload
+      - id
+      - input_tokens
+      - job
+      - latency_ms
+      - model
+      - operation
+      - output_tokens
+      - provider
+      - request_id
+      - status
+      - triggered_by
+    ProviderCallStatusEnum:
+      enum:
+      - ok
+      - error
+      type: string
+      description: |-
+        * `ok` - OK
+        * `error` - Error
     Readiness:
       type: object
       description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
@@ -5064,6 +5732,16 @@ components:
       - company_size
       - countries
       - industries
+    StateEnum:
+      enum:
+      - allow
+      - warn
+      - deny
+      type: string
+      description: |-
+        * `allow` - allow
+        * `warn` - warn
+        * `deny` - deny
     TokenObtainPairRequest:
       type: object
       properties:
@@ -5091,6 +5769,93 @@ components:
             is then delivered as an httpOnly cookie).
       required:
       - access
+    UsageRow:
+      type: object
+      description: 'One group of the summary: the requested group keys (only those)
+        plus the numbers.'
+      properties:
+        provider:
+          type: string
+        category:
+          type: string
+        operation:
+          type: string
+        connection_id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+          nullable: true
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+        model:
+          type: string
+        day:
+          type: string
+          format: date
+        month:
+          type: string
+          format: date
+        currency:
+          type: string
+          description: ISO 4217 code of `cost`; empty when no cost.
+        calls:
+          type: integer
+        error_calls:
+          type: integer
+        cache_hits:
+          type: integer
+        credits:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,20}(?:\.\d{0,4})?$
+          nullable: true
+        cost:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,18}(?:\.\d{0,6})?$
+          nullable: true
+        input_tokens:
+          type: integer
+          nullable: true
+        output_tokens:
+          type: integer
+          nullable: true
+      required:
+      - cache_hits
+      - calls
+      - cost
+      - credits
+      - currency
+      - error_calls
+      - input_tokens
+      - output_tokens
+    UsageSummary:
+      type: object
+      properties:
+        group_by:
+          type: array
+          items:
+            type: string
+        totals:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+          description: Grand totals, one row per currency.
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageRow'
+          description: At most 1000 groups.
+      required:
+      - group_by
+      - results
+      - totals
     User:
       type: object
       properties:
