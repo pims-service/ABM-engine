@@ -422,6 +422,12 @@ def _scenarios() -> dict[str, Scenario]:
             "connection",
             archived=True,
         ),
+        Scenario(
+            "POST /api/v1/integrations/connections/{pk}/test/",
+            "item",
+            Level.MANAGE,
+            "connection",
+        ),
         # Usage and budgets (issue #79): reading needs EDIT, setting a budget needs MANAGE.
         Scenario("GET /api/v1/integrations/usage/", "list", Level.EDIT),
         Scenario("GET /api/v1/integrations/usage/summary/", "list", Level.EDIT),

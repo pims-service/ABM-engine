@@ -756,7 +756,7 @@ export interface paths {
     get: operations["integration_connections_retrieve"];
     /**
      * Change a connection's name, config and/or credentials
-     * @description `credentials`, when sent, replace all stored credentials; when omitted they are kept. Category and provider cannot change. An archived connection is read-only (400). Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     * @description `credentials`, when sent, replace all stored credentials; when omitted they are kept, and `credentials: null` removes them. Category and provider cannot change. An archived connection is read-only (400). Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
      */
     put: operations["integration_connections_update"];
     post?: never;
@@ -868,6 +868,26 @@ export interface paths {
      * @description 400 on `name` if another active connection now uses the name. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
      */
     post: operations["integration_connections_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/integrations/connections/{id}/test/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Test a connection
+     * @description Runs the provider's lightweight check with the stored credentials and stores the outcome (`last_tested_at`, `last_test_status`, `last_test_message`). A failure moves an active connection to `error`; a success clears `error`. When no test exists for the provider yet the result is `unconfigured`: nothing is stored and nothing is claimed to work. Credentials are never returned and the message is scrubbed. Limited to 5 tests per minute per connection (429 `throttled`, with `Retry-After`). Archived connections cannot be tested (400). Admin only: it uses credentials, so it is a `MANAGE` action. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["integration_connections_test"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1430,6 +1450,22 @@ export interface components {
      * @enum {string}
      */
     ConnectionStatusEnum: "active" | "disabled" | "error";
+    /** @description The outcome of ``POST .../{id}/test/``. The message is untrusted text: show it as text. */
+    ConnectionTestResult: {
+      /**
+       * @description `ok` or `failed` (stored on the connection), or `unconfigured` when no test exists for this provider yet (nothing is stored and nothing succeeded).
+       *
+       *     * `ok` - ok
+       *     * `failed` - failed
+       *     * `unconfigured` - unconfigured
+       */
+      readonly result: components["schemas"]["ResultEnum"];
+      /** @description True only for `ok`. */
+      readonly ok: boolean;
+      /** @description Short, scrubbed reason. Never contains credentials. Render as plain text. */
+      readonly message: string;
+      readonly connection: components["schemas"]["Connection"];
+    };
     /** @description Category and provider are fixed: create a new connection to switch provider. */
     ConnectionUpdateRequest: {
       name?: string;
@@ -1440,7 +1476,7 @@ export interface components {
       /** @description Write-only secrets by name, e.g. `{"api_key": "..."}`. On update they replace all stored credentials. Never returned. */
       credentials?: {
         [key: string]: string;
-      };
+      } | null;
     };
     /** @description 202 response: the work is queued (or, in tests, already done). */
     CsvImportAccepted: {
@@ -2046,7 +2082,7 @@ export interface components {
       /** @description Write-only secrets by name, e.g. `{"api_key": "..."}`. On update they replace all stored credentials. Never returned. */
       credentials?: {
         [key: string]: string;
-      };
+      } | null;
     };
     /** @description A short pointer to another company of the same campaign. */
     PossibleDuplicateOf: {
@@ -2268,6 +2304,13 @@ export interface components {
       /** Format: uuid */
       readonly data_source: string;
     };
+    /**
+     * @description * `ok` - ok
+     *     * `failed` - failed
+     *     * `unconfigured` - unconfigured
+     * @enum {string}
+     */
+    ResultEnum: "ok" | "failed" | "unconfigured";
     /**
      * @description The profile in the structure the AI prompts consume. Versioned by `schema_version`.
      *
@@ -6520,6 +6563,82 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Connection"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  integration_connections_test: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this integration connection. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionTestResult"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

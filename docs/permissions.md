@@ -127,6 +127,11 @@ never see that a connection exists beyond a 403 on a known id.
 | `create` | MANAGE in the target client | 403 | 403 | 403 | yes | yes | 404 |
 | `update`, `partial_update` (name, config, credentials) | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
 | `enable`, `disable`, `archive`, `restore` | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+| `test` (`POST .../{id}/test/`, issue #77) | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+
+`test` is admin-only because it decrypts and uses the stored credentials. It is limited to 5 per
+minute per connection (429 `throttled`); the limit is checked after the role, so a user who may not
+test can never use up an admin's budget.
 
 Credentials are write-only: no response contains them, only `has_credentials` and a masked hint
 (`****abcd` for secrets of 16 characters or more, `****` otherwise). There is no DELETE (405):

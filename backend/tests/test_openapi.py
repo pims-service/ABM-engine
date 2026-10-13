@@ -122,6 +122,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/integrations/connections/{id}/restore/",
         ),
+        "integration_connections_test": (
+            "POST",
+            "/api/v1/integrations/connections/{id}/test/",
+        ),
         "integration_connections_budget_retrieve": (
             "GET",
             "/api/v1/integrations/connections/{id}/budget/",

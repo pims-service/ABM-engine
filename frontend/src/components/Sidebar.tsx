@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useAccess } from "@/features/access/AccessProvider";
+import { useOptionalSelection } from "@/features/selection/SelectionProvider";
 import { cn } from "@/lib/cn";
 
 const NAV_ITEMS = [
@@ -10,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/clients", label: "Clients" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/companies", label: "Companies" },
+  { href: "/settings/integrations", label: "Integrations" },
 ] as const;
 
 export const SIDEBAR_ID = "app-sidebar";
@@ -28,6 +31,15 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const access = useAccess();
+  const selectedClient = useOptionalSelection()?.clientId ?? undefined;
+  // Integrations need the manager level in the selected client. The link stays while the role is
+  // unknown (the page explains a refusal) and goes once the API has said 403.
+  const items = NAV_ITEMS.filter(
+    (item) =>
+      item.href !== "/settings/integrations" ||
+      access.can("edit", selectedClient),
+  );
 
   return (
     <aside
@@ -44,7 +56,7 @@ export function Sidebar({
         ABM Engine
       </div>
       <nav aria-label="Main" className="flex flex-col gap-1 p-3">
-        {NAV_ITEMS.map(({ href, label }) => {
+        {items.map(({ href, label }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
