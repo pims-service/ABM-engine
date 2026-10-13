@@ -1554,3 +1554,23 @@ password, token and API-key values (`apps/core/logging.py`).
 JSON renderer only (browsable API added in dev), JSON parser, page-number pagination
 (`page_size` query param, max 100), JWT bearer authentication (no session auth), anon/user throttling enabled with configurable rates
 (disabled in test), `IsAuthenticated` as the default permission (the API root is public).
+
+## Headcount growth
+
+`apps/research/growth/` turns headcount observations into the 3, 6 and 12 month growth figures
+of Brief section 5. It is pure Python: `Decimal` arithmetic, no database, no network. Unknown
+growth stays `None` (never guessed), every result carries its two end points and their sources,
+and `explain()` writes the plain-language reason (no scores).
+
+```python
+from apps.research.growth import growth_from_points, explain, to_research_fields
+
+# points: a list of HeadcountPoint(date, count, source, department)
+report = growth_from_points(points, as_of=today)
+sentences = explain(report)
+# headcount_change_3m/6m/12m plus the department_growth JSON
+fields = to_research_fields(report)
+```
+
+Formulas, tolerances, the `low_base` flag, the commercial-team roll-up, the stored JSON shape and
+the (parameterised) growth trigger hint are in [docs/research/headcount-growth.md](../docs/research/headcount-growth.md).
