@@ -170,6 +170,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_id}/imports/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List a campaign's import history
+     * @description Every import batch of the campaign (manual entries, CSV uploads, provider imports), newest first, paginated. Filters: `source`, `status`, `created_by`, `created_from` / `created_to` (dates, inclusive); `ordering` (`created_at`, `finished_at`, `total_count`, `failed_count`, each optionally with `-`). Each entry is the batch with its counters and progress; open `GET /imports/{id}/` for the summary. Needs the `READ` level: any member of the campaign's client. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaign_imports_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/companies/": {
     parameters: {
       query?: never;
@@ -558,6 +578,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/imports/{batch_id}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an import batch (status)
+     * @description The batch the `status_url` of an import answers: `status` (`pending`, `processing`, `completed`, `partial`, `failed`, `cancelled`), the counters (`total_count`, one per outcome, `processed_count`), `progress_percent` (processed over total), the background `job` and its `job_status`, `error_summary` (why a whole batch failed or was cancelled) and a `summary` with the outcome counts, the most frequent error codes and the number of weak duplicates, so a result screen needs no paging through rows. Poll it while `status` is `pending` or `processing`. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_retrieve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/imports/{batch_id}/cancel/": {
     parameters: {
       query?: never;
@@ -572,6 +612,46 @@ export interface paths {
      * @description A `pending` or `processing` batch becomes `cancelled`: the worker stops at its next chunk (at most one chunk of rows, 100 by default, is still processed), the stored upload is deleted, and rows already imported stay (their companies exist). Idempotent: cancelling a cancelled batch returns it again (200). A batch that ended any other way is 409 `batch_already_finished`. Needs the `EDIT` level: manager and admin. Others get 403; batches of clients you are not a member of give 404.
      */
     post: operations["imports_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/{batch_id}/errors.csv": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download the error report of an import batch
+     * @description A CSV of the rows that failed or were skipped (`?include=duplicates` adds the rows that matched an existing company), in file order, streamed. Columns: `row_number, name, website, profile_url, country` (as entered), `outcome, error_code, error_message`. UTF-8 with BOM; every cell is protected against spreadsheet formulas (a value starting with `=`, `+`, `-` or `@` gets a leading `'`). Fix the rows and upload the file again: the importer reads the company columns and ignores the others. Available while the batch runs (the report so far) and after. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_errors_csv"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/{batch_id}/rows/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the row results of an import batch
+     * @description One entry per submitted row, paginated (`page`, `page_size` up to 100), in file order (`ordering=-row_number` reverses). Filters: `outcome`, `has_error`, `error_code`, `match_strength`, `search` (name or domain). Each row has the entered and normalized fields, the `error_code`/`error_message`, the duplicate match (`match_strength`, `matched_on`, `candidate`), the `company` it created or matched, and `raw_data` as stored (scrubbed and shortened). Rows appear while the batch is still processing. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_rows_list"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1071,6 +1151,14 @@ export interface components {
       readonly updated_at: string;
       readonly latest_research: components["schemas"]["ResearchSummary"] | null;
     };
+    /** @description Just enough of a company to show and link it. */
+    CompanyRef: {
+      /** Format: uuid */
+      readonly id: string;
+      readonly name: string;
+      /** @description Normalized, or null. */
+      readonly domain: string | null;
+    };
     /**
      * @description * `pending` - Pending
      *     * `analyzing` - Analyzing
@@ -1254,6 +1342,11 @@ export interface components {
       /** @description Value of the `X-Request-ID` response header. */
       request_id: string | null;
     };
+    ErrorCodeCount: {
+      /** @description Stable error code of the row (`error_code`). */
+      code: string;
+      count: number;
+    };
     /** @description Every error response of the API has this body. */
     ErrorEnvelope: {
       error: components["schemas"]["ErrorBody"];
@@ -1312,6 +1405,54 @@ export interface components {
       readonly finished_at: string | null;
     };
     /**
+     * @description ``GET /imports/{batch_id}/``: the batch with its result summary. The view attaches
+     *     ``summary`` (a dict) to the instance before serializing.
+     */
+    ImportBatchDetail: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly campaign: string;
+      /** Format: uuid */
+      readonly client: string;
+      /** @description How the batch was fed: `manual`, `csv` or `provider`. */
+      readonly source: string;
+      readonly status: components["schemas"]["ImportBatchStatusEnum"];
+      readonly original_filename: string;
+      /** @description Bytes. */
+      readonly file_size: number | null;
+      /** @description Hex digest, CSV only. */
+      readonly file_sha256: string;
+      /** @description `{file column: company field}`. */
+      readonly column_mapping: {
+        [key: string]: string;
+      };
+      readonly total_count: number;
+      readonly created_count: number;
+      readonly duplicate_count: number;
+      readonly restored_count: number;
+      readonly skipped_count: number;
+      readonly failed_count: number;
+      readonly processed_count: number;
+      /** @description 0 to 100: processed rows over total rows. */
+      readonly progress_percent: number;
+      readonly error_summary: string;
+      /** Format: uuid */
+      readonly job: string | null;
+      /** Format: uuid */
+      readonly created_by: string | null;
+      /** Format: date-time */
+      readonly created_at: string;
+      /** Format: date-time */
+      readonly started_at: string | null;
+      /** Format: date-time */
+      readonly finished_at: string | null;
+      readonly campaign_name: string;
+      /** @description Status of the background job (`queued`, `running`, `succeeded`, ...), or null when the batch has no job (manual entry). */
+      readonly job_status: string | null;
+      readonly summary: components["schemas"]["ImportBatchSummary"];
+    };
+    /**
      * @description * `pending` - Pending
      *     * `processing` - Processing
      *     * `completed` - Completed
@@ -1327,17 +1468,45 @@ export interface components {
       | "partial"
       | "failed"
       | "cancelled";
-    /** @description What the one-row manual import batch recorded for this entry. */
-    ImportRowSummary: {
+    /** @description The result of a batch without paging its rows. */
+    ImportBatchSummary: {
+      /** @description Rows per outcome (the batch counters: they always equal the row outcomes). */
+      outcomes: components["schemas"]["OutcomeCounts"];
+      /** @description Failed and skipped rows grouped by `error_code`, most frequent first (at most 10). */
+      error_codes: components["schemas"]["ErrorCodeCount"][];
+      /** @description Rows that were created but flagged as a possible duplicate (weak match). */
+      weak_duplicates: number;
+    };
+    /** @description One row result: what was submitted, what validation made of it and what happened. */
+    ImportRow: {
       /** Format: uuid */
-      id: string;
-      /** @description Always 1 for a manual entry. */
-      row_number: number;
-      outcome: components["schemas"]["ImportRowSummaryOutcomeEnum"];
-      /** @description `strong`, `weak` or blank (no match). */
-      match_strength: string;
-      /** @description `domain`, `profile`, `name` or blank. */
-      matched_on: string;
+      readonly id: string;
+      readonly row_number: number;
+      readonly outcome: components["schemas"]["ImportRowOutcomeEnum"];
+      /**
+       * @description strong: linked to an existing company; weak: created and flagged.
+       *
+       *     * `strong` - Strong
+       *     * `weak` - Weak
+       */
+      readonly match_strength: components["schemas"]["MatchStrengthEnum"];
+      /** @description domain, profile or name_country. */
+      readonly matched_on: string;
+      readonly name: string;
+      readonly website: string;
+      readonly domain: string | null;
+      readonly profile_url: string;
+      readonly country: string;
+      readonly error_code: string;
+      readonly error_message: string;
+      /** @description The created company, or the existing one for a duplicate or restored row. */
+      readonly company: components["schemas"]["CompanyRef"] | null;
+      /** @description The matched company: the existing one (strong) or the possible duplicate (weak). Null when nothing matched. */
+      readonly candidate: components["schemas"]["CompanyRef"] | null;
+      /** @description What was submitted, as stored: scrubbed of credentials, at most 30 keys and 300 characters per value (`_truncated: true` when anything was cut). */
+      readonly raw_data: {
+        [key: string]: unknown;
+      };
     };
     /**
      * @description * `created` - Created
@@ -1347,8 +1516,20 @@ export interface components {
      *     * `failed` - Failed
      * @enum {string}
      */
-    ImportRowSummaryOutcomeEnum:
+    ImportRowOutcomeEnum:
       "created" | "duplicate" | "restored" | "skipped" | "failed";
+    /** @description What the one-row manual import batch recorded for this entry. */
+    ImportRowSummary: {
+      /** Format: uuid */
+      id: string;
+      /** @description Always 1 for a manual entry. */
+      row_number: number;
+      outcome: components["schemas"]["ImportRowOutcomeEnum"];
+      /** @description `strong`, `weak` or blank (no match). */
+      match_strength: string;
+      /** @description `domain`, `profile`, `name` or blank. */
+      matched_on: string;
+    };
     /**
      * @description * `manual` - Manual
      *     * `csv` - CSV import
@@ -1431,8 +1612,21 @@ export interface components {
      * @enum {string}
      */
     ManualEntryResultOutcomeEnum: "created" | "duplicate" | "restored";
+    /**
+     * @description * `strong` - Strong
+     *     * `weak` - Weak
+     * @enum {string}
+     */
+    MatchStrengthEnum: "strong" | "weak";
     /** @enum {unknown} */
     NullEnum: null;
+    OutcomeCounts: {
+      created: number;
+      duplicate: number;
+      restored: number;
+      skipped: number;
+      failed: number;
+    };
     PaginatedCampaignList: {
       /** @example 123 */
       count: number;
@@ -1507,6 +1701,36 @@ export interface components {
        */
       previous?: string | null;
       results: components["schemas"]["Connection"][];
+    };
+    PaginatedImportBatchList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ImportBatch"][];
+    };
+    PaginatedImportRowList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ImportRow"][];
     };
     /**
      * @description Body of create (POST) and edit (PUT/PATCH).
@@ -2268,6 +2492,138 @@ export interface operations {
       };
       /** @description Upload larger than the allowed size (`file_too_large`). */
       413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_imports_list: {
+    parameters: {
+      query?: {
+        /** @description Id of the user who started it. */
+        created_by?: string;
+        /** @description Started on or after this date (`YYYY-MM-DD`, server time zone). */
+        created_from?: string;
+        /** @description Started on or before this date (`YYYY-MM-DD`). */
+        created_to?: string;
+        /**
+         * @description Default `-created_at` (newest first).
+         *
+         *     * `created_at` - created_at
+         *     * `-created_at` - -created_at
+         *     * `finished_at` - finished_at
+         *     * `-finished_at` - -finished_at
+         *     * `total_count` - total_count
+         *     * `-total_count` - -total_count
+         *     * `failed_count` - failed_count
+         *     * `-failed_count` - -failed_count
+         */
+        ordering?:
+          | "created_at"
+          | "-created_at"
+          | "finished_at"
+          | "-finished_at"
+          | "total_count"
+          | "-total_count"
+          | "failed_count"
+          | "-failed_count";
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /**
+         * @description `csv`, `manual` or `provider`.
+         *
+         *     * `manual` - Manual
+         *     * `csv` - CSV import
+         *     * `provider` - Provider
+         */
+        source?: "manual" | "csv" | "provider";
+        /**
+         * @description Only batches in this status.
+         *
+         *     * `pending` - Pending
+         *     * `processing` - Processing
+         *     * `completed` - Completed
+         *     * `partial` - Partially completed
+         *     * `failed` - Failed
+         *     * `cancelled` - Cancelled
+         */
+        status?:
+          | "pending"
+          | "processing"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "cancelled";
+      };
+      header?: never;
+      path: {
+        campaign_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedImportBatchList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -4271,6 +4627,72 @@ export interface operations {
       };
     };
   };
+  imports_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportBatchDetail"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   imports_cancel: {
     parameters: {
       query?: never;
@@ -4319,6 +4741,203 @@ export interface operations {
       };
       /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_errors_csv: {
+    parameters: {
+      query?: {
+        /**
+         * @description `duplicates`: also list the rows that matched an existing company (`duplicate` and `restored`). Default: failed and skipped rows only.
+         *
+         *     * `duplicates` - duplicates
+         */
+        include?: "duplicates";
+      };
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_rows_list: {
+    parameters: {
+      query?: {
+        /** @description Only rows with exactly this error code. */
+        error_code?: string;
+        /**
+         * @description `true`: only rows with an `error_code` (failed and skipped); `false`: the rest.
+         *
+         *     * `true` - true
+         *     * `false` - false
+         */
+        has_error?: "true" | "false";
+        /**
+         * @description `strong` (linked to an existing company) or `weak` (possible duplicate).
+         *
+         *     * `strong` - Strong
+         *     * `weak` - Weak
+         */
+        match_strength?: "strong" | "weak";
+        /**
+         * @description Default `row_number` (file order).
+         *
+         *     * `row_number` - row_number
+         *     * `-row_number` - -row_number
+         */
+        ordering?: "row_number" | "-row_number";
+        /**
+         * @description Only rows with this outcome.
+         *
+         *     * `created` - Created
+         *     * `duplicate` - Duplicate
+         *     * `restored` - Restored
+         *     * `skipped` - Skipped
+         *     * `failed` - Failed
+         */
+        outcome?: "created" | "duplicate" | "restored" | "skipped" | "failed";
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description Case-insensitive text in the name or domain. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedImportRowList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };

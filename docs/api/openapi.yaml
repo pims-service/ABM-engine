@@ -557,6 +557,163 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_id}/imports/:
+    get:
+      operationId: campaign_imports_list
+      description: 'Every import batch of the campaign (manual entries, CSV uploads,
+        provider imports), newest first, paginated. Filters: `source`, `status`, `created_by`,
+        `created_from` / `created_to` (dates, inclusive); `ordering` (`created_at`,
+        `finished_at`, `total_count`, `failed_count`, each optionally with `-`). Each
+        entry is the batch with its counters and progress; open `GET /imports/{id}/`
+        for the summary. Needs the `READ` level: any member of the campaign''s client.
+        Others get 403; campaigns of clients you are not a member of give 404.'
+      summary: List a campaign's import history
+      parameters:
+      - in: path
+        name: campaign_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: created_by
+        schema:
+          type: string
+          format: uuid
+        description: Id of the user who started it.
+      - in: query
+        name: created_from
+        schema:
+          type: string
+          format: date
+        description: Started on or after this date (`YYYY-MM-DD`, server time zone).
+      - in: query
+        name: created_to
+        schema:
+          type: string
+          format: date
+        description: Started on or before this date (`YYYY-MM-DD`).
+      - in: query
+        name: ordering
+        schema:
+          enum:
+          - created_at
+          - -created_at
+          - finished_at
+          - -finished_at
+          - total_count
+          - -total_count
+          - failed_count
+          - -failed_count
+          type: string
+          minLength: 1
+        description: |-
+          Default `-created_at` (newest first).
+
+          * `created_at` - created_at
+          * `-created_at` - -created_at
+          * `finished_at` - finished_at
+          * `-finished_at` - -finished_at
+          * `total_count` - total_count
+          * `-total_count` - -total_count
+          * `failed_count` - failed_count
+          * `-failed_count` - -failed_count
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: source
+        schema:
+          enum:
+          - manual
+          - csv
+          - provider
+          type: string
+          minLength: 1
+        description: |-
+          `csv`, `manual` or `provider`.
+
+          * `manual` - Manual
+          * `csv` - CSV import
+          * `provider` - Provider
+      - in: query
+        name: status
+        schema:
+          enum:
+          - pending
+          - processing
+          - completed
+          - partial
+          - failed
+          - cancelled
+          type: string
+          minLength: 1
+        description: |-
+          Only batches in this status.
+
+          * `pending` - Pending
+          * `processing` - Processing
+          * `completed` - Completed
+          * `partial` - Partially completed
+          * `failed` - Failed
+          * `cancelled` - Cancelled
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedImportBatchList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/companies/:
     get:
       operationId: campaign_companies_list
@@ -2399,6 +2556,68 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/imports/{batch_id}/:
+    get:
+      operationId: imports_retrieve
+      description: 'The batch the `status_url` of an import answers: `status` (`pending`,
+        `processing`, `completed`, `partial`, `failed`, `cancelled`), the counters
+        (`total_count`, one per outcome, `processed_count`), `progress_percent` (processed
+        over total), the background `job` and its `job_status`, `error_summary` (why
+        a whole batch failed or was cancelled) and a `summary` with the outcome counts,
+        the most frequent error codes and the number of weak duplicates, so a result
+        screen needs no paging through rows. Poll it while `status` is `pending` or
+        `processing`. Needs the `READ` level: any member of the batch''s client. Others
+        get 403; batches of clients you are not a member of give 404.'
+      summary: Get an import batch (status)
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportBatchDetail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/imports/{batch_id}/cancel/:
     post:
       operationId: imports_cancel
@@ -2453,6 +2672,238 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Conflict with the current state (e.g. `client_has_active_jobs`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/imports/{batch_id}/errors.csv:
+    get:
+      operationId: imports_errors_csv
+      description: 'A CSV of the rows that failed or were skipped (`?include=duplicates`
+        adds the rows that matched an existing company), in file order, streamed.
+        Columns: `row_number, name, website, profile_url, country` (as entered), `outcome,
+        error_code, error_message`. UTF-8 with BOM; every cell is protected against
+        spreadsheet formulas (a value starting with `=`, `+`, `-` or `@` gets a leading
+        `''`). Fix the rows and upload the file again: the importer reads the company
+        columns and ignores the others. Available while the batch runs (the report
+        so far) and after. Needs the `READ` level: any member of the batch''s client.
+        Others get 403; batches of clients you are not a member of give 404.'
+      summary: Download the error report of an import batch
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: include
+        schema:
+          enum:
+          - duplicates
+          type: string
+          minLength: 1
+        description: |-
+          `duplicates`: also list the rows that matched an existing company (`duplicate` and `restored`). Default: failed and skipped rows only.
+
+          * `duplicates` - duplicates
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/imports/{batch_id}/rows/:
+    get:
+      operationId: imports_rows_list
+      description: 'One entry per submitted row, paginated (`page`, `page_size` up
+        to 100), in file order (`ordering=-row_number` reverses). Filters: `outcome`,
+        `has_error`, `error_code`, `match_strength`, `search` (name or domain). Each
+        row has the entered and normalized fields, the `error_code`/`error_message`,
+        the duplicate match (`match_strength`, `matched_on`, `candidate`), the `company`
+        it created or matched, and `raw_data` as stored (scrubbed and shortened).
+        Rows appear while the batch is still processing. Needs the `READ` level: any
+        member of the batch''s client. Others get 403; batches of clients you are
+        not a member of give 404.'
+      summary: List the row results of an import batch
+      parameters:
+      - in: path
+        name: batch_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: error_code
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 64
+        description: Only rows with exactly this error code.
+      - in: query
+        name: has_error
+        schema:
+          enum:
+          - 'true'
+          - 'false'
+          type: string
+          minLength: 1
+        description: |-
+          `true`: only rows with an `error_code` (failed and skipped); `false`: the rest.
+
+          * `true` - true
+          * `false` - false
+      - in: query
+        name: match_strength
+        schema:
+          enum:
+          - strong
+          - weak
+          type: string
+          minLength: 1
+        description: |-
+          `strong` (linked to an existing company) or `weak` (possible duplicate).
+
+          * `strong` - Strong
+          * `weak` - Weak
+      - in: query
+        name: ordering
+        schema:
+          enum:
+          - row_number
+          - -row_number
+          type: string
+          minLength: 1
+        description: |-
+          Default `row_number` (file order).
+
+          * `row_number` - row_number
+          * `-row_number` - -row_number
+      - in: query
+        name: outcome
+        schema:
+          enum:
+          - created
+          - duplicate
+          - restored
+          - skipped
+          - failed
+          type: string
+          minLength: 1
+        description: |-
+          Only rows with this outcome.
+
+          * `created` - Created
+          * `duplicate` - Duplicate
+          * `restored` - Restored
+          * `skipped` - Skipped
+          * `failed` - Failed
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description: Case-insensitive text in the name or domain.
+      tags:
+      - imports
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedImportRowList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
         '429':
           content:
             application/json:
@@ -3923,6 +4374,26 @@ components:
       - status
       - updated_at
       - website
+    CompanyRef:
+      type: object
+      description: Just enough of a company to show and link it.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        domain:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Normalized, or null.
+      required:
+      - domain
+      - id
+      - name
     CompanyStatusEnum:
       enum:
       - pending
@@ -4320,6 +4791,17 @@ components:
       - details
       - message
       - request_id
+    ErrorCodeCount:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Stable error code of the row (`error_code`).
+        count:
+          type: integer
+      required:
+      - code
+      - count
     ErrorEnvelope:
       type: object
       description: Every error response of the API has this body.
@@ -4461,6 +4943,142 @@ components:
       - started_at
       - status
       - total_count
+    ImportBatchDetail:
+      type: object
+      description: |-
+        ``GET /imports/{batch_id}/``: the batch with its result summary. The view attaches
+        ``summary`` (a dict) to the instance before serializing.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        campaign:
+          type: string
+          format: uuid
+          readOnly: true
+        client:
+          type: string
+          format: uuid
+          readOnly: true
+        source:
+          type: string
+          readOnly: true
+          description: 'How the batch was fed: `manual`, `csv` or `provider`.'
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ImportBatchStatusEnum'
+          readOnly: true
+        original_filename:
+          type: string
+          readOnly: true
+        file_size:
+          type: integer
+          readOnly: true
+          nullable: true
+          description: Bytes.
+        file_sha256:
+          type: string
+          readOnly: true
+          description: Hex digest, CSV only.
+        column_mapping:
+          type: object
+          additionalProperties:
+            type: string
+          readOnly: true
+          description: '`{file column: company field}`.'
+        total_count:
+          type: integer
+          readOnly: true
+        created_count:
+          type: integer
+          readOnly: true
+        duplicate_count:
+          type: integer
+          readOnly: true
+        restored_count:
+          type: integer
+          readOnly: true
+        skipped_count:
+          type: integer
+          readOnly: true
+        failed_count:
+          type: integer
+          readOnly: true
+        processed_count:
+          type: integer
+          readOnly: true
+        progress_percent:
+          type: integer
+          readOnly: true
+          description: '0 to 100: processed rows over total rows.'
+        error_summary:
+          type: string
+          readOnly: true
+        job:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        campaign_name:
+          type: string
+          readOnly: true
+        job_status:
+          type: string
+          readOnly: true
+          nullable: true
+          description: Status of the background job (`queued`, `running`, `succeeded`,
+            ...), or null when the batch has no job (manual entry).
+        summary:
+          allOf:
+          - $ref: '#/components/schemas/ImportBatchSummary'
+          readOnly: true
+      required:
+      - campaign
+      - campaign_name
+      - client
+      - column_mapping
+      - created_at
+      - created_by
+      - created_count
+      - duplicate_count
+      - error_summary
+      - failed_count
+      - file_sha256
+      - file_size
+      - finished_at
+      - id
+      - job
+      - job_status
+      - original_filename
+      - processed_count
+      - progress_percent
+      - restored_count
+      - skipped_count
+      - source
+      - started_at
+      - status
+      - summary
+      - total_count
     ImportBatchStatusEnum:
       enum:
       - pending
@@ -4477,31 +5095,118 @@ components:
         * `partial` - Partially completed
         * `failed` - Failed
         * `cancelled` - Cancelled
-    ImportRowSummary:
+    ImportBatchSummary:
       type: object
-      description: What the one-row manual import batch recorded for this entry.
+      description: The result of a batch without paging its rows.
+      properties:
+        outcomes:
+          allOf:
+          - $ref: '#/components/schemas/OutcomeCounts'
+          description: 'Rows per outcome (the batch counters: they always equal the
+            row outcomes).'
+        error_codes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorCodeCount'
+          description: Failed and skipped rows grouped by `error_code`, most frequent
+            first (at most 10).
+        weak_duplicates:
+          type: integer
+          description: Rows that were created but flagged as a possible duplicate
+            (weak match).
+      required:
+      - error_codes
+      - outcomes
+      - weak_duplicates
+    ImportRow:
+      type: object
+      description: 'One row result: what was submitted, what validation made of it
+        and what happened.'
       properties:
         id:
           type: string
           format: uuid
+          readOnly: true
         row_number:
           type: integer
-          description: Always 1 for a manual entry.
+          readOnly: true
         outcome:
-          $ref: '#/components/schemas/ImportRowSummaryOutcomeEnum'
+          allOf:
+          - $ref: '#/components/schemas/ImportRowOutcomeEnum'
+          readOnly: true
         match_strength:
-          type: string
-          description: '`strong`, `weak` or blank (no match).'
+          allOf:
+          - $ref: '#/components/schemas/MatchStrengthEnum'
+          readOnly: true
+          description: |-
+            strong: linked to an existing company; weak: created and flagged.
+
+            * `strong` - Strong
+            * `weak` - Weak
         matched_on:
           type: string
-          description: '`domain`, `profile`, `name` or blank.'
+          readOnly: true
+          description: domain, profile or name_country.
+        name:
+          type: string
+          readOnly: true
+        website:
+          type: string
+          readOnly: true
+        domain:
+          type: string
+          readOnly: true
+          nullable: true
+        profile_url:
+          type: string
+          readOnly: true
+        country:
+          type: string
+          readOnly: true
+        error_code:
+          type: string
+          readOnly: true
+        error_message:
+          type: string
+          readOnly: true
+        company:
+          allOf:
+          - $ref: '#/components/schemas/CompanyRef'
+          readOnly: true
+          nullable: true
+          description: The created company, or the existing one for a duplicate or
+            restored row.
+        candidate:
+          allOf:
+          - $ref: '#/components/schemas/CompanyRef'
+          readOnly: true
+          nullable: true
+          description: 'The matched company: the existing one (strong) or the possible
+            duplicate (weak). Null when nothing matched.'
+        raw_data:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+          description: 'What was submitted, as stored: scrubbed of credentials, at
+            most 30 keys and 300 characters per value (`_truncated: true` when anything
+            was cut).'
       required:
+      - candidate
+      - company
+      - country
+      - domain
+      - error_code
+      - error_message
       - id
       - match_strength
       - matched_on
+      - name
       - outcome
+      - profile_url
+      - raw_data
       - row_number
-    ImportRowSummaryOutcomeEnum:
+      - website
+    ImportRowOutcomeEnum:
       enum:
       - created
       - duplicate
@@ -4515,6 +5220,30 @@ components:
         * `restored` - Restored
         * `skipped` - Skipped
         * `failed` - Failed
+    ImportRowSummary:
+      type: object
+      description: What the one-row manual import batch recorded for this entry.
+      properties:
+        id:
+          type: string
+          format: uuid
+        row_number:
+          type: integer
+          description: Always 1 for a manual entry.
+        outcome:
+          $ref: '#/components/schemas/ImportRowOutcomeEnum'
+        match_strength:
+          type: string
+          description: '`strong`, `weak` or blank (no match).'
+        matched_on:
+          type: string
+          description: '`domain`, `profile`, `name` or blank.'
+      required:
+      - id
+      - match_strength
+      - matched_on
+      - outcome
+      - row_number
     InputSourceEnum:
       enum:
       - manual
@@ -4648,9 +5377,36 @@ components:
         * `created` - created
         * `duplicate` - duplicate
         * `restored` - restored
+    MatchStrengthEnum:
+      enum:
+      - strong
+      - weak
+      type: string
+      description: |-
+        * `strong` - Strong
+        * `weak` - Weak
     NullEnum:
       enum:
       - null
+    OutcomeCounts:
+      type: object
+      properties:
+        created:
+          type: integer
+        duplicate:
+          type: integer
+        restored:
+          type: integer
+        skipped:
+          type: integer
+        failed:
+          type: integer
+      required:
+      - created
+      - duplicate
+      - failed
+      - restored
+      - skipped
     PaginatedCampaignList:
       type: object
       required:
@@ -4766,6 +5522,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Connection'
+    PaginatedImportBatchList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportBatch'
+    PaginatedImportRowList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportRow'
     PatchedCampaignWriteRequest:
       type: object
       description: |-
