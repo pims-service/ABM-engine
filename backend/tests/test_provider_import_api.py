@@ -188,7 +188,7 @@ def test_provider_errors_are_mapped_to_safe_envelopes(
 
 
 def test_upstream_text_does_not_leak(manager: APIClient, campaign: Campaign) -> None:
-    secret = "sk-live-abcdef0123456789"  # pragma: allowlist secret
+    secret = "sk-live-abc123"  # pragma: allowlist secret
 
     class Boom(Exception):
         pass

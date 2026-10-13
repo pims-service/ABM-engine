@@ -330,7 +330,7 @@ def test_upstream_text_never_leaks_into_rows_or_logs(caplog: Any) -> None:
     class Leaky(ProviderUnavailable):
         pass
 
-    secret = "sk-live-0123456789abcdef"  # pragma: allowlist secret
+    secret = "sk-live-abc123"  # pragma: allowlist secret
     try:
         raise RuntimeError(f"401 body token={secret}")
     except RuntimeError as exc:
