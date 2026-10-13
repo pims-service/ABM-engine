@@ -94,6 +94,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "clients_partial_update": ("PATCH", "/api/v1/clients/{id}/"),
         "clients_archive": ("POST", "/api/v1/clients/{id}/archive/"),
         "clients_restore": ("POST", "/api/v1/clients/{id}/restore/"),
+        "providers_list": ("GET", "/api/v1/providers/"),
+        "campaigns_provider_search": ("POST", "/api/v1/campaigns/{id}/provider-search/"),
+        "campaigns_provider_import": ("POST", "/api/v1/campaigns/{id}/provider-import/"),
+        "provider_imports_retrieve": ("GET", "/api/v1/provider-imports/{id}/"),
         "integration_connections_list": ("GET", "/api/v1/integrations/connections/"),
         "integration_connections_create": ("POST", "/api/v1/integrations/connections/"),
         "integration_connections_retrieve": ("GET", "/api/v1/integrations/connections/{id}/"),
@@ -135,6 +139,10 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "campaigns_csv_import_create": ("POST", "/api/v1/campaigns/{campaign_id}/csv-import/"),
         "imports_csv_template": ("GET", "/api/v1/imports/csv-template/"),
         "imports_cancel": ("POST", "/api/v1/imports/{batch_id}/cancel/"),
+        "imports_retrieve": ("GET", "/api/v1/imports/{batch_id}/"),
+        "imports_rows_list": ("GET", "/api/v1/imports/{batch_id}/rows/"),
+        "imports_errors_csv": ("GET", "/api/v1/imports/{batch_id}/errors.csv"),
+        "campaign_imports_list": ("GET", "/api/v1/campaigns/{campaign_id}/imports/"),
         "health_live": ("GET", "/healthz"),
         "health_ready": ("GET", "/readyz"),
     }
@@ -142,6 +150,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         expected_tag = (
             "auth"
             if "/auth/" in path
+            else "provider import"
+            if "provider" in path
             else "imports"
             if "/imports/" in path or "/csv-import/" in path
             else "companies"
@@ -166,6 +176,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "health",
         "imports",
         "meta",
+        "provider import",
     }
 
 

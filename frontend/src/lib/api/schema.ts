@@ -170,6 +170,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_id}/imports/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List a campaign's import history
+     * @description Every import batch of the campaign (manual entries, CSV uploads, provider imports), newest first, paginated. Filters: `source`, `status`, `created_by`, `created_from` / `created_to` (dates, inclusive); `ordering` (`created_at`, `finished_at`, `total_count`, `failed_count`, each optionally with `-`). Each entry is the batch with its counters and progress; open `GET /imports/{id}/` for the summary. Needs the `READ` level: any member of the campaign's client. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaign_imports_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/companies/": {
     parameters: {
       query?: never;
@@ -316,6 +336,46 @@ export interface paths {
     get: operations["campaigns_profile_versions_retrieve"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/provider-import/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import selected provider companies
+     * @description Imports the selection into the campaign as one `provider` import batch. Give `companies` (the `items[].company` objects of a preview) or `provider_ids` (found again with `search`, default the campaign's rules). At most `max_import_selection` (see `/providers/`, default 100) per request, else 400. Every company goes through the same validation and duplicate handling as manual and CSV rows: strong duplicates link to the existing company (never edited), weak ones are created and flagged, and a provider id already imported into the campaign is always a `duplicate` row, never a second company. Each created company records the provider, provider id and `retrieved_at` as a data source. Up to `inline_import_max` (25) companies are processed in the request (**201**, batch finished); larger selections run in a background job (**202**, poll `GET /provider-imports/{id}/`). A provider failure while finding ids leaves the batch `partial` or `failed` with the safe provider error code on the affected rows. Throttled per user (scope `provider_import`). Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_provider_import"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{id}/provider-search/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview a provider search
+     * @description Searches the provider with the campaign's rules as default filters (`filters` override them, `query` adds free text) and returns one page of companies annotated with what an import would do: `dedupe.status` is `new`, `duplicate` (strong match with a company already in the campaign), `possible_duplicate` (weak match), `already_imported` (this provider id was imported into the campaign before) or `invalid`. **Nothing is written.** Page with `cursor` = the previous `next_cursor`. Provider failures: 429 `provider_rate_limited` (`details.retry_after`), 503 `provider_unavailable`, 502 `provider_auth` / `provider_quota_exceeded`, 400 `provider_bad_request`; the messages are fixed and never contain upstream text. Throttled per user (scope `provider_search`). Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    post: operations["campaigns_provider_search"];
     delete?: never;
     options?: never;
     head?: never;
@@ -558,6 +618,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/imports/{batch_id}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get an import batch (status)
+     * @description The batch the `status_url` of an import answers: `status` (`pending`, `processing`, `completed`, `partial`, `failed`, `cancelled`), the counters (`total_count`, one per outcome, `processed_count`), `progress_percent` (processed over total), the background `job` and its `job_status`, `error_summary` (why a whole batch failed or was cancelled) and a `summary` with the outcome counts, the most frequent error codes and the number of weak duplicates, so a result screen needs no paging through rows. Poll it while `status` is `pending` or `processing`. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_retrieve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/imports/{batch_id}/cancel/": {
     parameters: {
       query?: never;
@@ -572,6 +652,46 @@ export interface paths {
      * @description A `pending` or `processing` batch becomes `cancelled`: the worker stops at its next chunk (at most one chunk of rows, 100 by default, is still processed), the stored upload is deleted, and rows already imported stay (their companies exist). Idempotent: cancelling a cancelled batch returns it again (200). A batch that ended any other way is 409 `batch_already_finished`. Needs the `EDIT` level: manager and admin. Others get 403; batches of clients you are not a member of give 404.
      */
     post: operations["imports_cancel"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/{batch_id}/errors.csv": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download the error report of an import batch
+     * @description A CSV of the rows that failed or were skipped (`?include=duplicates` adds the rows that matched an existing company), in file order, streamed. Columns: `row_number, name, website, profile_url, country` (as entered), `outcome, error_code, error_message`. UTF-8 with BOM; every cell is protected against spreadsheet formulas (a value starting with `=`, `+`, `-` or `@` gets a leading `'`). Fix the rows and upload the file again: the importer reads the company columns and ignores the others. Available while the batch runs (the report so far) and after. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_errors_csv"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/imports/{batch_id}/rows/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List the row results of an import batch
+     * @description One entry per submitted row, paginated (`page`, `page_size` up to 100), in file order (`ordering=-row_number` reverses). Filters: `outcome`, `has_error`, `error_code`, `match_strength`, `search` (name or domain). Each row has the entered and normalized fields, the `error_code`/`error_message`, the duplicate match (`match_strength`, `matched_on`, `candidate`), the `company` it created or matched, and `raw_data` as stored (scrubbed and shortened). Rows appear while the batch is still processing. Needs the `READ` level: any member of the batch's client. Others get 403; batches of clients you are not a member of give 404.
+     */
+    get: operations["imports_rows_list"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -786,6 +906,46 @@ export interface paths {
      * @description Totals of the logged rows grouped by `group_by` (default `provider`). Money is never added across currencies: each row has its `currency`. Credits are the provider's own unit. Needs the `EDIT` level: manager and admin. Others get 403; clients you are not a member of give 404 (their rows are simply absent).
      */
     get: operations["integration_usage_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/provider-imports/{id}/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get a provider import batch
+     * @description Status, counters and the outcome of every row of a provider import batch (`background` is true while a job processes it: poll until `status` is `completed`, `partial` or `failed`). Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["provider_imports_retrieve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/providers/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List company data providers
+     * @description The providers registered in this deployment, with their capabilities (which filters they apply, page size, terms). No credentials or settings are ever included. The `fake` provider exists in dev and test only. An empty list means no provider is configured. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["providers_list"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1186,6 +1346,14 @@ export interface components {
       readonly updated_at: string;
       readonly latest_research: components["schemas"]["ResearchSummary"] | null;
     };
+    /** @description Just enough of a company to show and link it. */
+    CompanyRef: {
+      /** Format: uuid */
+      readonly id: string;
+      readonly name: string;
+      /** @description Normalized, or null. */
+      readonly domain: string | null;
+    };
     /**
      * @description * `pending` - Pending
      *     * `analyzing` - Analyzing
@@ -1358,6 +1526,30 @@ export interface components {
       /** @description Optional JSON object `{"<file column>": "<field>"}` with fields `name`, `website`, `profile_url`, `country`; `name` is required. Left out, the mapping suggested from the headers is used. */
       mapping?: string;
     };
+    Dedupe: {
+      status: components["schemas"]["DedupeStatusEnum"];
+      /** @description domain, profile, name_country or provider_key. */
+      matched_on: string | null;
+      company: components["schemas"]["MatchedCompany"] | null;
+      /** @description Field errors when status is `invalid`. */
+      field_errors: {
+        [key: string]: string;
+      }[];
+    };
+    /**
+     * @description * `new` - new
+     *     * `duplicate` - duplicate
+     *     * `possible_duplicate` - possible_duplicate
+     *     * `already_imported` - already_imported
+     *     * `invalid` - invalid
+     * @enum {string}
+     */
+    DedupeStatusEnum:
+      | "new"
+      | "duplicate"
+      | "possible_duplicate"
+      | "already_imported"
+      | "invalid";
     /** @description The `error` object of the standard envelope (apps/core/exceptions.py). */
     ErrorBody: {
       /** @description Stable machine-readable code, e.g. `validation_error`. */
@@ -1368,6 +1560,11 @@ export interface components {
       details: unknown;
       /** @description Value of the `X-Request-ID` response header. */
       request_id: string | null;
+    };
+    ErrorCodeCount: {
+      /** @description Stable error code of the row (`error_code`). */
+      code: string;
+      count: number;
     };
     /** @description Every error response of the API has this body. */
     ErrorEnvelope: {
@@ -1427,6 +1624,90 @@ export interface components {
       readonly finished_at: string | null;
     };
     /**
+     * @description ``GET /imports/{batch_id}/``: the batch with its result summary. The view attaches
+     *     ``summary`` (a dict) to the instance before serializing.
+     */
+    ImportBatchDetail: {
+      /** Format: uuid */
+      readonly id: string;
+      /** Format: uuid */
+      readonly campaign: string;
+      /** Format: uuid */
+      readonly client: string;
+      /** @description How the batch was fed: `manual`, `csv` or `provider`. */
+      readonly source: string;
+      readonly status: components["schemas"]["ImportBatchStatusEnum"];
+      readonly original_filename: string;
+      /** @description Bytes. */
+      readonly file_size: number | null;
+      /** @description Hex digest, CSV only. */
+      readonly file_sha256: string;
+      /** @description `{file column: company field}`. */
+      readonly column_mapping: {
+        [key: string]: string;
+      };
+      readonly total_count: number;
+      readonly created_count: number;
+      readonly duplicate_count: number;
+      readonly restored_count: number;
+      readonly skipped_count: number;
+      readonly failed_count: number;
+      readonly processed_count: number;
+      /** @description 0 to 100: processed rows over total rows. */
+      readonly progress_percent: number;
+      readonly error_summary: string;
+      /** Format: uuid */
+      readonly job: string | null;
+      /** Format: uuid */
+      readonly created_by: string | null;
+      /** Format: date-time */
+      readonly created_at: string;
+      /** Format: date-time */
+      readonly started_at: string | null;
+      /** Format: date-time */
+      readonly finished_at: string | null;
+      readonly campaign_name: string;
+      /** @description Status of the background job (`queued`, `running`, `succeeded`, ...), or null when the batch has no job (manual entry). */
+      readonly job_status: string | null;
+      readonly summary: components["schemas"]["ImportBatchSummary"];
+    };
+    /**
+     * @description One row result: what was submitted, what validation made of it and what happened.
+     *
+     *     The OpenAPI component is named ``ImportBatchRow`` because the provider-import API has its
+     *     own, different ``ImportRow`` component.
+     */
+    ImportBatchRow: {
+      /** Format: uuid */
+      readonly id: string;
+      readonly row_number: number;
+      readonly outcome: components["schemas"]["ImportRowOutcomeEnum"];
+      /**
+       * @description strong: linked to an existing company; weak: created and flagged.
+       *
+       *     * `strong` - Strong
+       *     * `weak` - Weak
+       */
+      readonly match_strength: components["schemas"]["MatchStrengthEnum"];
+      /** @description domain, profile or name_country. */
+      readonly matched_on: string;
+      readonly name: string;
+      readonly website: string;
+      readonly domain: string | null;
+      readonly profile_url: string;
+      readonly country: string;
+      readonly error_code: string;
+      readonly error_message: string;
+      /** @description The created company, or the existing one for a duplicate or restored row. */
+      readonly company: components["schemas"]["CompanyRef"] | null;
+      /** @description The matched company: the existing one (strong) or the possible duplicate (weak). Null when nothing matched. */
+      readonly candidate: components["schemas"]["CompanyRef"] | null;
+      /** @description What was submitted, as stored: scrubbed of credentials, at most 30 keys and 300 characters per value (`_truncated: true` when anything was cut). */
+      readonly raw_data: {
+        [key: string]: unknown;
+      };
+    };
+    /**
      * @description * `pending` - Pending
      *     * `processing` - Processing
      *     * `completed` - Completed
@@ -1442,17 +1723,31 @@ export interface components {
       | "partial"
       | "failed"
       | "cancelled";
-    /** @description What the one-row manual import batch recorded for this entry. */
-    ImportRowSummary: {
-      /** Format: uuid */
-      id: string;
-      /** @description Always 1 for a manual entry. */
+    /** @description The result of a batch without paging its rows. */
+    ImportBatchSummary: {
+      /** @description Rows per outcome (the batch counters: they always equal the row outcomes). */
+      outcomes: components["schemas"]["OutcomeCounts"];
+      /** @description Failed and skipped rows grouped by `error_code`, most frequent first (at most 10). */
+      error_codes: components["schemas"]["ErrorCodeCount"][];
+      /** @description Rows that were created but flagged as a possible duplicate (weak match). */
+      weak_duplicates: number;
+    };
+    ImportRow: {
       row_number: number;
-      outcome: components["schemas"]["ImportRowSummaryOutcomeEnum"];
-      /** @description `strong`, `weak` or blank (no match). */
+      name: string;
+      /** @description created, duplicate, restored, skipped or failed. */
+      outcome: string;
+      error_code: string;
+      error_message: string;
+      /** Format: uuid */
+      company_id: string | null;
+      /** @description strong, weak or blank. */
       match_strength: string;
-      /** @description `domain`, `profile`, `name` or blank. */
       matched_on: string;
+      /** @description Created, but flagged as a possible duplicate of `candidate_id`. */
+      possible_duplicate: boolean;
+      /** Format: uuid */
+      candidate_id: string | null;
     };
     /**
      * @description * `created` - Created
@@ -1462,8 +1757,20 @@ export interface components {
      *     * `failed` - Failed
      * @enum {string}
      */
-    ImportRowSummaryOutcomeEnum:
+    ImportRowOutcomeEnum:
       "created" | "duplicate" | "restored" | "skipped" | "failed";
+    /** @description What the one-row manual import batch recorded for this entry. */
+    ImportRowSummary: {
+      /** Format: uuid */
+      id: string;
+      /** @description Always 1 for a manual entry. */
+      row_number: number;
+      outcome: components["schemas"]["ImportRowOutcomeEnum"];
+      /** @description `strong`, `weak` or blank (no match). */
+      match_strength: string;
+      /** @description `domain`, `profile`, `name` or blank. */
+      matched_on: string;
+    };
     /**
      * @description * `manual` - Manual
      *     * `csv` - CSV import
@@ -1546,8 +1853,29 @@ export interface components {
      * @enum {string}
      */
     ManualEntryResultOutcomeEnum: "created" | "duplicate" | "restored";
+    /**
+     * @description * `strong` - Strong
+     *     * `weak` - Weak
+     * @enum {string}
+     */
+    MatchStrengthEnum: "strong" | "weak";
+    MatchedCompany: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      website: string;
+      country: string;
+      archived: boolean;
+    };
     /** @enum {unknown} */
     NullEnum: null;
+    OutcomeCounts: {
+      created: number;
+      duplicate: number;
+      restored: number;
+      skipped: number;
+      failed: number;
+    };
     PaginatedCampaignList: {
       /** @example 123 */
       count: number;
@@ -1623,6 +1951,36 @@ export interface components {
       previous?: string | null;
       results: components["schemas"]["Connection"][];
     };
+    PaginatedImportBatchList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ImportBatch"][];
+    };
+    PaginatedImportBatchRowList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ImportBatchRow"][];
+    };
     PaginatedProviderCallList: {
       /** @example 123 */
       count: number;
@@ -1637,6 +1995,21 @@ export interface components {
        */
       previous?: string | null;
       results: components["schemas"]["ProviderCall"][];
+    };
+    PaginatedProviderCapabilitiesList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["ProviderCapabilities"][];
     };
     /**
      * @description Body of create (POST) and edit (PUT/PATCH).
@@ -1687,6 +2060,12 @@ export interface components {
       /** Format: date-time */
       readonly archived_at: string | null;
     };
+    PreviewItem: {
+      provider_key: string | null;
+      company: components["schemas"]["ProviderCompany"];
+      dedupe: components["schemas"]["Dedupe"];
+      importable: boolean;
+    };
     ProviderCall: {
       /** Format: uuid */
       readonly id: string;
@@ -1727,6 +2106,128 @@ export interface components {
      * @enum {string}
      */
     ProviderCallStatusEnum: "ok" | "error";
+    ProviderCapabilities: {
+      name: string;
+      /** @description licensed_api, public_data or manual. */
+      terms: string;
+      supports_search: boolean;
+      supports_filters: {
+        [key: string]: boolean;
+      };
+      max_page_size: number;
+      requires_credentials: boolean;
+      /** @description Most companies per import. */
+      max_import_selection: number;
+      /** @description Imports up to this size finish inside the request (201); larger run in a background job (202). */
+      inline_import_max: number;
+    };
+    /** @description One provider company: the output of a search and the inline input of an import. */
+    ProviderCompany: {
+      name: string;
+      website?: string | null;
+      domain_hint?: string | null;
+      profile_url?: string | null;
+      country?: string | null;
+      industry?: string | null;
+      employee_count?: number | null;
+      employee_range?: string | null;
+      headquarters?: string | null;
+      description?: string | null;
+      provider_id?: string | null;
+      provider_url?: string | null;
+      /** Format: double */
+      confidence?: number | null;
+      extra?: {
+        [key: string]: unknown;
+      };
+    };
+    /** @description One provider company: the output of a search and the inline input of an import. */
+    ProviderCompanyRequest: {
+      name: string;
+      website?: string | null;
+      domain_hint?: string | null;
+      profile_url?: string | null;
+      country?: string | null;
+      industry?: string | null;
+      employee_count?: number | null;
+      employee_range?: string | null;
+      headquarters?: string | null;
+      description?: string | null;
+      provider_id?: string | null;
+      provider_url?: string | null;
+      /** Format: double */
+      confidence?: number | null;
+      extra?: {
+        [key: string]: unknown;
+      };
+    };
+    ProviderImportBatch: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      campaign: string;
+      provider: string;
+      /** @description pending, processing, completed, partial, failed. */
+      status: string;
+      /** @description Processed by a background job. */
+      background: boolean;
+      /** Format: uuid */
+      job_id: string | null;
+      total_count: number;
+      created_count: number;
+      duplicate_count: number;
+      restored_count: number;
+      skipped_count: number;
+      failed_count: number;
+      processed_count: number;
+      progress_percent: number;
+      error_summary: string;
+      provider_error?: {
+        [key: string]: unknown;
+      } | null;
+      /** Format: date-time */
+      started_at: string | null;
+      /** Format: date-time */
+      finished_at: string | null;
+      rows: components["schemas"]["ImportRow"][];
+    };
+    ProviderImportRequestRequest: {
+      provider: string;
+      /** @description Provider ids to import; they are re-found with `search` (or the campaign defaults). Give this or `companies`. */
+      provider_ids?: string[];
+      /** @description Provider companies exactly as a preview returned them (`items[].company`). */
+      companies?: components["schemas"]["ProviderCompanyRequest"][];
+      /** @description The search the selection came from (same shape as the search body without `provider`): stored as provenance and used to find `provider_ids`. */
+      search?: components["schemas"]["SearchParamsRequest"];
+      /**
+       * Format: date-time
+       * @description `retrieved_at` of the preview (inline companies).
+       */
+      retrieved_at?: string;
+    };
+    ProviderSearchRequestRequest: {
+      query?: string;
+      filters?: components["schemas"]["SearchFiltersRequest"];
+      /** @default 25 */
+      page_size: number;
+      cursor?: string | null;
+      /** @description Provider name from `/providers/`. */
+      provider: string;
+    };
+    ProviderSearchResponse: {
+      provider: string;
+      /** Format: date-time */
+      retrieved_at: string;
+      /** @description The effective search (campaign defaults + overrides). */
+      search: components["schemas"]["SearchEcho"];
+      items: components["schemas"]["PreviewItem"][];
+      counts: {
+        [key: string]: number;
+      };
+      next_cursor: string | null;
+      total_estimate: number | null;
+      warnings: string[];
+    };
     /** @description Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`. */
     Readiness: {
       status: components["schemas"]["ReadinessStatusEnum"];
@@ -1817,6 +2318,52 @@ export interface components {
       company_size: components["schemas"]["RulesSummaryCompanySize"];
       business_model: components["schemas"]["BusinessModelEnum"];
     };
+    SearchEcho: {
+      query: string;
+      countries: string[];
+      industries: string[];
+      employee_min: number | null;
+      employee_max: number | null;
+      business_model: string;
+      excluded_industries: string[];
+      excluded_company_types: string[];
+      sort: string;
+      page_size: number;
+      limit: number;
+      cursor: string | null;
+    };
+    /**
+     * @description Filters that replace the campaign-derived defaults. A key that is present wins: an empty
+     *     list or `null` clears that filter; a key left out keeps the campaign value.
+     */
+    SearchFiltersRequest: {
+      /** @description ISO 3166-1 alpha-2 codes. */
+      countries?: string[];
+      industries?: string[];
+      employee_min?: number | null;
+      employee_max?: number | null;
+      /** @description `b2b`, `b2c`, `both` or empty for any. */
+      business_model?: string;
+      excluded_industries?: string[];
+      excluded_company_types?: string[];
+      sort?: components["schemas"]["SortEnum"];
+    };
+    SearchParamsRequest: {
+      query?: string;
+      filters?: components["schemas"]["SearchFiltersRequest"];
+      /** @default 25 */
+      page_size: number;
+      cursor?: string | null;
+    };
+    /**
+     * @description * `relevance` - relevance
+     *     * `name` - name
+     *     * `employee_count_desc` - employee_count_desc
+     *     * `employee_count_asc` - employee_count_asc
+     * @enum {string}
+     */
+    SortEnum:
+      "relevance" | "name" | "employee_count_desc" | "employee_count_asc";
     /**
      * @description * `allow` - allow
      *     * `warn` - warn
@@ -2481,6 +3028,138 @@ export interface operations {
       };
       /** @description Upload larger than the allowed size (`file_too_large`). */
       413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_imports_list: {
+    parameters: {
+      query?: {
+        /** @description Id of the user who started it. */
+        created_by?: string;
+        /** @description Started on or after this date (`YYYY-MM-DD`, server time zone). */
+        created_from?: string;
+        /** @description Started on or before this date (`YYYY-MM-DD`). */
+        created_to?: string;
+        /**
+         * @description Default `-created_at` (newest first).
+         *
+         *     * `created_at` - created_at
+         *     * `-created_at` - -created_at
+         *     * `finished_at` - finished_at
+         *     * `-finished_at` - -finished_at
+         *     * `total_count` - total_count
+         *     * `-total_count` - -total_count
+         *     * `failed_count` - failed_count
+         *     * `-failed_count` - -failed_count
+         */
+        ordering?:
+          | "created_at"
+          | "-created_at"
+          | "finished_at"
+          | "-finished_at"
+          | "total_count"
+          | "-total_count"
+          | "failed_count"
+          | "-failed_count";
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /**
+         * @description `csv`, `manual` or `provider`.
+         *
+         *     * `manual` - Manual
+         *     * `csv` - CSV import
+         *     * `provider` - Provider
+         */
+        source?: "manual" | "csv" | "provider";
+        /**
+         * @description Only batches in this status.
+         *
+         *     * `pending` - Pending
+         *     * `processing` - Processing
+         *     * `completed` - Completed
+         *     * `partial` - Partially completed
+         *     * `failed` - Failed
+         *     * `cancelled` - Cancelled
+         */
+        status?:
+          | "pending"
+          | "processing"
+          | "completed"
+          | "partial"
+          | "failed"
+          | "cancelled";
+      };
+      header?: never;
+      path: {
+        campaign_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedImportBatchList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -3269,6 +3948,172 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CampaignProfile"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_provider_import: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProviderImportRequestRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderImportBatch"];
+        };
+      };
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderImportBatch"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_provider_search: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProviderSearchRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderSearchResponse"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
@@ -4484,6 +5329,72 @@ export interface operations {
       };
     };
   };
+  imports_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ImportBatchDetail"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   imports_cancel: {
     parameters: {
       query?: never;
@@ -4532,6 +5443,203 @@ export interface operations {
       };
       /** @description Conflict with the current state (e.g. `client_has_active_jobs`). */
       409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_errors_csv: {
+    parameters: {
+      query?: {
+        /**
+         * @description `duplicates`: also list the rows that matched an existing company (`duplicate` and `restored`). Default: failed and skipped rows only.
+         *
+         *     * `duplicates` - duplicates
+         */
+        include?: "duplicates";
+      };
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  imports_rows_list: {
+    parameters: {
+      query?: {
+        /** @description Only rows with exactly this error code. */
+        error_code?: string;
+        /**
+         * @description `true`: only rows with an `error_code` (failed and skipped); `false`: the rest.
+         *
+         *     * `true` - true
+         *     * `false` - false
+         */
+        has_error?: "true" | "false";
+        /**
+         * @description `strong` (linked to an existing company) or `weak` (possible duplicate).
+         *
+         *     * `strong` - Strong
+         *     * `weak` - Weak
+         */
+        match_strength?: "strong" | "weak";
+        /**
+         * @description Default `row_number` (file order).
+         *
+         *     * `row_number` - row_number
+         *     * `-row_number` - -row_number
+         */
+        ordering?: "row_number" | "-row_number";
+        /**
+         * @description Only rows with this outcome.
+         *
+         *     * `created` - Created
+         *     * `duplicate` - Duplicate
+         *     * `restored` - Restored
+         *     * `skipped` - Skipped
+         *     * `failed` - Failed
+         */
+        outcome?: "created" | "duplicate" | "restored" | "skipped" | "failed";
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description Case-insensitive text in the name or domain. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        batch_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedImportBatchRowList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -5644,6 +6752,132 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  provider_imports_retrieve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProviderImportBatch"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  providers_list: {
+    parameters: {
+      query?: {
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedProviderCapabilitiesList"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
