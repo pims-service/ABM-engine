@@ -60,6 +60,8 @@ Project documentation lives here. If you are new, start with onboarding.
   ([ADR 0014](adr/0014-resilience-and-provider-jobs.md)).
 - [LLM adapter and structured output](integrations/llm.md): Pydantic schemas,
   `structured_call`, prompt-injection hygiene and the Anthropic adapter.
+- [Headcount growth](research/headcount-growth.md): how the 3, 6 and 12 month growth
+  figures are computed, flagged and explained, and the JSON stored on the research snapshot.
 
 ## Reference for each part of the repo
 
