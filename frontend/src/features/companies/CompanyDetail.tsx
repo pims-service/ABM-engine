@@ -21,6 +21,7 @@ import {
   requestAnalysis,
   type ResearchCard,
 } from "./cardApi";
+import { getMessages } from "./messagesApi";
 import { getContacts } from "./peopleApi";
 import { ResearchCardView } from "./ResearchCardView";
 
@@ -46,6 +47,9 @@ export function CompanyDetail({ id }: { id: string }) {
   );
   const people = useApiQuery(`people:${id}`, (signal) =>
     getContacts(id, signal),
+  );
+  const messages = useApiQuery(`messages:${id}`, (signal) =>
+    getMessages(id, signal),
   );
   const [updated, setUpdated] = useState<ResearchCard | null>(null);
   const [starting, setStarting] = useState(false);
@@ -150,6 +154,8 @@ export function CompanyDetail({ id }: { id: string }) {
         card={card}
         activity={activity.data ?? []}
         contacts={people.data ?? []}
+        messages={messages.data ?? []}
+        onMessages={messages.reload}
         onPeople={people.reload}
         onChange={setUpdated}
         reload={refresh}

@@ -3077,6 +3077,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/approve-message/:
+    post:
+      operationId: companies_approve_message
+      description: 'Draft to approved, by you (Brief section 11). Needs a human ADD
+        decision. Needs the `DECIDE` level: reviewer, manager and admin. Others get
+        403; companies of clients you are not a member of give 404.'
+      summary: Approve a message
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageRefRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/archive/:
     post:
       operationId: companies_archive
@@ -3398,6 +3467,146 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/edit-message/:
+    post:
+      operationId: companies_edit_message
+      description: 'Writes your wording as a new draft that replaces the old message;
+        the old one is kept. The new draft needs approval again. Needs the `DECIDE`
+        level: reviewer, manager and admin. Others get 403; companies of clients you
+        are not a member of give 404.'
+      summary: Edit a message
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageEditRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/export-message/:
+    post:
+      operationId: companies_export_message
+      description: 'Approved to exported, once you have copied or sent it from your
+        own tool. Adds an entry to the timeline. This product sends nothing itself.
+        Needs the `DECIDE` level: reviewer, manager and admin. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: Mark a message as exported
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageRefRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/feedback/:
     post:
       operationId: companies_feedback
@@ -3440,6 +3649,141 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/generate-messages/:
+    post:
+      operationId: companies_generate_messages
+      description: 'Asks the AI for a LinkedIn message and/or a cold email (with an
+        optional follow-up) to one person, in one of the campaign''s languages. Needs
+        a human ADD decision first (checked before the AI is called), an outreach
+        angle (run the analysis) and the client''s AI connection. The AI sees only
+        the stored research; drafts that cite an event that was not provided, or contain
+        numbers that are not in the research, are refused and listed in `rejected`.
+        Drafts only: nothing is sent. Needs the `EDIT` level: manager and admin. Others
+        get 403; companies of clients you are not a member of give 404.'
+      summary: Write message drafts
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/messages/:
+    get:
+      operationId: companies_messages
+      description: 'The current messages of this company (Brief section 12): per person
+        and channel, message before follow-up, with the signals each one cites. Edited
+        messages are replaced by their newest version. Needs the `READ` level: any
+        member. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Outreach messages
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+          description: ''
         '401':
           content:
             application/json:
@@ -6297,6 +6641,14 @@ components:
         * `outreach` - Outreach
         * `storage` - Storage
         * `automation` - Automation
+    ChannelsEnum:
+      enum:
+      - linkedin
+      - email
+      type: string
+      description: |-
+        * `linkedin` - linkedin
+        * `email` - email
     Check:
       type: object
       description: One readiness check; the extra fields depend on the check (documentation
@@ -7250,6 +7602,17 @@ components:
           $ref: '#/components/schemas/ErrorBody'
       required:
       - error
+    Evidence:
+      type: object
+      properties:
+        type_label:
+          type: string
+        event_date:
+          type: string
+          format: date
+      required:
+      - event_date
+      - type_label
     FeedbackRequestRequest:
       type: object
       properties:
@@ -7266,6 +7629,41 @@ components:
           format: uuid
       required:
       - kind
+    GenerateRequestRequest:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+          description: 'Default: the company''s primary contact.'
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelsEnum'
+          maxItems: 2
+          minItems: 1
+        language:
+          type: string
+          minLength: 1
+          maxLength: 16
+      required:
+      - channels
+      - language
+    GenerateResult:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        rejected:
+          type: array
+          items:
+            type: string
+          description: Drafts the safety checks refused, with why.
+      required:
+      - messages
+      - rejected
     Health:
       type: object
       description: Body of `/healthz` (documentation only).
@@ -7927,6 +8325,90 @@ components:
       - id
       - name
       - website
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        contact_id:
+          type: string
+          format: uuid
+        contact_name:
+          type: string
+        contact_title:
+          type: string
+        channel:
+          type: string
+        language:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        is_followup:
+          type: boolean
+        status:
+          type: string
+          description: draft, approved or exported.
+        approved_by:
+          type: string
+          nullable: true
+        approved_at:
+          type: string
+          format: date-time
+          nullable: true
+        exported_at:
+          type: string
+          format: date-time
+          nullable: true
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/Evidence'
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - approved_at
+      - approved_by
+      - body
+      - channel
+      - contact_id
+      - contact_name
+      - contact_title
+      - created_at
+      - evidence
+      - exported_at
+      - id
+      - is_followup
+      - language
+      - status
+      - subject
+    MessageEditRequest:
+      type: object
+      properties:
+        message_id:
+          type: string
+          format: uuid
+        body:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        subject:
+          type: string
+          maxLength: 300
+      required:
+      - body
+      - message_id
+    MessageRefRequest:
+      type: object
+      properties:
+        message_id:
+          type: string
+          format: uuid
+      required:
+      - message_id
     NullEnum:
       enum:
       - null
@@ -8809,12 +9291,21 @@ components:
           type: array
           items:
             type: string
+        outreach_languages:
+          type: array
+          items:
+            type: string
+        has_angle:
+          type: boolean
+          description: True when an outreach angle exists, so messages can be written.
       required:
       - analysis
       - company
       - decision
       - gaps
+      - has_angle
       - icp
+      - outreach_languages
       - recommendation
       - research
       - trigger

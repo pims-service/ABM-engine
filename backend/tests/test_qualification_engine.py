@@ -14,7 +14,7 @@ from apps.companies.models import CompanyResearch, CompanyStatus
 from apps.core.models import Job, JobStatus
 from apps.integrations.fetch import fetch_site_pages as real_fetch_site_pages
 from apps.integrations.framework.fakes import FakeLLMAdapter
-from apps.outreach.models import Activity
+from apps.outreach.models import Activity, OutreachAngle
 from apps.research.engine import AnalysisFailed, run_analysis
 from apps.research.engine.freshness import expiry_for
 from apps.research.engine.rules import Verdict, apply_rules
@@ -144,6 +144,9 @@ def test_records_research_signals_assessment_and_recommendation(company) -> None
     assert signal.expires_at == expiry_for("new_office", signal.event_date)
     assert Signal.objects.filter(company=company).count() == 1
     assert ICPAssessment.objects.filter(company=company).count() == 1
+    [angle] = OutreachAngle.objects.filter(company=company)
+    assert angle.angle.startswith("Support the sales team")
+    assert [x.type for x in angle.signals.all()] == ["new_office"]
     kinds = set(Activity.objects.filter(company=company).values_list("type", flat=True))
     assert kinds == {"researched", "recommended"}
     assert AIRecommendation.objects.filter(company=company).count() == 1

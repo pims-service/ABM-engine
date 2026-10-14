@@ -22,6 +22,8 @@ import {
   FeedbackCard,
   FlagSignalButton,
 } from "./FeedbackAndActivity";
+import { type OutreachMessage } from "./messagesApi";
+import { OutreachCard } from "./OutreachCard";
 import { type Contact } from "./peopleApi";
 import { PeopleCard } from "./PeopleCard";
 
@@ -62,6 +64,8 @@ export function ResearchCardView({
   card,
   activity,
   contacts,
+  messages,
+  onMessages,
   onPeople,
   onChange,
   reload,
@@ -70,6 +74,8 @@ export function ResearchCardView({
   card: ResearchCard;
   activity: ActivityItem[];
   contacts: Contact[];
+  messages: OutreachMessage[];
+  onMessages: () => void;
   onPeople: () => void;
   onChange: (card: ResearchCard) => void;
   reload: () => void;
@@ -184,6 +190,16 @@ export function ResearchCardView({
               </p>
             )}
           </Card>
+
+          <OutreachCard
+            card={card}
+            contacts={contacts}
+            messages={messages}
+            onChange={() => {
+              onMessages();
+              onActivity();
+            }}
+          />
 
           <Card title="Signals">
             {trigger.signals.length === 0 ? (

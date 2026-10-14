@@ -40,6 +40,19 @@ from apps.imports.manual import (
 )
 from apps.imports.models import ImportRowOutcome
 from apps.imports.services import COMPANY_REJECTED
+from apps.outreach.messages_api import (
+    GenerateRequestSerializer,
+    GenerateResultSerializer,
+    MessageEditSerializer,
+    MessageRefSerializer,
+    MessageSerializer,
+    approve_for,
+    company_messages,
+    edit_for,
+    export_for,
+    generate_for,
+    message_body,
+)
 from apps.outreach.models import ActivityType
 from apps.outreach.services import record_activity, record_feedback
 from apps.research.card import (
@@ -302,6 +315,11 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "add_contact": Level.EDIT,
         "update_contact": Level.EDIT,
         "archive_contact": Level.EDIT,
+        "messages": Level.READ,
+        "generate_messages": Level.EDIT,
+        "approve_message": Level.DECIDE,
+        "edit_message": Level.DECIDE,
+        "export_message": Level.DECIDE,
         "feedback": Level.DECIDE,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
@@ -527,6 +545,100 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         body.is_valid(raise_exception=True)
         find_contact(company, body.validated_data["contact_id"]).archive()
         return Response(status=204)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_messages",
+        summary="Outreach messages",
+        description="The current messages of this company (Brief section 12): per person and "
+        "channel, message before follow-up, with the signals each one cites. Edited messages "
+        "are replaced by their newest version. " + _levels("READ", "any member"),
+        responses={
+            200: MessageSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def messages(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        rows = [message_body(m) for m in company_messages(company)]
+        return Response(MessageSerializer(rows, many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_generate_messages",
+        summary="Write message drafts",
+        description="Asks the AI for a LinkedIn message and/or a cold email (with an optional "
+        "follow-up) to one person, in one of the campaign's languages. Needs a human ADD "
+        "decision first (checked before the AI is called), an outreach angle (run the "
+        "analysis) and the client's AI connection. The AI sees only the stored research; "
+        "drafts that cite an event that was not provided, or contain numbers that are not in "
+        "the research, are refused and listed in `rejected`. Drafts only: nothing is sent. "
+        + _levels("EDIT", "manager and admin"),
+        request=GenerateRequestSerializer,
+        responses={201: GenerateResultSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="generate-messages")
+    def generate_messages(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = GenerateRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            result = generate_for(company, dict(body.validated_data), self._user())
+        return Response(GenerateResultSerializer(result).data, status=201)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_approve_message",
+        summary="Approve a message",
+        description="Draft to approved, by you (Brief section 11). Needs a human ADD decision. "
+        + _levels("DECIDE", "reviewer, manager and admin"),
+        request=MessageRefSerializer,
+        responses={200: MessageSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="approve-message")
+    def approve_message(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = MessageRefSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        message = approve_for(company, body.validated_data["message_id"], self._user())
+        return Response(MessageSerializer(message_body(message)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_edit_message",
+        summary="Edit a message",
+        description="Writes your wording as a new draft that replaces the old message; the old "
+        "one is kept. The new draft needs approval again. "
+        + _levels("DECIDE", "reviewer, manager and admin"),
+        request=MessageEditSerializer,
+        responses={200: MessageSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="edit-message")
+    def edit_message(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = MessageEditSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        message = edit_for(company, dict(body.validated_data), self._user())
+        return Response(MessageSerializer(message_body(message)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_export_message",
+        summary="Mark a message as exported",
+        description="Approved to exported, once you have copied or sent it from your own tool. "
+        "Adds an entry to the timeline. This product sends nothing itself. "
+        + _levels("DECIDE", "reviewer, manager and admin"),
+        request=MessageRefSerializer,
+        responses={200: MessageSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="export-message")
+    def export_message(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = MessageRefSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        message = export_for(company, body.validated_data["message_id"], self._user())
+        return Response(MessageSerializer(message_body(message)).data)
 
     @extend_schema(
         tags=TAGS,
