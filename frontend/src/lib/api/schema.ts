@@ -618,6 +618,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/website-research/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Research the company website
+     * @description Reads the company's public website now (homepage plus up to three of: about, products, careers, news, contact) with the safe fetcher: robots.txt is honoured, social and professional networks are never fetched, private addresses are refused. Returns the pages with title, description, a text excerpt and their provenance (URL, time, content hash). Nothing is stored or inferred. A site that cannot be read is reported in `error` (still **200**). Can take up to about a minute. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_website_research"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/imports/{batch_id}/": {
     parameters: {
       query?: never;
@@ -1905,6 +1925,12 @@ export interface components {
     };
     /** @enum {unknown} */
     NullEnum: null;
+    OrganizationHint: {
+      name: string;
+      url: string;
+      founding_date: string;
+      address: string;
+    };
     OutcomeCounts: {
       created: number;
       duplicate: number;
@@ -2304,6 +2330,23 @@ export interface components {
       /** Format: uuid */
       readonly data_source: string;
     };
+    ResearchedPage: {
+      /** @description home, about, products, careers, news or contact. */
+      kind: string;
+      /** @description The page after redirects. */
+      url: string;
+      title: string;
+      description: string;
+      /** @description The start of the page text (untrusted content). */
+      excerpt: string;
+      truncated: boolean;
+      /** Format: date-time */
+      fetched_at: string;
+      content_hash: string;
+      /** @description What robots.txt said: allowed or no_robots_txt. */
+      robots: string;
+      organizations: components["schemas"]["OrganizationHint"][];
+    };
     /**
      * @description * `ok` - ok
      *     * `failed` - failed
@@ -2398,6 +2441,12 @@ export interface components {
       page_size: number;
       cursor?: string | null;
     };
+    SkippedPage: {
+      url: string;
+      kind: string;
+      /** @description A fetch error code, or `budget`. */
+      code: string;
+    };
     /**
      * @description * `relevance` - relevance
      *     * `name` - name
@@ -2476,6 +2525,19 @@ export interface components {
       readonly last_login: string | null;
       /** Format: date-time */
       readonly created_at: string;
+    };
+    WebsiteResearch: {
+      /** Format: uuid */
+      company_id: string;
+      website: string;
+      pages: components["schemas"]["ResearchedPage"][];
+      skipped: components["schemas"]["SkippedPage"][];
+      bytes_read: number;
+      error: components["schemas"]["WebsiteResearchError"] | null;
+    };
+    WebsiteResearchError: {
+      code: string;
+      message: string;
     };
   };
   responses: never;
@@ -5314,6 +5376,82 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CompanyDetail"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_website_research: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WebsiteResearch"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
