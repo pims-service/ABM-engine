@@ -16,7 +16,7 @@ export function Header({
   menuButtonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
-    <header className="flex h-header shrink-0 items-center justify-between gap-3 border-b border-line bg-surface-raised px-gutter md:px-6">
+    <header className="flex h-header shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-gutter md:px-8">
       <div className="flex min-w-0 items-center gap-3">
         <Button
           ref={menuButtonRef}

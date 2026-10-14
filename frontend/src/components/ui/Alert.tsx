@@ -5,10 +5,10 @@ import { cn } from "@/lib/cn";
 export type AlertTone = "danger" | "success" | "info" | "warning";
 
 const TONES: Record<AlertTone, string> = {
-  danger: "border-danger-fg bg-danger-bg text-danger-fg",
-  success: "border-success-fg bg-success-bg text-success-fg",
-  info: "border-info-fg bg-info-bg text-info-fg",
-  warning: "border-warning-fg bg-warning-bg text-warning-fg",
+  danger: "border-transparent bg-danger-bg text-danger-fg",
+  success: "border-transparent bg-success-bg text-success-fg",
+  info: "border-transparent bg-info-bg text-info-fg",
+  warning: "border-transparent bg-warning-bg text-warning-fg",
 };
 
 /**
@@ -31,7 +31,7 @@ export function Alert({
     <div
       role={tone === "danger" ? "alert" : "status"}
       className={cn(
-        "flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm",
+        "flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm",
         TONES[tone],
         className,
       )}

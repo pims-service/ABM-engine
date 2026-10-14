@@ -43,7 +43,7 @@ export function Select({
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         className={cn(
-          "rounded-md border bg-surface-raised px-3 py-2 text-sm text-fg",
+          "rounded-md border bg-surface-raised px-3 py-1.5 text-sm text-fg",
           error ? "border-danger-fg" : "border-line-strong",
           "disabled:opacity-60",
           className,

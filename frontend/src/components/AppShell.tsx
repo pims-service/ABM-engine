@@ -42,9 +42,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main
           id={MAIN_CONTENT_ID}
           tabIndex={-1}
-          className="flex-1 overflow-y-auto p-gutter outline-none md:p-6"
+          className="flex-1 overflow-y-auto px-gutter py-8 outline-none md:px-8"
         >
-          {children}
+          <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>
     </div>
