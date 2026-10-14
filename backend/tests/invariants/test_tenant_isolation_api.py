@@ -356,6 +356,16 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/imports/{batch_id}/errors.csv", "item", Level.READ, "batch"),
         Scenario("GET /api/v1/campaigns/{campaign_id}/imports/", "item", Level.READ, "campaign"),
         Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
+        Scenario("GET /api/v1/campaigns/{campaign_pk}/accounts/", "campaign_nested", Level.READ),
+        Scenario(
+            "GET /api/v1/campaigns/{campaign_pk}/accounts/summary/", "campaign_nested", Level.READ
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_pk}/accounts/analyze/",
+            "campaign_nested",
+            Level.EDIT,
+            body=lambda: {"scope": "unassessed"},
+        ),
         Scenario(
             "POST /api/v1/campaigns/{campaign_pk}/companies/",
             "campaign_nested",

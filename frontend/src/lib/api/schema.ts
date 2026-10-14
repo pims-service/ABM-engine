@@ -190,6 +190,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Master ABM dashboard rows
+     * @description The campaign's companies with ICP fit, trigger, AI recommendation, human status, industry, size and primary buyer (Brief section 13). Filter by ICP fit (`unassessed` too), trigger yes or no and type, AI recommendation, human decision, review state, industry, country, size and buyer title. `search` matches name, domain and website; `ordering` accepts `name`, `icp_fit`, `updated_at` (prefix `-` to reverse). Archived companies are hidden unless `archived` asks. Needs the READ level.
+     */
+    get: operations["campaign_accounts_list"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{campaign_pk}/accounts/analyze/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Analyze many companies
+     * @description Queues the analysis of up to 500 companies, one background job each (the same as Analyze Company on each). Companies that already have an analysis queued or running are counted in `already_running` and not queued again. Each analysis calls the AI provider, which costs money. Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_analyze"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{campaign_pk}/accounts/summary/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Counts for the dashboard header
+     * @description Counts over the campaign's active companies, ignoring any filter. Needs the READ level.
+     */
+    get: operations["campaign_accounts_summary"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/companies/": {
     parameters: {
       query?: never;
@@ -1078,6 +1138,47 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    AccountAnalysis: {
+      status: string;
+      error_summary: string;
+    };
+    AccountRow: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      website: string;
+      domain: string | null;
+      country: string;
+      /** @description Analysis status of the company. */
+      status: string;
+      industry: string | null;
+      employee_count: number | null;
+      /** @description strong, medium, weak or null. */
+      icp_fit: string | null;
+      /** @description True when at least one fresh signal exists. */
+      trigger: boolean;
+      trigger_types: string[];
+      ai_recommendation: string | null;
+      human_decision: string | null;
+      /** @description `not_assessed`, `needs_review` (assessed, no human decision) or `decided`. */
+      review: string;
+      primary_buyer: string | null;
+      analysis: components["schemas"]["AccountAnalysis"] | null;
+    };
+    AccountSummary: {
+      total: number;
+      not_assessed: number;
+      analyzing: number;
+      failed: number;
+      strong: number;
+      medium: number;
+      weak: number;
+      trigger_yes: number;
+      needs_review: number;
+      human_add: number;
+      human_hold: number;
+      human_skip: number;
+    };
     /** @description The background job behind an "Analyze Company" request (see `GET` job status in M4). */
     AnalysisJob: {
       /** Format: uuid */
@@ -1167,6 +1268,22 @@ export interface components {
        * @default true
        */
       hard_stop: boolean;
+    };
+    BulkAnalyzeRequestRequest: {
+      /**
+       * @description `unassessed`: companies never analyzed; `failed`: those whose last analysis failed; `ids`: the companies in `company_ids`.
+       *
+       *     * `unassessed` - unassessed
+       *     * `failed` - failed
+       *     * `ids` - ids
+       */
+      scope: components["schemas"]["ScopeEnum"];
+      company_ids?: string[];
+    };
+    BulkAnalyzeResult: {
+      requested: number;
+      queued: number;
+      already_running: number;
     };
     /**
      * @description * `b2b` - B2B
@@ -2071,6 +2188,21 @@ export interface components {
       skipped: number;
       failed: number;
     };
+    PaginatedAccountRowList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["AccountRow"][];
+    };
     PaginatedCampaignList: {
       /** @example 123 */
       count: number;
@@ -2547,6 +2679,13 @@ export interface components {
       company_size: components["schemas"]["RulesSummaryCompanySize"];
       business_model: components["schemas"]["BusinessModelEnum"];
     };
+    /**
+     * @description * `unassessed` - unassessed
+     *     * `failed` - failed
+     *     * `ids` - ids
+     * @enum {string}
+     */
+    ScopeEnum: "unassessed" | "failed" | "ids";
     SearchEcho: {
       query: string;
       countries: string[];
@@ -3432,6 +3571,251 @@ export interface operations {
       };
       /** @description Unexpected server error (`internal_error`). */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_list: {
+    parameters: {
+      query?: {
+        /**
+         * @description * `add` - Add
+         *     * `hold` - Hold
+         *     * `skip` - Skip
+         */
+        ai?: "add" | "hold" | "skip";
+        /**
+         * @description * `false` - false
+         *     * `true` - true
+         *     * `all` - all
+         */
+        archived?: "false" | "true" | "all";
+        buyer_title?: string;
+        country?: string;
+        /**
+         * @description * `add` - add
+         *     * `hold` - hold
+         *     * `skip` - skip
+         *     * `undecided` - undecided
+         */
+        human?: "add" | "hold" | "skip" | "undecided";
+        /**
+         * @description * `strong` - strong
+         *     * `medium` - medium
+         *     * `weak` - weak
+         *     * `unassessed` - unassessed
+         */
+        icp_fit?: "strong" | "medium" | "weak" | "unassessed";
+        industry?: string;
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /**
+         * @description * `needs_review` - needs_review
+         *     * `decided` - decided
+         */
+        review?: "needs_review" | "decided";
+        /** @description A search term. */
+        search?: string;
+        size_max?: number;
+        size_min?: number;
+        /**
+         * @description * `yes` - yes
+         *     * `no` - no
+         */
+        trigger?: "yes" | "no";
+        /**
+         * @description * `sales_hiring` - Sales hiring
+         *     * `bd_hiring` - Business development hiring
+         *     * `commercial_hiring` - Commercial hiring
+         *     * `partnerships_hiring` - Partnerships hiring
+         *     * `headcount_growth` - Headcount growth
+         *     * `commercial_team_growth` - Commercial team growth
+         *     * `funding` - Funding
+         *     * `market_expansion` - Market expansion
+         *     * `new_leadership` - New leadership
+         *     * `new_office` - New office
+         *     * `new_product` - New product
+         *     * `major_partnership` - Major partnership
+         *     * `other` - Other
+         */
+        trigger_type?:
+          | "sales_hiring"
+          | "bd_hiring"
+          | "commercial_hiring"
+          | "partnerships_hiring"
+          | "headcount_growth"
+          | "commercial_team_growth"
+          | "funding"
+          | "market_expansion"
+          | "new_leadership"
+          | "new_office"
+          | "new_product"
+          | "major_partnership"
+          | "other";
+      };
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedAccountRowList"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_analyze: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkAnalyzeRequestRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkAnalyzeResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_summary: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AccountSummary"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };

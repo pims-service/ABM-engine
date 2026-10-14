@@ -714,6 +714,324 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/:
+    get:
+      operationId: campaign_accounts_list
+      description: The campaign's companies with ICP fit, trigger, AI recommendation,
+        human status, industry, size and primary buyer (Brief section 13). Filter
+        by ICP fit (`unassessed` too), trigger yes or no and type, AI recommendation,
+        human decision, review state, industry, country, size and buyer title. `search`
+        matches name, domain and website; `ordering` accepts `name`, `icp_fit`, `updated_at`
+        (prefix `-` to reverse). Archived companies are hidden unless `archived` asks.
+        Needs the READ level.
+      summary: Master ABM dashboard rows
+      parameters:
+      - in: query
+        name: ai
+        schema:
+          enum:
+          - add
+          - hold
+          - skip
+          type: string
+          minLength: 1
+        description: |-
+          * `add` - Add
+          * `hold` - Hold
+          * `skip` - Skip
+      - in: query
+        name: archived
+        schema:
+          enum:
+          - 'false'
+          - 'true'
+          - all
+          type: string
+          minLength: 1
+        description: |-
+          * `false` - false
+          * `true` - true
+          * `all` - all
+      - in: query
+        name: buyer_title
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: country
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 2
+      - in: query
+        name: human
+        schema:
+          enum:
+          - add
+          - hold
+          - skip
+          - undecided
+          type: string
+          minLength: 1
+        description: |-
+          * `add` - add
+          * `hold` - hold
+          * `skip` - skip
+          * `undecided` - undecided
+      - in: query
+        name: icp_fit
+        schema:
+          enum:
+          - strong
+          - medium
+          - weak
+          - unassessed
+          type: string
+          minLength: 1
+        description: |-
+          * `strong` - strong
+          * `medium` - medium
+          * `weak` - weak
+          * `unassessed` - unassessed
+      - in: query
+        name: industry
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 200
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: review
+        schema:
+          enum:
+          - needs_review
+          - decided
+          type: string
+          minLength: 1
+        description: |-
+          * `needs_review` - needs_review
+          * `decided` - decided
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: size_max
+        schema:
+          type: integer
+          minimum: 0
+      - in: query
+        name: size_min
+        schema:
+          type: integer
+          minimum: 0
+      - in: query
+        name: trigger
+        schema:
+          enum:
+          - 'yes'
+          - 'no'
+          type: string
+          minLength: 1
+        description: |-
+          * `yes` - yes
+          * `no` - no
+      - in: query
+        name: trigger_type
+        schema:
+          enum:
+          - sales_hiring
+          - bd_hiring
+          - commercial_hiring
+          - partnerships_hiring
+          - headcount_growth
+          - commercial_team_growth
+          - funding
+          - market_expansion
+          - new_leadership
+          - new_office
+          - new_product
+          - major_partnership
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          * `sales_hiring` - Sales hiring
+          * `bd_hiring` - Business development hiring
+          * `commercial_hiring` - Commercial hiring
+          * `partnerships_hiring` - Partnerships hiring
+          * `headcount_growth` - Headcount growth
+          * `commercial_team_growth` - Commercial team growth
+          * `funding` - Funding
+          * `market_expansion` - Market expansion
+          * `new_leadership` - New leadership
+          * `new_office` - New office
+          * `new_product` - New product
+          * `major_partnership` - Major partnership
+          * `other` - Other
+      tags:
+      - accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAccountRowList'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+  /api/v1/campaigns/{campaign_pk}/accounts/analyze/:
+    post:
+      operationId: campaign_accounts_analyze
+      description: Queues the analysis of up to 500 companies, one background job
+        each (the same as Analyze Company on each). Companies that already have an
+        analysis queued or running are counted in `already_running` and not queued
+        again. Each analysis calls the AI provider, which costs money. Needs the EDIT
+        level.
+      summary: Analyze many companies
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - accounts
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkAnalyzeRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkAnalyzeResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+  /api/v1/campaigns/{campaign_pk}/accounts/summary/:
+    get:
+      operationId: campaign_accounts_summary
+      description: Counts over the campaign's active companies, ignoring any filter.
+        Needs the READ level.
+      summary: Counts for the dashboard header
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - accounts
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummary'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
   /api/v1/campaigns/{campaign_pk}/companies/:
     get:
       operationId: campaign_companies_list
@@ -4640,6 +4958,125 @@ paths:
           description: Unexpected server error (`internal_error`).
 components:
   schemas:
+    AccountAnalysis:
+      type: object
+      properties:
+        status:
+          type: string
+        error_summary:
+          type: string
+      required:
+      - error_summary
+      - status
+    AccountRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        website:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        country:
+          type: string
+        status:
+          type: string
+          description: Analysis status of the company.
+        industry:
+          type: string
+          nullable: true
+        employee_count:
+          type: integer
+          nullable: true
+        icp_fit:
+          type: string
+          nullable: true
+          description: strong, medium, weak or null.
+        trigger:
+          type: boolean
+          description: True when at least one fresh signal exists.
+        trigger_types:
+          type: array
+          items:
+            type: string
+        ai_recommendation:
+          type: string
+          nullable: true
+        human_decision:
+          type: string
+          nullable: true
+        review:
+          type: string
+          description: '`not_assessed`, `needs_review` (assessed, no human decision)
+            or `decided`.'
+        primary_buyer:
+          type: string
+          nullable: true
+        analysis:
+          allOf:
+          - $ref: '#/components/schemas/AccountAnalysis'
+          nullable: true
+      required:
+      - ai_recommendation
+      - analysis
+      - country
+      - domain
+      - employee_count
+      - human_decision
+      - icp_fit
+      - id
+      - industry
+      - name
+      - primary_buyer
+      - review
+      - status
+      - trigger
+      - trigger_types
+      - website
+    AccountSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        not_assessed:
+          type: integer
+        analyzing:
+          type: integer
+        failed:
+          type: integer
+        strong:
+          type: integer
+        medium:
+          type: integer
+        weak:
+          type: integer
+        trigger_yes:
+          type: integer
+        needs_review:
+          type: integer
+        human_add:
+          type: integer
+        human_hold:
+          type: integer
+        human_skip:
+          type: integer
+      required:
+      - analyzing
+      - failed
+      - human_add
+      - human_hold
+      - human_skip
+      - medium
+      - needs_review
+      - not_assessed
+      - strong
+      - total
+      - trigger_yes
+      - weak
     AnalysisJob:
       type: object
       description: The background job behind an "Analyze Company" request (see `GET`
@@ -4831,6 +5268,39 @@ components:
           type: boolean
           default: true
           description: 'False: reaching a limit only warns, calls are never blocked.'
+    BulkAnalyzeRequestRequest:
+      type: object
+      properties:
+        scope:
+          allOf:
+          - $ref: '#/components/schemas/ScopeEnum'
+          description: |-
+            `unassessed`: companies never analyzed; `failed`: those whose last analysis failed; `ids`: the companies in `company_ids`.
+
+            * `unassessed` - unassessed
+            * `failed` - failed
+            * `ids` - ids
+        company_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 500
+      required:
+      - scope
+    BulkAnalyzeResult:
+      type: object
+      properties:
+        requested:
+          type: integer
+        queued:
+          type: integer
+        already_running:
+          type: integer
+      required:
+      - already_running
+      - queued
+      - requested
     BusinessModelEnum:
       enum:
       - b2b
@@ -6876,6 +7346,29 @@ components:
       - failed
       - restored
       - skipped
+    PaginatedAccountRowList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountRow'
     PaginatedCampaignList:
       type: object
       required:
@@ -7938,6 +8431,16 @@ components:
       - company_size
       - countries
       - industries
+    ScopeEnum:
+      enum:
+      - unassessed
+      - failed
+      - ids
+      type: string
+      description: |-
+        * `unassessed` - unassessed
+        * `failed` - failed
+        * `ids` - ids
     SearchEcho:
       type: object
       properties:
