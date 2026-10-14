@@ -183,7 +183,7 @@ def run_analysis(
         "products_services": research.products_services,
         "target_customers": research.target_customers,
     }
-    known = {key: value for key, value in shown.items() if value not in (None, "")}
+    known: dict[str, object] = {k: v for k, v in shown.items() if v not in (None, "")}
     judged = _call(
         adapter,
         assessment_prompt(profile, company.name, known, state.signals),

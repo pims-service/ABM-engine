@@ -5,13 +5,16 @@ from __future__ import annotations
 from typing import Any
 
 from apps.integrations.adapters.anthropic import AnthropicAdapter
-from apps.integrations.crypto import DecryptionError, EncryptionConfigError
+from apps.integrations.crypto import (
+    CredentialsNotSetError,
+    DecryptionError,
+    EncryptionConfigError,
+)
 from apps.integrations.framework.base import ConnectionSpec
 from apps.integrations.framework.errors import ProviderError
 from apps.integrations.framework.registry import AdapterRegistry
 from apps.integrations.services import (
     ConnectionUnavailableError,
-    CredentialsNotSetError,
     get_credentials,
     resolve_connection,
 )

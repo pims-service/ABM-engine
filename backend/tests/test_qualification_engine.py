@@ -44,11 +44,11 @@ class ScriptedLLM(FakeLLMAdapter):
     def __init__(self, outputs: list[Any]) -> None:
         super().__init__({"model": "fake-model"})
         self.script = list(outputs)
-        self.calls = 0
+        self.index = 0
 
     def generate_structured(self, prompt: Any, schema: Any, **kwargs: Any) -> Any:
-        self.output = self.script[self.calls]
-        self.calls += 1
+        self.output = self.script[self.index]
+        self.index += 1
         return super().generate_structured(prompt, schema, **kwargs)
 
 
@@ -126,7 +126,7 @@ def analyse(company, outputs, *, fetcher=None):
 
 def test_records_research_signals_assessment_and_recommendation(company) -> None:
     llm, outcome = analyse(company, [facts(), verdict()])
-    assert llm.calls == 2
+    assert llm.index == 2
     research = outcome.research
     assert research.industry == "Logistics"
     assert research.employee_count == 155  # "155 people" is on the page
@@ -285,6 +285,7 @@ def test_the_task_runs_the_engine_and_marks_the_company_analyzed(
     result = tasks.analyze_company(str(job.pk), str(company.pk))
     job = Job.objects.get(pk=job.pk)
     assert job.status == JobStatus.SUCCEEDED
+    assert result is not None
     assert result["fit"] == "strong"
     company.refresh_from_db()
     assert company.status == CompanyStatus.ANALYZED
