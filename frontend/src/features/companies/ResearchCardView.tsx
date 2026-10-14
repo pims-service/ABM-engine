@@ -22,6 +22,8 @@ import {
   FeedbackCard,
   FlagSignalButton,
 } from "./FeedbackAndActivity";
+import { type Contact } from "./peopleApi";
+import { PeopleCard } from "./PeopleCard";
 
 const POLL_MS = 3000;
 
@@ -59,12 +61,16 @@ function List({ items, warn }: { items: string[]; warn?: boolean }) {
 export function ResearchCardView({
   card,
   activity,
+  contacts,
+  onPeople,
   onChange,
   reload,
   onActivity,
 }: {
   card: ResearchCard;
   activity: ActivityItem[];
+  contacts: Contact[];
+  onPeople: () => void;
   onChange: (card: ResearchCard) => void;
   reload: () => void;
   onActivity: () => void;
@@ -275,6 +281,12 @@ export function ResearchCardView({
               </p>
             )}
           </Card>
+
+          <PeopleCard
+            companyId={company.id}
+            contacts={contacts}
+            onChange={onPeople}
+          />
 
           <ActivityCard items={activity} />
 

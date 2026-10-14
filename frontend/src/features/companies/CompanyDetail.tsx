@@ -21,6 +21,7 @@ import {
   requestAnalysis,
   type ResearchCard,
 } from "./cardApi";
+import { getContacts } from "./peopleApi";
 import { ResearchCardView } from "./ResearchCardView";
 
 const KIND_LABELS: Record<string, string> = {
@@ -42,6 +43,9 @@ export function CompanyDetail({ id }: { id: string }) {
   } = useApiQuery(`card:${id}`, (signal) => getCard(id, signal));
   const activity = useApiQuery(`activity:${id}`, (signal) =>
     getActivity(id, signal),
+  );
+  const people = useApiQuery(`people:${id}`, (signal) =>
+    getContacts(id, signal),
   );
   const [updated, setUpdated] = useState<ResearchCard | null>(null);
   const [starting, setStarting] = useState(false);
@@ -145,6 +149,8 @@ export function CompanyDetail({ id }: { id: string }) {
       <ResearchCardView
         card={card}
         activity={activity.data ?? []}
+        contacts={people.data ?? []}
+        onPeople={people.reload}
         onChange={setUpdated}
         reload={refresh}
         onActivity={activity.reload}

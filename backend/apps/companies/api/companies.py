@@ -53,6 +53,17 @@ from apps.research.card import (
 from apps.research.models import AIRecommendation
 from apps.research.services import record_human_decision
 
+from .contacts import (
+    ContactCreateSerializer,
+    ContactPatchSerializer,
+    ContactRefSerializer,
+    ContactSerializer,
+    add_contact_to,
+    company_contacts,
+    contact_body,
+    find_contact,
+    update_contact_of,
+)
 from .serializers import (
     AnalysisRequestSerializer,
     CompanyDetailSerializer,
@@ -287,6 +298,10 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "card": Level.READ,
         "decision": Level.DECIDE,
         "activity": Level.READ,
+        "contacts": Level.READ,
+        "add_contact": Level.EDIT,
+        "update_contact": Level.EDIT,
+        "archive_contact": Level.EDIT,
         "feedback": Level.DECIDE,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
@@ -445,6 +460,73 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
             )
         latest = build_activity(company, limit=1)[0]
         return Response(ActivityItemSerializer(latest).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_contacts",
+        summary="People at the company",
+        description="Active contacts, best first: primary, secondary, then by rank (Brief "
+        "section 8). " + _levels("READ", "any member"),
+        responses={200: ContactSerializer(many=True), **error_responses(401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def contacts(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        rows = [contact_body(c) for c in company_contacts(company)]
+        return Response(ContactSerializer(rows, many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_add_contact",
+        summary="Add a person by hand",
+        description="Adds a contact with a manual data source that records who typed it. "
+        "Taking the primary or secondary slot demotes the previous holder to none. "
+        + _levels("EDIT", "manager and admin"),
+        request=ContactCreateSerializer,
+        responses={201: ContactSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="add-contact")
+    def add_contact(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = ContactCreateSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            contact = add_contact_to(company, dict(body.validated_data), self._user())
+        return Response(ContactSerializer(contact_body(contact)).data, status=201)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_update_contact",
+        summary="Edit a person",
+        description="Change name, title, profile URL, email, why relevant, rank or role of one "
+        "contact of this company. " + _levels("EDIT", "manager and admin"),
+        request=ContactPatchSerializer,
+        responses={200: ContactSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="update-contact")
+    def update_contact(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = ContactPatchSerializer(data=request.data, partial=True)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            contact = update_contact_of(company, dict(body.validated_data))
+        return Response(ContactSerializer(contact_body(contact)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_archive_contact",
+        summary="Remove a person",
+        description="Archives the contact (never deleted). " + _levels("EDIT", "manager and admin"),
+        request=ContactRefSerializer,
+        responses={204: None, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="archive-contact")
+    def archive_contact(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = ContactRefSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        find_contact(company, body.validated_data["contact_id"]).archive()
+        return Response(status=204)
 
     @extend_schema(
         tags=TAGS,
