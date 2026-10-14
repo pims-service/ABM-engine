@@ -190,7 +190,7 @@ def clean_text(value: object, limit: int = _MAX_FIELD) -> str:
     """One line of plain text: control characters removed, whitespace collapsed, capped."""
     if not isinstance(value, str):
         return ""
-    return _WS.sub(" ", _CONTROL.sub("", value)).replace("\n", " ").strip()[:limit]
+    return _WS.sub(" ", _CONTROL.sub("", value).replace("\n", " ")).strip()[:limit]
 
 
 def site_key(host: str) -> str:

@@ -214,22 +214,20 @@ def test_robots_txt_is_cached_per_host() -> None:
 
 
 def test_crawl_delay_is_honoured_and_capped() -> None:
-    routes: dict[str, Any] = {
-        "example.com/robots.txt": robots("User-agent: *\nCrawl-delay: 5"),
-        "example.com/": html(),
-    }
-    fetcher, _, clock, _ = make_fetcher(routes)
-    fetcher.fetch(HOME, purpose="t")
-    assert clock.sleeps, "the second request to the host should have waited"
-    assert max(clock.sleeps) >= 4.99
-
-    huge: dict[str, Any] = {
-        "example.com/robots.txt": robots("User-agent: *\nCrawl-delay: 100000"),
-        "example.com/": html(),
-    }
-    fetcher, _, clock, _ = make_fetcher(huge)
-    fetcher.fetch(HOME, purpose="t")
-    assert max(clock.sleeps) <= 30.0 + 1e-6
+    # The delay applies to the request after the one that read it, so fetch two pages.
+    for text, expected_min, expected_max in (
+        ("Crawl-delay: 5", 4.99, 5.01),
+        ("Crawl-delay: 100000", 29.99, 30.01),
+    ):
+        routes: dict[str, Any] = {
+            "example.com/robots.txt": robots(f"User-agent: *\n{text}"),
+            "example.com/a": html(),
+            "example.com/b": html(),
+        }
+        fetcher, _, clock, _ = make_fetcher(routes)
+        fetcher.fetch("https://example.com/a", purpose="t")
+        fetcher.fetch("https://example.com/b", purpose="t")
+        assert expected_min <= max(clock.sleeps) <= expected_max
 
 
 def test_requests_to_one_host_are_spaced_by_the_minimum_delay() -> None:
@@ -282,7 +280,7 @@ def test_a_redirect_into_a_private_address_is_blocked_before_connecting() -> Non
         "ftp://files.example/x",
         "file:///etc/passwd",
         "javascript:alert(1)",
-        "https://user:pw@example.com/",
+        "https://user:pw@example.com/",  # pragma: allowlist secret
         "http://example.com:8080/",
     ],
 )

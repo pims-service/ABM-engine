@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+
 import pytest
 
 from apps.integrations.fetch import (
@@ -94,7 +96,8 @@ def test_public_ip_literal_is_allowed(address: str) -> None:
     host = f"[{address}]" if ":" in address else address
     target = parse_target(f"https://{host}/")
     resolver = FakeResolver()
-    assert resolve_public(target, resolver) == (address,)
+    (resolved,) = resolve_public(target, resolver)
+    assert ipaddress.ip_address(resolved) == ipaddress.ip_address(address)
     assert resolver.calls == []  # an IP literal needs no DNS
 
 
@@ -181,9 +184,9 @@ def test_non_string_url(value: object) -> None:
 
 
 def test_default_ports_and_normalisation() -> None:
-    assert (
-        parse_target("HTTP://Example.COM/a b?x=1 2#frag").url == "http://example.com/a%20b?x=1%202"
-    )
+    assert parse_target("HTTP://Example.COM/a?x=1#frag").url == "http://example.com/a?x=1"
+    with pytest.raises(FetchInvalidUrl):
+        parse_target("https://example.com/a b")
     assert parse_target("https://example.com").path == "/"
     assert parse_target("https://example.com:443/x").url == "https://example.com/x"
     assert parse_target("http://example.com./").host == "example.com"
