@@ -163,9 +163,9 @@ def build_prompt(
 
 
 def _length_problem(draft: Draft) -> str | None:
-    if draft.channel == Channel.LINKEDIN and len(draft.body) > LINKEDIN_MAX:
+    if draft.channel == "linkedin" and len(draft.body) > LINKEDIN_MAX:
         return f"LinkedIn message longer than {LINKEDIN_MAX} characters"
-    if draft.channel == Channel.EMAIL:
+    if draft.channel == "email":
         if not (draft.subject or "").strip():
             return "email without a subject"
         if len(draft.body) > EMAIL_BODY_MAX:
@@ -235,7 +235,8 @@ def generate_messages(
     by_id = {str(s.pk): s for s in signals}
     sources = [research.data_source] if research is not None else []
     out = Generated()
-    for draft in result.data.drafts:
+    parsed: Drafts = result.data
+    for draft in parsed.drafts:
         if draft.channel not in wanted:
             continue
         problem = _length_problem(draft)

@@ -224,7 +224,8 @@ def test_writing_needs_the_edit_level(world, monkeypatch, role, status) -> None:
 def written(world: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     decide(world)
     use_llm(monkeypatch, [drafts(world)])
-    return generate(world).json()["messages"]
+    messages: list[dict[str, Any]] = generate(world).json()["messages"]
+    return messages
 
 
 def test_approving_and_exporting(world, monkeypatch) -> None:
