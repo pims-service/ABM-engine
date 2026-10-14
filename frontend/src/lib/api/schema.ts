@@ -598,6 +598,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/card/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Account research card
+     * @description Everything a reviewer needs on one page (Brief section 10): the latest research facts with their source, the fresh signals (Trigger yes or no is computed from them), the ICP assessment, the AI recommendation, the latest human decision and the latest analysis job. Facts that were not found are null. `gaps` lists what needs a data provider that is not connected yet. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_card"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/decision/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record the human decision
+     * @description Add, hold or skip (Brief section 11). Stored separately from the AI recommendation, which is never changed; the decision points at the recommendation it answered (if any) so agreement can be measured. Changing your mind adds a new decision. Returns the updated card. 400 for an archived company. Needs the `DECIDE` level: reviewer, manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_decision"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/restore/": {
     parameters: {
       query?: never;
@@ -1234,6 +1274,87 @@ export interface components {
       name: string;
       profile?: components["schemas"]["CampaignProfileInputRequest"];
     };
+    CardAnalysis: {
+      /** Format: uuid */
+      job_id: string;
+      status: string;
+      error_summary: string;
+    };
+    CardCompany: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      website: string;
+      domain: string | null;
+      country: string;
+      status: string;
+      /** Format: uuid */
+      campaign: string;
+    };
+    CardDecision: {
+      /** Format: uuid */
+      id: string;
+      decision: string;
+      note: string;
+      /** Format: date-time */
+      decided_at: string;
+      decided_by: string;
+      /** @description Null when there was no recommendation to compare with. */
+      agrees_with_ai: boolean | null;
+    };
+    CardIcp: {
+      /** Format: uuid */
+      id: string;
+      fit: string;
+      reasons: string[];
+      concerns: string[];
+      /** Format: date-time */
+      created_at: string;
+      profile_version: number;
+    };
+    CardRecommendation: {
+      /** Format: uuid */
+      id: string;
+      status: string;
+      explanation: string;
+      outreach_angle: string | null;
+      /** Format: date-time */
+      created_at: string;
+    };
+    CardResearch: {
+      /** Format: date-time */
+      researched_at: string;
+      industry: string | null;
+      description: string | null;
+      headquarters: string | null;
+      employee_count: number | null;
+      business_model: string | null;
+      classification: string | null;
+      products_services: string | null;
+      target_customers: string | null;
+      sales_headcount: number | null;
+      bd_headcount: number | null;
+      marketing_headcount: number | null;
+      /** Format: double */
+      headcount_change_12m: number | null;
+      source: components["schemas"]["Source"];
+    };
+    CardSignal: {
+      /** Format: uuid */
+      id: string;
+      type: string;
+      type_label: string;
+      evidence: string;
+      /** Format: date */
+      event_date: string;
+      /** Format: date-time */
+      expires_at: string | null;
+      source: components["schemas"]["Source"];
+    };
+    CardTrigger: {
+      triggered: boolean;
+      signals: components["schemas"]["CardSignal"][];
+    };
     /**
      * @description * `llm` - LLM
      *     * `company_data` - Company data
@@ -1581,6 +1702,18 @@ export interface components {
       file: string;
       /** @description Optional JSON object `{"<file column>": "<field>"}` with fields `name`, `website`, `profile_url`, `country`; `name` is required. Left out, the mapping suggested from the headers is used. */
       mapping?: string;
+    };
+    /**
+     * @description * `add` - add
+     *     * `hold` - hold
+     *     * `skip` - skip
+     * @enum {string}
+     */
+    DecisionEnum: "add" | "hold" | "skip";
+    DecisionRequestRequest: {
+      decision: components["schemas"]["DecisionEnum"];
+      /** @default  */
+      note: string;
     };
     Dedupe: {
       status: components["schemas"]["DedupeStatusEnum"];
@@ -2309,6 +2442,16 @@ export interface components {
       /** @description Refresh token. May be omitted when the refresh cookie is enabled. */
       refresh?: string;
     };
+    ResearchCard: {
+      company: components["schemas"]["CardCompany"];
+      research: components["schemas"]["CardResearch"] | null;
+      trigger: components["schemas"]["CardTrigger"];
+      icp: components["schemas"]["CardIcp"] | null;
+      recommendation: components["schemas"]["CardRecommendation"] | null;
+      decision: components["schemas"]["CardDecision"] | null;
+      analysis: components["schemas"]["CardAnalysis"] | null;
+      gaps: string[];
+    };
     /** @description The current (latest) research snapshot of a company. Null facts mean "not found". */
     ResearchSummary: {
       /** Format: uuid */
@@ -2456,6 +2599,12 @@ export interface components {
      */
     SortEnum:
       "relevance" | "name" | "employee_count_desc" | "employee_count_asc";
+    Source: {
+      name: string;
+      url: string;
+      /** Format: date-time */
+      retrieved_at: string;
+    };
     /**
      * @description * `allow` - allow
      *     * `warn` - warn
@@ -5300,6 +5449,153 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CompanyDetail"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_card: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResearchCard"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_decision: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DecisionRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResearchCard"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
