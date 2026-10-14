@@ -28,7 +28,12 @@ pytestmark = [pytest.mark.api, pytest.mark.django_db]
 @pytest.fixture(autouse=True)
 def queued_tasks(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     queued: list[Any] = []
-    monkeypatch.setattr(analysis, "async_task", lambda *a, **k: queued.append(a) or "task-1")
+
+    def fake_async_task(*args: Any, **kwargs: Any) -> str:
+        queued.append(args)
+        return "task-1"
+
+    monkeypatch.setattr(analysis, "async_task", fake_async_task)
     return queued
 
 

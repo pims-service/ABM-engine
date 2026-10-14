@@ -309,7 +309,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
                 raise PermissionDenied("Your role does not allow this action.")
         return campaign
 
-    def _campaign_companies(self, level: Level, archived: str = "false") -> QuerySet[Company]:
+    def _campaign_companies(self, level: Level, archived: str = "false") -> Any:
         campaign = self._campaign(level)
         queryset = super().get_queryset().filter(campaign_id=campaign.pk)
         if archived == "false":
@@ -350,7 +350,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         total = companies.count()
         assessed = companies.filter(_latest(ICPAssessment))
         analyzing = Job.objects.filter(
-            campaign_id=campaign_pk,
+            campaign_id=self.kwargs["campaign_pk"],
             type=ANALYSIS_JOB_TYPE,
             status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
         ).count()
