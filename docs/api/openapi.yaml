@@ -2720,6 +2720,74 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/website-research/:
+    post:
+      operationId: companies_website_research
+      description: 'Reads the company''s public website now (homepage plus up to three
+        of: about, products, careers, news, contact) with the safe fetcher: robots.txt
+        is honoured, social and professional networks are never fetched, private addresses
+        are refused. Returns the pages with title, description, a text excerpt and
+        their provenance (URL, time, content hash). Nothing is stored or inferred.
+        A site that cannot be read is reported in `error` (still **200**). Can take
+        up to about a minute. Needs the `EDIT` level: manager and admin. Others get
+        403; companies of clients you are not a member of give 404.'
+      summary: Research the company website
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebsiteResearch'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/imports/{batch_id}/:
     get:
       operationId: imports_retrieve
@@ -6396,6 +6464,22 @@ components:
     NullEnum:
       enum:
       - null
+    OrganizationHint:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        founding_date:
+          type: string
+        address:
+          type: string
+      required:
+      - address
+      - founding_date
+      - name
+      - url
     OutcomeCounts:
       type: object
       properties:
@@ -7259,6 +7343,47 @@ components:
       - id
       - industry
       - researched_at
+    ResearchedPage:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: home, about, products, careers, news or contact.
+        url:
+          type: string
+          description: The page after redirects.
+        title:
+          type: string
+        description:
+          type: string
+        excerpt:
+          type: string
+          description: The start of the page text (untrusted content).
+        truncated:
+          type: boolean
+        fetched_at:
+          type: string
+          format: date-time
+        content_hash:
+          type: string
+        robots:
+          type: string
+          description: 'What robots.txt said: allowed or no_robots_txt.'
+        organizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrganizationHint'
+      required:
+      - content_hash
+      - description
+      - excerpt
+      - fetched_at
+      - kind
+      - organizations
+      - robots
+      - title
+      - truncated
+      - url
     ResultEnum:
       enum:
       - ok
@@ -7514,6 +7639,20 @@ components:
           nullable: true
           minLength: 1
           maxLength: 512
+    SkippedPage:
+      type: object
+      properties:
+        url:
+          type: string
+        kind:
+          type: string
+        code:
+          type: string
+          description: A fetch error code, or `budget`.
+      required:
+      - code
+      - kind
+      - url
     SortEnum:
       enum:
       - relevance
@@ -7685,6 +7824,45 @@ components:
       - is_staff
       - last_login
       - name
+    WebsiteResearch:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        website:
+          type: string
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResearchedPage'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkippedPage'
+        bytes_read:
+          type: integer
+        error:
+          allOf:
+          - $ref: '#/components/schemas/WebsiteResearchError'
+          nullable: true
+      required:
+      - bytes_read
+      - company_id
+      - error
+      - pages
+      - skipped
+      - website
+    WebsiteResearchError:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
   securitySchemes:
     jwtAuth:
       type: http

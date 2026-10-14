@@ -22,6 +22,18 @@ def _clear_cache() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_real_website_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The website research endpoint must never reach the network from a test: by default it
+    sees an unreachable site. Tests of it patch ``fetch_site_pages`` again."""
+    from apps.integrations.fetch import FetchNetworkError
+
+    def unreachable(*args: object, **kwargs: object) -> object:
+        raise FetchNetworkError(reason="network_error")
+
+    monkeypatch.setattr("apps.companies.api.website_research.fetch_site_pages", unreachable)
+
+
+@pytest.fixture(autouse=True)
 def _fake_provider_registered() -> Iterator[None]:
     """A fresh ``fake`` provider in the default registry for every test (other tests may clear
     the registry); put the registry back as it was afterwards."""

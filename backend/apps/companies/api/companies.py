@@ -49,6 +49,7 @@ from .serializers import (
     ManualCompanySerializer,
     ManualEntryResultSerializer,
 )
+from .website_research import WebsiteResearchSerializer, research_website
 
 TAGS = ["companies"]
 
@@ -270,6 +271,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
     action_levels: ClassVar[dict[str, Level]] = {
         "retrieve": Level.READ,
         "analyze": Level.EDIT,
+        "website_research": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -305,6 +307,24 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
             }
         ).data
         return Response(body, status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_website_research",
+        summary="Research the company website",
+        description="Reads the company's public website now (homepage plus up to three of: about, "
+        "products, careers, news, contact) with the safe fetcher: robots.txt is honoured, social "
+        "and professional networks are never fetched, private addresses are refused. Returns the "
+        "pages with title, description, a text excerpt and their provenance (URL, time, content "
+        "hash). Nothing is stored or inferred. A site that cannot be read is reported in `error` "
+        "(still **200**). Can take up to about a minute. " + _levels("EDIT", "manager and admin"),
+        request=None,
+        responses={200: WebsiteResearchSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="website-research")
+    def website_research(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(WebsiteResearchSerializer(research_website(company)).data)
 
     @extend_schema(
         tags=TAGS,
