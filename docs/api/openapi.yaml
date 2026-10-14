@@ -2937,6 +2937,76 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/add-contact/:
+    post:
+      operationId: companies_add_contact
+      description: 'Adds a contact with a manual data source that records who typed
+        it. Taking the primary or secondary slot demotes the previous holder to none.
+        Needs the `EDIT` level: manager and admin. Others get 403; companies of clients
+        you are not a member of give 404.'
+      summary: Add a person by hand
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/analyze/:
     post:
       operationId: companies_analyze
@@ -3071,6 +3141,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/archive-contact/:
+    post:
+      operationId: companies_archive_contact
+      description: 'Archives the contact (never deleted). Needs the `EDIT` level:
+        manager and admin. Others get 403; companies of clients you are not a member
+        of give 404.'
+      summary: Remove a person
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRefRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/card/:
     get:
       operationId: companies_card
@@ -3100,6 +3235,65 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResearchCard'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/contacts/:
+    get:
+      operationId: companies_contacts
+      description: 'Active contacts, best first: primary, secondary, then by rank
+        (Brief section 8). Needs the `READ` level: any member. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: People at the company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contact'
           description: ''
         '401':
           content:
@@ -3302,6 +3496,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CompanyDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/update-contact/:
+    post:
+      operationId: companies_update_contact
+      description: 'Change name, title, profile URL, email, why relevant, rank or
+        role of one contact of this company. Needs the `EDIT` level: manager and admin.
+        Others get 403; companies of clients you are not a member of give 404.'
+      summary: Edit a person
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactPatchRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
           description: ''
         '400':
           content:
@@ -6576,6 +6839,129 @@ components:
           nullable: true
           description: 'Write-only secrets by name, e.g. `{"api_key": "..."}`. On
             update they replace all stored credentials. Never returned.'
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        title:
+          type: string
+        profile_url:
+          type: string
+        email:
+          type: string
+        email_status:
+          type: string
+        relevance_reason:
+          type: string
+        rank:
+          type: integer
+          nullable: true
+        role:
+          type: string
+          description: primary, secondary or none.
+        source:
+          type: string
+          description: Who or what entered this person.
+      required:
+      - email
+      - email_status
+      - id
+      - name
+      - profile_url
+      - rank
+      - relevance_reason
+      - role
+      - source
+      - title
+    ContactCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+        title:
+          type: string
+          default: ''
+          maxLength: 300
+        profile_url:
+          oneOf:
+          - type: string
+            format: uri
+            default: ''
+            maxLength: 2000
+          - type: string
+            maxLength: 0
+        email:
+          oneOf:
+          - type: string
+            format: email
+            default: ''
+            maxLength: 320
+          - type: string
+            maxLength: 0
+        relevance_reason:
+          type: string
+          default: ''
+        rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          default: none
+      required:
+      - name
+    ContactPatchRequest:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 300
+        title:
+          type: string
+          maxLength: 300
+        profile_url:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 2000
+          - type: string
+            maxLength: 0
+        email:
+          oneOf:
+          - type: string
+            format: email
+            maxLength: 320
+          - type: string
+            maxLength: 0
+        relevance_reason:
+          type: string
+        rank:
+          type: integer
+          minimum: 1
+          nullable: true
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+      required:
+      - contact_id
+    ContactRefRequest:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+      required:
+      - contact_id
     CsvImportAccepted:
       type: object
       description: '202 response: the work is queued (or, in tests, already done).'
@@ -8537,6 +8923,16 @@ components:
         * `ok` - ok
         * `failed` - failed
         * `unconfigured` - unconfigured
+    RoleEnum:
+      enum:
+      - primary
+      - secondary
+      - none
+      type: string
+      description: |-
+        * `primary` - Primary
+        * `secondary` - Secondary
+        * `none` - None
     RulesSummary:
       type: object
       description: |-
