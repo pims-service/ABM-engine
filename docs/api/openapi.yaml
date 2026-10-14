@@ -896,7 +896,7 @@ paths:
           * `major_partnership` - Major partnership
           * `other` - Other
       tags:
-      - accounts
+      - campaigns
       security:
       - jwtAuth: []
       responses:
@@ -931,6 +931,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/analyze/:
     post:
       operationId: campaign_accounts_analyze
@@ -948,7 +960,7 @@ paths:
           format: uuid
         required: true
       tags:
-      - accounts
+      - campaigns
       requestBody:
         content:
           application/json:
@@ -989,6 +1001,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/summary/:
     get:
       operationId: campaign_accounts_summary
@@ -1003,7 +1027,7 @@ paths:
           format: uuid
         required: true
       tags:
-      - accounts
+      - campaigns
       security:
       - jwtAuth: []
       responses:
@@ -1032,6 +1056,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/companies/:
     get:
       operationId: campaign_companies_list

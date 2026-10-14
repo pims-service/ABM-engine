@@ -53,7 +53,7 @@ from apps.research.models import (
     SignalType,
 )
 
-TAGS = ["accounts"]
+TAGS = ["campaigns"]
 MAX_BULK = 500
 _FIT_RANK = {Fit.STRONG: 3, Fit.MEDIUM: 2, Fit.WEAK: 1}
 
@@ -275,7 +275,10 @@ def build_rows(companies: list[Company]) -> list[dict[str, Any]]:
         "and website; `ordering` accepts `name`, `icp_fit`, `updated_at` (prefix `-` to "
         "reverse). Archived companies are hidden unless `archived` asks. Needs the READ level.",
         parameters=[AccountQuerySerializer],
-        responses={200: AccountRowSerializer(many=True), **error_responses(400, 401, 403, 404)},
+        responses={
+            200: AccountRowSerializer(many=True),
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
     ),
 )
 class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
@@ -342,7 +345,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         summary="Counts for the dashboard header",
         description="Counts over the campaign's active companies, ignoring any filter. Needs the "
         "READ level.",
-        responses={200: AccountSummarySerializer, **error_responses(401, 403, 404)},
+        responses={200: AccountSummarySerializer, **error_responses(401, 403, 404, 429, 500)},
     )
     @action(detail=False, methods=["get"])
     def summary(self, request: Request, campaign_pk: str | None = None) -> Response:
@@ -379,7 +382,10 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "queued or running are counted in `already_running` and not queued again. Each analysis "
         "calls the AI provider, which costs money. Needs the EDIT level.",
         request=BulkAnalyzeRequestSerializer,
-        responses={202: BulkAnalyzeResultSerializer, **error_responses(400, 401, 403, 404)},
+        responses={
+            202: BulkAnalyzeResultSerializer,
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
     )
     @action(detail=False, methods=["post"])
     def analyze(self, request: Request, campaign_pk: str | None = None) -> Response:
