@@ -2657,6 +2657,139 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/card/:
+    get:
+      operationId: companies_card
+      description: 'Everything a reviewer needs on one page (Brief section 10): the
+        latest research facts with their source, the fresh signals (Trigger yes or
+        no is computed from them), the ICP assessment, the AI recommendation, the
+        latest human decision and the latest analysis job. Facts that were not found
+        are null. `gaps` lists what needs a data provider that is not connected yet.
+        Needs the `READ` level: any member. Others get 403; companies of clients you
+        are not a member of give 404.'
+      summary: Account research card
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchCard'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/decision/:
+    post:
+      operationId: companies_decision
+      description: 'Add, hold or skip (Brief section 11). Stored separately from the
+        AI recommendation, which is never changed; the decision points at the recommendation
+        it answered (if any) so agreement can be measured. Changing your mind adds
+        a new decision. Returns the updated card. 400 for an archived company. Needs
+        the `DECIDE` level: reviewer, manager and admin. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: Record the human decision
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchCard'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/restore/:
     post:
       operationId: companies_restore
@@ -4991,6 +5124,229 @@ components:
           $ref: '#/components/schemas/CampaignProfileInputRequest'
       required:
       - name
+    CardAnalysis:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        error_summary:
+          type: string
+      required:
+      - error_summary
+      - job_id
+      - status
+    CardCompany:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        website:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        country:
+          type: string
+        status:
+          type: string
+        campaign:
+          type: string
+          format: uuid
+      required:
+      - campaign
+      - country
+      - domain
+      - id
+      - name
+      - status
+      - website
+    CardDecision:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        decision:
+          type: string
+        note:
+          type: string
+        decided_at:
+          type: string
+          format: date-time
+        decided_by:
+          type: string
+        agrees_with_ai:
+          type: boolean
+          nullable: true
+          description: Null when there was no recommendation to compare with.
+      required:
+      - agrees_with_ai
+      - decided_at
+      - decided_by
+      - decision
+      - id
+      - note
+    CardIcp:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fit:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        concerns:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        profile_version:
+          type: integer
+      required:
+      - concerns
+      - created_at
+      - fit
+      - id
+      - profile_version
+      - reasons
+    CardRecommendation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        explanation:
+          type: string
+        outreach_angle:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - explanation
+      - id
+      - outreach_angle
+      - status
+    CardResearch:
+      type: object
+      properties:
+        researched_at:
+          type: string
+          format: date-time
+        industry:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        headquarters:
+          type: string
+          nullable: true
+        employee_count:
+          type: integer
+          nullable: true
+        business_model:
+          type: string
+          nullable: true
+        classification:
+          type: string
+          nullable: true
+        products_services:
+          type: string
+          nullable: true
+        target_customers:
+          type: string
+          nullable: true
+        sales_headcount:
+          type: integer
+          nullable: true
+        bd_headcount:
+          type: integer
+          nullable: true
+        marketing_headcount:
+          type: integer
+          nullable: true
+        headcount_change_12m:
+          type: number
+          format: double
+          maximum: 10000
+          minimum: -10000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+      required:
+      - bd_headcount
+      - business_model
+      - classification
+      - description
+      - employee_count
+      - headcount_change_12m
+      - headquarters
+      - industry
+      - marketing_headcount
+      - products_services
+      - researched_at
+      - sales_headcount
+      - source
+      - target_customers
+    CardSignal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        type_label:
+          type: string
+        evidence:
+          type: string
+        event_date:
+          type: string
+          format: date
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        source:
+          $ref: '#/components/schemas/Source'
+      required:
+      - event_date
+      - evidence
+      - expires_at
+      - id
+      - source
+      - type
+      - type_label
+    CardTrigger:
+      type: object
+      properties:
+        triggered:
+          type: boolean
+        signals:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardSignal'
+      required:
+      - signals
+      - triggered
     CategoryEnum:
       enum:
       - llm
@@ -5741,6 +6097,27 @@ components:
             out, the mapping suggested from the headers is used.'
       required:
       - file
+    DecisionEnum:
+      enum:
+      - add
+      - hold
+      - skip
+      type: string
+      description: |-
+        * `add` - add
+        * `hold` - hold
+        * `skip` - skip
+    DecisionRequestRequest:
+      type: object
+      properties:
+        decision:
+          $ref: '#/components/schemas/DecisionEnum'
+        note:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - decision
     Dedupe:
       type: object
       properties:
@@ -7289,6 +7666,46 @@ components:
           type: string
           minLength: 1
           description: Refresh token. May be omitted when the refresh cookie is enabled.
+    ResearchCard:
+      type: object
+      properties:
+        company:
+          $ref: '#/components/schemas/CardCompany'
+        research:
+          allOf:
+          - $ref: '#/components/schemas/CardResearch'
+          nullable: true
+        trigger:
+          $ref: '#/components/schemas/CardTrigger'
+        icp:
+          allOf:
+          - $ref: '#/components/schemas/CardIcp'
+          nullable: true
+        recommendation:
+          allOf:
+          - $ref: '#/components/schemas/CardRecommendation'
+          nullable: true
+        decision:
+          allOf:
+          - $ref: '#/components/schemas/CardDecision'
+          nullable: true
+        analysis:
+          allOf:
+          - $ref: '#/components/schemas/CardAnalysis'
+          nullable: true
+        gaps:
+          type: array
+          items:
+            type: string
+      required:
+      - analysis
+      - company
+      - decision
+      - gaps
+      - icp
+      - recommendation
+      - research
+      - trigger
     ResearchSummary:
       type: object
       description: The current (latest) research snapshot of a company. Null facts
@@ -7665,6 +8082,20 @@ components:
         * `name` - name
         * `employee_count_desc` - employee_count_desc
         * `employee_count_asc` - employee_count_asc
+    Source:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        retrieved_at:
+          type: string
+          format: date-time
+      required:
+      - name
+      - retrieved_at
+      - url
     StateEnum:
       enum:
       - allow

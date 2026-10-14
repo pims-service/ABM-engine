@@ -40,6 +40,13 @@ from apps.imports.manual import (
 )
 from apps.imports.models import ImportRowOutcome
 from apps.imports.services import COMPANY_REJECTED
+from apps.research.card import (
+    DecisionRequestSerializer,
+    ResearchCardSerializer,
+    build_card,
+)
+from apps.research.models import AIRecommendation
+from apps.research.services import record_human_decision
 
 from .serializers import (
     AnalysisRequestSerializer,
@@ -272,6 +279,8 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "retrieve": Level.READ,
         "analyze": Level.EDIT,
         "website_research": Level.EDIT,
+        "card": Level.READ,
+        "decision": Level.DECIDE,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -325,6 +334,51 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
     def website_research(self, request: Request, pk: str | None = None) -> Response:
         company = self.get_object()
         return Response(WebsiteResearchSerializer(research_website(company)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_card",
+        summary="Account research card",
+        description="Everything a reviewer needs on one page (Brief section 10): the latest "
+        "research facts with their source, the fresh signals (Trigger yes or no is computed from "
+        "them), the ICP assessment, the AI recommendation, the latest human decision and the "
+        "latest analysis job. Facts that were not found are null. `gaps` lists what needs a data "
+        "provider that is not connected yet. " + _levels("READ", "any member"),
+        responses={200: ResearchCardSerializer, **error_responses(401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["get"])
+    def card(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(ResearchCardSerializer(build_card(company)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_decision",
+        summary="Record the human decision",
+        description="Add, hold or skip (Brief section 11). Stored separately from the AI "
+        "recommendation, which is never changed; the decision points at the recommendation it "
+        "answered (if any) so agreement can be measured. Changing your mind adds a new decision. "
+        "Returns the updated card. 400 for an archived company. "
+        + _levels("DECIDE", "reviewer, manager and admin"),
+        request=DecisionRequestSerializer,
+        responses={200: ResearchCardSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"])
+    def decision(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = DecisionRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        if company.is_archived:
+            raise ValidationError({"non_field_errors": ["Archived companies are read-only."]})
+        with api_validation():
+            record_human_decision(
+                company,
+                body.validated_data["decision"],
+                self._user(),
+                ai_recommendation=AIRecommendation.objects.latest_for(company),
+                note=body.validated_data["note"],
+            )
+        return Response(ResearchCardSerializer(build_card(company)).data)
 
     @extend_schema(
         tags=TAGS,
