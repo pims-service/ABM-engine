@@ -64,6 +64,8 @@ Project documentation lives here. If you are new, start with onboarding.
   (denylist, SSRF guard, robots.txt, size limits, opt-outs) and `fetch_site_pages`.
 - [Headcount growth](research/headcount-growth.md): how the 3, 6 and 12 month growth
   figures are computed, flagged and explained, and the JSON stored on the research snapshot.
+- [Qualification engine](research/qualification-engine.md): how "Analyze Company" turns a website into
+  research, signals, an ICP assessment and a recommendation, and what it needs.
 
 ## Reference for each part of the repo
 
