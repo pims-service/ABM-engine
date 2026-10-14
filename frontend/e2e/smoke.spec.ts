@@ -44,11 +44,11 @@ test("theme toggle switches to dark and survives a reload", async ({
   await expect(html).toHaveAttribute("data-theme", "dark");
   const bg = () =>
     page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(await bg()).toBe("rgb(11, 15, 25)");
+  expect(await bg()).toBe("rgb(9, 9, 11)");
 
   await page.reload();
   await expect(html).toHaveAttribute("data-theme", "dark");
-  expect(await bg()).toBe("rgb(11, 15, 25)");
+  expect(await bg()).toBe("rgb(9, 9, 11)");
 });
 
 test("follows prefers-color-scheme when no override is set", async ({
@@ -58,7 +58,7 @@ test("follows prefers-color-scheme when no override is set", async ({
   await page.goto("/dashboard");
   expect(
     await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
-  ).toBe("rgb(11, 15, 25)");
+  ).toBe("rgb(9, 9, 11)");
 });
 
 test("sidebar collapses into a drawer on small screens", async ({ page }) => {
