@@ -28,7 +28,7 @@ class ContactSerializer(serializers.Serializer[Any]):
     relevance_reason = serializers.CharField(allow_blank=True)
     rank = serializers.IntegerField(allow_null=True)
     role = serializers.CharField(help_text="primary, secondary or none.")
-    source = serializers.CharField(help_text="Who or what entered this person.")
+    source = serializers.CharField(help_text="Who or what entered this person.")  # type: ignore[assignment]
 
 
 class ContactCreateSerializer(serializers.Serializer[Any]):
@@ -71,7 +71,7 @@ def contact_body(contact: Contact) -> dict[str, Any]:
 
 def company_contacts(company: Company) -> list[Contact]:
     """Active contacts, best first (primary, secondary, then by rank and name)."""
-    order = {ContactRole.PRIMARY: 0, ContactRole.SECONDARY: 1, ContactRole.NONE: 2}
+    order = {"primary": 0, "secondary": 1, "none": 2}
     rows = list(Contact.objects.active().filter(company=company).select_related("data_source"))
     rows.sort(key=lambda c: (order.get(c.role, 3), c.rank is None, c.rank or 0, c.name.lower()))
     return rows
