@@ -60,7 +60,7 @@ class CardResearchSerializer(serializers.Serializer[Any]):
     headcount_change_12m = serializers.DecimalField(
         max_digits=6, decimal_places=2, allow_null=True, coerce_to_string=False
     )
-    source = SourceSerializer()
+    source = SourceSerializer()  # type: ignore[assignment]
 
 
 class CardSignalSerializer(serializers.Serializer[Any]):
@@ -70,7 +70,7 @@ class CardSignalSerializer(serializers.Serializer[Any]):
     evidence = serializers.CharField()
     event_date = serializers.DateField()
     expires_at = serializers.DateTimeField(allow_null=True)
-    source = SourceSerializer()
+    source = SourceSerializer()  # type: ignore[assignment]
 
 
 class CardTriggerSerializer(serializers.Serializer[Any]):
