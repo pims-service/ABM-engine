@@ -13,7 +13,7 @@ from rest_framework import serializers
 
 from apps.companies.analysis import latest_analysis_jobs
 from apps.companies.models import Company, CompanyResearch
-from apps.outreach.models import Activity, ActivityType
+from apps.outreach.models import Activity, ActivityType, OutreachAngle
 from apps.outreach.services import FeedbackKind, FeedbackTargetType
 from apps.research.models import (
     AIRecommendation,
@@ -123,6 +123,10 @@ class ResearchCardSerializer(serializers.Serializer[Any]):
     decision = CardDecisionSerializer(allow_null=True)
     analysis = CardAnalysisSerializer(allow_null=True)
     gaps = serializers.ListField(child=serializers.CharField())
+    outreach_languages = serializers.ListField(child=serializers.CharField())
+    has_angle = serializers.BooleanField(
+        help_text="True when an outreach angle exists, so messages can be written."
+    )
 
 
 class DecisionRequestSerializer(serializers.Serializer[Any]):
@@ -258,6 +262,8 @@ def build_card(company: Company) -> dict[str, Any]:
         if job is None
         else {"job_id": job.pk, "status": job.status, "error_summary": job.error_summary},
         "gaps": gaps,
+        "outreach_languages": list(company.campaign.current_profile.outreach_languages),
+        "has_angle": OutreachAngle.objects.filter(company=company).exists(),
     }
 
 
