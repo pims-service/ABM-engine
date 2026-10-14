@@ -14,8 +14,9 @@ import { ApiError } from "@/lib/api";
 import { errorMessage, formatDateTime } from "@/lib/format";
 import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
-import { getCompany, researchWebsite, type WebsiteResearch } from "./api";
-import { CompanyStatus } from "./CompanyStatus";
+import { researchWebsite, type WebsiteResearch } from "./api";
+import { getCard, requestAnalysis, type ResearchCard } from "./cardApi";
+import { ResearchCardView } from "./ResearchCardView";
 
 const KIND_LABELS: Record<string, string> = {
   home: "Homepage",
@@ -26,27 +27,35 @@ const KIND_LABELS: Record<string, string> = {
   contact: "Contact",
 };
 
-/** `/companies/[id]`: the company, and a live read of its public website. */
+/** `/companies/[id]`: the account research card, with the analysis and decision actions. */
 export function CompanyDetail({ id }: { id: string }) {
   const {
-    data: company,
+    data: loaded,
     error,
     loading,
     reload,
-  } = useApiQuery(`company:${id}`, (signal) => getCompany(id, signal));
-  const [research, setResearch] = useState<WebsiteResearch | null>(null);
-  const [running, setRunning] = useState(false);
-  const [runError, setRunError] = useState<string | null>(null);
+  } = useApiQuery(`card:${id}`, (signal) => getCard(id, signal));
+  const [updated, setUpdated] = useState<ResearchCard | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  async function run() {
-    setRunning(true);
-    setRunError(null);
+  // A decision returns a fresh card; a reload replaces it with the server's latest.
+  const card = updated ?? loaded;
+  const refresh = () => {
+    setUpdated(null);
+    reload();
+  };
+
+  async function analyse() {
+    setStarting(true);
+    setStartError(null);
     try {
-      setResearch(await researchWebsite(id));
+      await requestAnalysis(id);
+      refresh();
     } catch (cause) {
-      setRunError(errorMessage(cause));
+      setStartError(errorMessage(cause));
     } finally {
-      setRunning(false);
+      setStarting(false);
     }
   }
 
@@ -59,7 +68,7 @@ export function CompanyDetail({ id }: { id: string }) {
     </Link>
   );
 
-  if (!company) {
+  if (!card) {
     if (error) {
       const missing =
         error instanceof ApiError &&
@@ -93,58 +102,82 @@ export function CompanyDetail({ id }: { id: string }) {
         <div role="status" className="flex flex-col gap-3">
           <span className="sr-only">Loading company…</span>
           <Skeleton className="h-8 w-1/3" />
-          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-24 w-full" />
         </div>
       </>
     );
   }
 
+  const busy =
+    card.analysis?.status === "queued" || card.analysis?.status === "running";
   return (
     <>
       {back}
       <PageHeader
-        title={company.name}
-        description={company.website || "No website on file."}
+        title={card.company.name}
+        description={card.company.website || "No website on file."}
         actions={
-          <Button onClick={run} disabled={running || loading}>
-            {running ? "Reading the website…" : "Research website"}
+          <Button onClick={analyse} disabled={starting || busy || loading}>
+            {busy
+              ? "Analyzing…"
+              : starting
+                ? "Starting…"
+                : card.icp
+                  ? "Re-run analysis"
+                  : "Run analysis"}
           </Button>
         }
       />
-      <div className="-mt-3 mb-6 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
-        <CompanyStatus status={company.status} />
-        {company.country ? <Badge>{company.country}</Badge> : null}
-        {company.possible_duplicate ? (
-          <Badge tone="warning">Possible duplicate</Badge>
-        ) : null}
-        <span>Added {formatDateTime(company.created_at)}</span>
-      </div>
-
-      {runError ? (
+      {startError ? (
         <Alert tone="danger" className="mb-4">
-          Could not research the website. {runError}
+          Could not start the analysis. {startError}
         </Alert>
       ) : null}
-      {running ? (
-        <div role="status" className="mb-4 flex flex-col gap-2">
-          <span className="sr-only">Reading the website…</span>
-          <Skeleton className="h-24 w-full" />
-        </div>
-      ) : null}
-      {!research && !running ? (
-        <EmptyState
-          title="Nothing researched yet"
-          description="Research website reads the public site now (about, products, careers, news) and shows what it says, with the source and time of each page."
-        />
-      ) : null}
-      {research ? <ResearchResult research={research} /> : null}
+      <ResearchCardView card={card} onChange={setUpdated} reload={refresh} />
+      <WebsitePreview id={id} />
     </>
   );
 }
 
-function ResearchResult({ research }: { research: WebsiteResearch }) {
-  const careers = research.pages.some((page) => page.kind === "careers");
-  const news = research.pages.some((page) => page.kind === "news");
+/** A quick look at the raw pages the analysis reads. Nothing is stored and no AI is used. */
+function WebsitePreview({ id }: { id: string }) {
+  const [research, setResearch] = useState<WebsiteResearch | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  async function run() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      setResearch(await researchWebsite(id));
+    } catch (cause) {
+      setRunError(errorMessage(cause));
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <section className="mt-8" aria-labelledby="website-preview-heading">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 id="website-preview-heading" className="text-sm font-semibold">
+          Website preview
+        </h2>
+        <Button variant="secondary" size="sm" onClick={run} disabled={running}>
+          {running ? "Reading…" : "Read the website now"}
+        </Button>
+      </div>
+      <p className="mb-3 text-sm text-fg-muted">
+        Shows what the public pages say, with source and time. Nothing is saved
+        and no AI is used.
+      </p>
+      {runError ? <Alert tone="danger">{runError}</Alert> : null}
+      {research ? <PreviewResult research={research} /> : null}
+    </section>
+  );
+}
+
+function PreviewResult({ research }: { research: WebsiteResearch }) {
   return (
     <div className="flex flex-col gap-4">
       {research.error ? (
@@ -153,12 +186,9 @@ function ResearchResult({ research }: { research: WebsiteResearch }) {
           <span className="text-fg-muted">({research.error.code})</span>
         </Alert>
       ) : (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
-          <Badge tone="info">{research.pages.length} pages read</Badge>
-          {careers ? <Badge tone="success">Has a careers page</Badge> : null}
-          {news ? <Badge tone="success">Has a news page</Badge> : null}
-          <span>{Math.round(research.bytes_read / 1024)} KB downloaded</span>
-        </div>
+        <Badge tone="info" className="self-start">
+          {research.pages.length} pages read
+        </Badge>
       )}
       {research.pages.map((page) => (
         <Card key={page.url} title={KIND_LABELS[page.kind] ?? page.kind}>
@@ -170,22 +200,6 @@ function ResearchResult({ research }: { research: WebsiteResearch }) {
             {page.excerpt}
             {page.truncated ? "…" : ""}
           </p>
-          {page.organizations.length > 0 ? (
-            <p className="mt-3 text-xs text-fg-muted">
-              The page describes itself as:{" "}
-              {page.organizations
-                .map((org) =>
-                  [
-                    org.name,
-                    org.founding_date && `founded ${org.founding_date}`,
-                    org.address,
-                  ]
-                    .filter(Boolean)
-                    .join(", "),
-                )
-                .join("; ")}
-            </p>
-          ) : null}
           <p className="mt-3 break-all text-xs text-fg-muted">
             Source:{" "}
             <a
@@ -201,13 +215,6 @@ function ResearchResult({ research }: { research: WebsiteResearch }) {
           </p>
         </Card>
       ))}
-      {research.skipped.length > 0 ? (
-        <Alert tone="info">
-          Skipped {research.skipped.length} page
-          {research.skipped.length === 1 ? "" : "s"}:{" "}
-          {research.skipped.map((s) => `${s.kind} (${s.code})`).join(", ")}
-        </Alert>
-      ) : null}
     </div>
   );
 }
