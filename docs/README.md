@@ -62,6 +62,8 @@ Project documentation lives here. If you are new, start with onboarding.
   `structured_call`, prompt-injection hygiene and the Anthropic adapter.
 - [Public website fetching](integrations/website-fetching.md): the safe, polite page fetcher
   (denylist, SSRF guard, robots.txt, size limits, opt-outs) and `fetch_site_pages`.
+- [Headcount growth](research/headcount-growth.md): how the 3, 6 and 12 month growth
+  figures are computed, flagged and explained, and the JSON stored on the research snapshot.
 
 ## Reference for each part of the repo
 

@@ -58,6 +58,23 @@ class ConnectionSerializer(serializers.ModelSerializer[IntegrationConnection]):
         read_only_fields = fields
 
 
+class ConnectionTestResultSerializer(serializers.Serializer[dict[str, Any]]):
+    """The outcome of ``POST .../{id}/test/``. The message is untrusted text: show it as text."""
+
+    result = serializers.ChoiceField(
+        choices=["ok", "failed", "unconfigured"],
+        read_only=True,
+        help_text="`ok` or `failed` (stored on the connection), or `unconfigured` when no test "
+        "exists for this provider yet (nothing is stored and nothing succeeded).",
+    )
+    ok = serializers.BooleanField(read_only=True, help_text="True only for `ok`.")
+    message = serializers.CharField(
+        read_only=True,
+        help_text="Short, scrubbed reason. Never contains credentials. Render as plain text.",
+    )
+    connection = ConnectionSerializer(read_only=True)
+
+
 class StrictSecretField(serializers.CharField):
     """A string only: numbers and booleans are rejected instead of coerced."""
 
@@ -67,8 +84,9 @@ class StrictSecretField(serializers.CharField):
         return super().to_internal_value(data)
 
 
-def _credentials_field() -> serializers.DictField:
+def _credentials_field(*, allow_null: bool = False) -> serializers.DictField:
     return serializers.DictField(
+        allow_null=allow_null,
         child=StrictSecretField(
             max_length=MAX_CREDENTIAL_VALUE_LENGTH,
             trim_whitespace=True,
@@ -109,7 +127,7 @@ class ConnectionUpdateSerializer(serializers.Serializer[dict[str, Any]]):
     config = serializers.DictField(
         required=False, help_text="Replaces the whole config. Secrets are rejected here."
     )
-    credentials = _credentials_field()
+    credentials = _credentials_field(allow_null=True)
 
 
 class ConnectionListQuerySerializer(serializers.Serializer[dict[str, str]]):

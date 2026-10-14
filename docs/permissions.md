@@ -74,6 +74,17 @@ Archived clients are read-only (400) until restored.
 Reviewers (DECIDE) cannot edit rules: PUT/PATCH is 403 for them. There is no DELETE (405).
 Archived campaigns are read-only (400) until restored; their profile versions stay readable.
 
+### Provider import endpoints (issue #67)
+
+| Endpoint | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `GET /providers/` (registered providers and capabilities, no secrets) | READ | yes | yes | yes | yes | yes | yes (not tenant data) |
+| `GET /provider-imports/{batch_id}/` (batch status and rows) | READ | yes | yes | yes | yes | yes | 404 |
+| `POST /campaigns/{id}/provider-search/` (preview, writes nothing) | EDIT | no | no | yes | yes | yes | 404 |
+| `POST /campaigns/{id}/provider-import/` (import selected) | EDIT | no | no | yes | yes | yes | 404 |
+
+Search and import are throttled per user (`provider_search`, `provider_import` rates in
+`DEFAULT_THROTTLE_RATES`; #69 hardens and makes them configurable).
 ### CSV import endpoints (issue #62)
 
 | Endpoint (action) | Level | viewer | reviewer | manager | admin | global admin | no membership in that client |
@@ -81,6 +92,8 @@ Archived campaigns are read-only (400) until restored; their profile versions st
 | `POST /campaigns/{campaign_id}/csv-import/preview/` (`preview`) | EDIT | no | no | yes | yes | yes | 404 |
 | `POST /campaigns/{campaign_id}/csv-import/` (`create`) | EDIT | no | no | yes | yes | yes | 404 |
 | `POST /imports/{batch_id}/cancel/` (`cancel`) | EDIT | no | no | yes | yes | yes | 404 |
+| `GET /imports/{batch_id}/` (`retrieve`), `GET /imports/{batch_id}/rows/` (`rows`), `GET /imports/{batch_id}/errors.csv` (`errors_csv`) | READ | yes | yes | yes | yes | yes | 404 |
+| `GET /campaigns/{campaign_id}/imports/` (`list`, import history) | READ | yes | yes | yes | yes | yes | 404 |
 | `GET /imports/csv-template/` | signed in | yes | yes | yes | yes | yes | yes (a static file, no client data; listed in `PUBLIC_ENDPOINTS` of the isolation test) |
 
 Importing adds companies to a campaign, so it needs the same level as creating a company.
@@ -114,6 +127,11 @@ never see that a connection exists beyond a 403 on a known id.
 | `create` | MANAGE in the target client | 403 | 403 | 403 | yes | yes | 404 |
 | `update`, `partial_update` (name, config, credentials) | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
 | `enable`, `disable`, `archive`, `restore` | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+| `test` (`POST .../{id}/test/`, issue #77) | MANAGE | 403 | 403 | 403 | yes | yes | 404 |
+
+`test` is admin-only because it decrypts and uses the stored credentials. It is limited to 5 per
+minute per connection (429 `throttled`); the limit is checked after the role, so a user who may not
+test can never use up an admin's budget.
 
 Credentials are write-only: no response contains them, only `has_credentials` and a masked hint
 (`****abcd` for secrets of 16 characters or more, `****` otherwise). There is no DELETE (405):

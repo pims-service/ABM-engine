@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
 import { handleData } from "./mock-data.mjs";
+import { handleIntegrations } from "./mock-integrations.mjs";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8999);
 const ACCESS_TTL_SECONDS = Number(process.env.MOCK_ACCESS_TTL ?? 900);
@@ -92,6 +93,22 @@ const server = createServer(async (req, res) => {
       "Access-Control-Allow-Headers": "authorization, content-type",
     });
     return res.end();
+  }
+
+  if (
+    url.pathname.startsWith("/__integrations/") ||
+    url.pathname.startsWith("/api/v1/integrations/")
+  ) {
+    const handled = await handleIntegrations(req, res, url, {
+      send,
+      fail,
+      readJson,
+      authed: (request) =>
+        validAccess.has(
+          (request.headers.authorization ?? "").replace(/^Bearer /, ""),
+        ),
+    });
+    if (handled !== false) return;
   }
 
   if (

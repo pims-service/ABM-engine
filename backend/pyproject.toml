@@ -112,6 +112,12 @@ module = "tests.test_integration_framework"
 disable_error_code = ["arg-type", "dict-item", "unused-ignore"]
 
 [[tool.mypy.overrides]]
+module = ["tests.test_growth_core", "tests.test_growth_report"]
+# Results hold optional end points and the JSON blob is a plain dict; the tests assert they are
+# set and then index into them. They also feed bad types to the validators on purpose.
+disable_error_code = ["union-attr", "index", "arg-type", "unused-ignore"]
+
+[[tool.mypy.overrides]]
 # These libraries ship no type information.
 module = ["factory.*", "environ.*", "django_q.*"]
 ignore_missing_imports = true
