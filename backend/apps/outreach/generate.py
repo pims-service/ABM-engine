@@ -235,7 +235,9 @@ def generate_messages(
     by_id = {str(s.pk): s for s in signals}
     sources = [research.data_source] if research is not None else []
     out = Generated()
-    parsed: Drafts = result.data
+    parsed = result.data
+    if parsed is None:
+        raise GenerationFailed("The AI returned no drafts.")
     for draft in parsed.drafts:
         if draft.channel not in wanted:
             continue
@@ -250,7 +252,7 @@ def generate_messages(
             out.rejected.append(f"{draft.channel}: {problem}")
             continue
         used = [by_id[i] for i in draft.used_signal_ids]
-        subject = (draft.subject or "").strip() if draft.channel == Channel.EMAIL else ""
+        subject = (draft.subject or "").strip() if draft.channel == "email" else ""
         common: dict[str, Any] = {
             "signals": used,
             "data_sources": sources,
