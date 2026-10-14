@@ -17,9 +17,9 @@ from apps.campaigns.memberships import grant_membership
 from apps.campaigns.models import Campaign, Client
 from apps.companies import analysis
 from apps.companies.models import Company, CompanyResearch, CompanyStatus
-from apps.companies.tasks import ANALYSIS_NOT_IMPLEMENTED
 from apps.core.models import AuditAction, AuditLog, Job, JobItem, JobStatus
 from apps.imports.models import ImportBatch, ImportBatchStatus, ImportRow
+from apps.research.engine.access import NOT_CONFIGURED
 from tests.factories import make_campaign, make_client, make_company, make_research, make_user
 
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
@@ -693,21 +693,23 @@ def test_analyze_refuses_archived_company_and_campaign(world, manager) -> None:
     assert not Job.objects.exists()
 
 
-def test_the_placeholder_task_fails_honestly_and_invents_nothing(world, manager, run_tasks) -> None:
+def test_analysis_without_an_ai_connection_fails_honestly_and_invents_nothing(
+    world, manager, run_tasks
+) -> None:
     _, campaign = world
     company = make_company(campaign=campaign)
     response = manager.post(detail_url(company, "analyze/"))
     assert response.status_code == 202
     job = response.json()["job"]
     assert job["status"] == "failed"
-    assert ANALYSIS_NOT_IMPLEMENTED in job["error_summary"]
+    assert NOT_CONFIGURED in job["error_summary"]
     assert (job["total_count"], job["done_count"], job["failed_count"]) == (1, 0, 1)
     item = JobItem.objects.get(job_id=job["id"])
     assert item.status == "failed"
-    assert item.error == ANALYSIS_NOT_IMPLEMENTED
+    assert item.error == NOT_CONFIGURED
     assert not CompanyResearch.objects.exists()
     company.refresh_from_db()
-    assert company.status == CompanyStatus.PENDING  # untouched
+    assert company.status == CompanyStatus.PENDING  # untouched: nothing is wrong with the company
 
 
 # ------------------------------------------------------------------ archive / restore
