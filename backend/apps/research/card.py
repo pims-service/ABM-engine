@@ -301,7 +301,8 @@ def describe_activity(activity: Activity) -> tuple[str, str]:
             tail = " (agrees with the AI)" if agree else " (differs from the AI)"
         return f"Decided {str(p.get('decision', '')).upper()}{tail}", str(p.get("note", ""))
     if kind == ActivityType.FEEDBACK:
-        label = dict(FeedbackKind.choices).get(p.get("kind"), str(p.get("kind", "")))
+        raw = str(p.get("kind", ""))
+        label = dict(FeedbackKind.choices).get(raw, raw)
         return f"Feedback: {label}", str(p.get("note", ""))
     return activity.get_type_display(), ""
 
