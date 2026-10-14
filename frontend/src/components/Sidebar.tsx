@@ -84,7 +84,7 @@ export function Sidebar({
         >
           A
         </span>
-        ABM Engine
+        <span>ABM Engine</span>
       </div>
       <nav aria-label="Main" className="flex flex-col gap-0.5 px-3 py-2">
         {items.map(({ href, label }) => {
