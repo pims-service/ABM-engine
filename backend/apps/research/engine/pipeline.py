@@ -23,7 +23,7 @@ from apps.integrations.fetch import FetchError, PublicWebFetcher, fetch_site_pag
 from apps.integrations.framework.errors import ProviderError
 from apps.integrations.llm import find_ungrounded, pydantic_schema, structured_call
 from apps.outreach.models import ActivityType
-from apps.outreach.services import record_activity
+from apps.outreach.services import create_angle, record_activity
 from apps.research.models import AIRecommendation, ICPAssessment, Signal, SignalType
 from apps.research.services import (
     company_trigger_state,
@@ -250,6 +250,18 @@ def run_analysis(
             prompt_version=ASSESS_VERSION,
             schema_version=SCHEMA_VERSION,
             raw_output={"outreach_angle": verdict.outreach_angle},
+        )
+    if verdict.outreach_angle and verdict.outreach_angle.strip() and final.recommendation != "skip":
+        create_angle(
+            company,
+            verdict.outreach_angle,
+            explanation,
+            signals=state.signals,
+            data_sources=[home],
+            model_name=assess_model,
+            prompt_version=ASSESS_VERSION,
+            schema_version=SCHEMA_VERSION,
+            user=user,
         )
     record_activity(
         company,
