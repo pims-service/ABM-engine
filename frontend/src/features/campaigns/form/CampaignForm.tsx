@@ -21,16 +21,27 @@ import { SelectField } from "@/components/ui/SelectField";
 import { TagInput } from "@/components/ui/TagInput";
 import { Textarea } from "@/components/ui/Textarea";
 import { TextField } from "@/components/ui/TextField";
+import { useOptionalSelection } from "@/features/selection/SelectionProvider";
 import { ApiError } from "@/lib/api";
 
 import { type Client, createCampaign, updateCampaign } from "./api";
+import { IcpSummary } from "./IcpSummary";
+import {
+  BRIEF_EXAMPLE,
+  BUYER_TITLE_SUGGESTIONS,
+  DEPARTMENT_SUGGESTIONS,
+  EXCLUDED_TYPE_SUGGESTIONS,
+  INDUSTRY_SUGGESTIONS,
+} from "./presets";
 import {
   BUSINESS_MODELS,
+  countryName,
   countryOptions,
   LIMITS,
   OUTREACH_LANGUAGES,
 } from "./reference";
 import { mapApiError } from "./serverErrors";
+import { Suggestions } from "./Suggestions";
 import { useUnsavedChangesGuard } from "./useUnsavedChangesGuard";
 import {
   FIELD_LABELS,
@@ -89,6 +100,7 @@ export function CampaignForm({
   initialNotice,
 }: CampaignFormProps) {
   const router = useRouter();
+  const selection = useOptionalSelection();
   const [saved, setSaved] = useState<FormValues>(initialValues);
   const [values, setValues] = useState<FormValues>(initialValues);
   const [campaign, setCampaign] = useState(initialCampaign);
@@ -254,343 +266,414 @@ export function CampaignForm({
     clients.find((c) => c.id === values.client)?.name ?? values.client;
   const shared = { disabled } as const;
 
+  const add =
+    (key: "industries" | "target_departments" | "excluded_company_types") =>
+    (item: string) =>
+      set(key, [...values[key], item]);
+
   return (
-    <form
-      noValidate
-      onSubmit={onSubmit}
-      className="flex max-w-3xl flex-col gap-5"
-    >
-      {readOnly ? (
-        <div
-          role="alert"
-          className="rounded-md border border-line-strong bg-warning-bg p-4 text-sm text-warning-fg"
-        >
-          <p className="font-semibold">This campaign is read-only for you.</p>
-          <p className="mt-1">
-            Creating campaigns and changing their rules needs the manager or
-            admin role for the client. Your changes were not saved. Ask a client
-            admin for access.
-          </p>
-        </div>
-      ) : null}
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        className="flex min-w-0 flex-col gap-5"
+      >
+        {readOnly ? (
+          <div
+            role="alert"
+            className="rounded-md border border-line-strong bg-warning-bg p-4 text-sm text-warning-fg"
+          >
+            <p className="font-semibold">This campaign is read-only for you.</p>
+            <p className="mt-1">
+              Creating campaigns and changing their rules needs the manager or
+              admin role for the client. Your changes were not saved. Ask a
+              client admin for access.
+            </p>
+          </div>
+        ) : null}
 
-      {notice ? (
-        <div
-          ref={noticeRef}
-          tabIndex={-1}
-          role="status"
-          className={
-            notice.tone === "success"
-              ? "rounded-md bg-success-bg p-4 text-sm font-medium text-success-fg outline-none"
-              : "rounded-md bg-info-bg p-4 text-sm font-medium text-info-fg outline-none"
-          }
-        >
-          {notice.text}
-        </div>
-      ) : null}
+        {notice ? (
+          <div
+            ref={noticeRef}
+            tabIndex={-1}
+            role="status"
+            className={
+              notice.tone === "success"
+                ? "rounded-md bg-success-bg p-4 text-sm font-medium text-success-fg outline-none"
+                : "rounded-md bg-info-bg p-4 text-sm font-medium text-info-fg outline-none"
+            }
+          >
+            {notice.text}
+          </div>
+        ) : null}
 
-      {formError ? (
-        <div
-          role="alert"
-          className="rounded-md bg-danger-bg p-4 text-sm font-medium text-danger-fg"
-        >
-          {formError}
-        </div>
-      ) : null}
+        {mode === "edit" && initialNotice && campaign && selection ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-raised p-4 text-sm">
+            <span>Next step: add the companies you want to qualify.</span>
+            <Button
+              size="sm"
+              onClick={() => {
+                selection.selectCampaign(campaign);
+                router.push("/companies");
+              }}
+            >
+              Add companies
+            </Button>
+          </div>
+        ) : null}
 
-      {problems > 0 ? (
-        <div
-          ref={summaryRef}
-          tabIndex={-1}
-          role="alert"
-          aria-labelledby="error-summary-title"
-          className="rounded-md border border-danger-fg bg-danger-bg p-4 text-sm text-danger-fg outline-none"
-        >
-          <h2 id="error-summary-title" className="font-semibold">
-            {problems === 1
-              ? "1 problem needs fixing"
-              : `${problems} problems need fixing`}
-          </h2>
-          <ul className="mt-2 list-disc pl-5">
-            {summary.map(({ field, message }) => (
-              <li key={field}>
-                <a
-                  href={`#${fieldId(field)}`}
-                  className="underline"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setFocusRequest({ key: field, n: Date.now() });
+        {formError ? (
+          <div
+            role="alert"
+            className="rounded-md bg-danger-bg p-4 text-sm font-medium text-danger-fg"
+          >
+            {formError}
+          </div>
+        ) : null}
+
+        {problems > 0 ? (
+          <div
+            ref={summaryRef}
+            tabIndex={-1}
+            role="alert"
+            aria-labelledby="error-summary-title"
+            className="rounded-md border border-danger-fg bg-danger-bg p-4 text-sm text-danger-fg outline-none"
+          >
+            <h2 id="error-summary-title" className="font-semibold">
+              {problems === 1
+                ? "1 problem needs fixing"
+                : `${problems} problems need fixing`}
+            </h2>
+            <ul className="mt-2 list-disc pl-5">
+              {summary.map(({ field, message }) => (
+                <li key={field}>
+                  <a
+                    href={`#${fieldId(field)}`}
+                    className="underline"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setFocusRequest({ key: field, n: Date.now() });
+                    }}
+                  >
+                    {FIELD_LABELS[field]}
+                  </a>
+                  : {message}
+                </li>
+              ))}
+              {otherErrors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {mode === "edit" && campaign ? (
+          <Card title="Profile version">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="info">Version {campaign.profile_version}</Badge>
+              <Badge tone="neutral">{campaign.status}</Badge>
+              <span className="text-xs text-fg-muted">
+                Created {formatDate(campaign.profile.created_at)}
+              </span>
+            </div>
+            <p className="mt-3 text-sm">
+              <span className="font-medium">
+                What changed in this version:{" "}
+              </span>
+              {campaign.profile.change_note ? (
+                campaign.profile.change_note
+              ) : (
+                <span className="text-fg-muted">No note was left.</span>
+              )}
+            </p>
+            <p className="mt-2 text-xs text-fg-muted">
+              Saving a change to the rules creates a new immutable version;
+              older versions stay available.
+            </p>
+            {versions.length > 1 ? (
+              <details className="mt-3 text-sm">
+                <summary className="cursor-pointer font-medium">
+                  Version history ({versions.length})
+                </summary>
+                <ol className="mt-2 flex flex-col gap-1.5">
+                  {versions.map((v) => (
+                    <li key={v.id}>
+                      <span className="font-medium">Version {v.version}</span>{" "}
+                      <span className="text-xs text-fg-muted">
+                        {formatDate(v.created_at)}
+                      </span>
+                      {v.change_note ? <> – {v.change_note}</> : null}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            ) : null}
+          </Card>
+        ) : null}
+
+        <fieldset disabled={disabled} className="contents">
+          <Card title="Client and offer" className="flex flex-col gap-4">
+            {mode === "create" ? (
+              <div className="-mt-1 flex flex-wrap items-center gap-2 text-xs text-fg-muted">
+                <span>New here?</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => {
+                    setValues((current) => ({ ...current, ...BRIEF_EXAMPLE }));
+                    setErrors({});
                   }}
                 >
-                  {FIELD_LABELS[field]}
-                </a>
-                : {message}
-              </li>
-            ))}
-            {otherErrors.map((message) => (
-              <li key={message}>{message}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {mode === "edit" && campaign ? (
-        <Card title="Profile version">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">Version {campaign.profile_version}</Badge>
-            <Badge tone="neutral">{campaign.status}</Badge>
-            <span className="text-xs text-fg-muted">
-              Created {formatDate(campaign.profile.created_at)}
-            </span>
-          </div>
-          <p className="mt-3 text-sm">
-            <span className="font-medium">What changed in this version: </span>
-            {campaign.profile.change_note ? (
-              campaign.profile.change_note
+                  Fill in the example from the brief
+                </Button>
+                <span>You can change every field afterwards.</span>
+              </div>
+            ) : null}
+            {mode === "create" ? (
+              <SelectField
+                id={fieldId("client")}
+                label="Client"
+                required
+                placeholder="Choose a client"
+                options={clients.map((c) => ({ value: c.id, label: c.name }))}
+                value={values.client}
+                error={errors.client}
+                onChange={(e) => set("client", e.target.value)}
+                {...shared}
+              />
             ) : (
-              <span className="text-fg-muted">No note was left.</span>
+              <TextField
+                id={fieldId("client")}
+                label="Client"
+                value={clientName}
+                readOnly
+                hint="A campaign cannot be moved to another client."
+              />
             )}
-          </p>
-          <p className="mt-2 text-xs text-fg-muted">
-            Saving a change to the rules creates a new immutable version; older
-            versions stay available.
-          </p>
-          {versions.length > 1 ? (
-            <details className="mt-3 text-sm">
-              <summary className="cursor-pointer font-medium">
-                Version history ({versions.length})
-              </summary>
-              <ol className="mt-2 flex flex-col gap-1.5">
-                {versions.map((v) => (
-                  <li key={v.id}>
-                    <span className="font-medium">Version {v.version}</span>{" "}
-                    <span className="text-xs text-fg-muted">
-                      {formatDate(v.created_at)}
-                    </span>
-                    {v.change_note ? <> – {v.change_note}</> : null}
-                  </li>
-                ))}
-              </ol>
-            </details>
-          ) : null}
-        </Card>
-      ) : null}
-
-      <fieldset disabled={disabled} className="contents">
-        <Card title="Client and offer" className="flex flex-col gap-4">
-          {mode === "create" ? (
-            <SelectField
-              id={fieldId("client")}
-              label="Client"
+            <TextField
+              id={fieldId("name")}
+              label="Campaign name"
               required
-              placeholder="Choose a client"
-              options={clients.map((c) => ({ value: c.id, label: c.name }))}
-              value={values.client}
-              error={errors.client}
-              onChange={(e) => set("client", e.target.value)}
+              markRequired
+              maxLength={LIMITS.name}
+              value={values.name}
+              error={errors.name}
+              onChange={(e) => set("name", e.target.value)}
+              onBlur={() => check("name")}
+              hint="Unique among the client's active campaigns."
               {...shared}
             />
-          ) : (
-            <TextField
-              id={fieldId("client")}
-              label="Client"
-              value={clientName}
-              readOnly
-              hint="A campaign cannot be moved to another client."
-            />
-          )}
-          <TextField
-            id={fieldId("name")}
-            label="Campaign name"
-            required
-            markRequired
-            maxLength={LIMITS.name}
-            value={values.name}
-            error={errors.name}
-            onChange={(e) => set("name", e.target.value)}
-            onBlur={() => check("name")}
-            hint="Unique among the client's active campaigns."
-            {...shared}
-          />
-          <Textarea
-            id={fieldId("offer")}
-            label="Offer"
-            required
-            rows={4}
-            value={values.offer}
-            error={errors.offer}
-            onChange={(e) => set("offer", e.target.value)}
-            onBlur={() => check("offer")}
-            hint="What the client sells, in plain words."
-            {...shared}
-          />
-        </Card>
-
-        <Card title="Targeting" className="flex flex-col gap-4">
-          <MultiSelect
-            id={fieldId("countries")}
-            label="Countries"
-            options={countries}
-            value={values.countries}
-            onChange={(v) => set("countries", v)}
-            error={errors.countries}
-            hint="Search by name or ISO code, for example Saudi Arabia or SA."
-            {...shared}
-          />
-          <TagInput
-            id={fieldId("industries")}
-            label="Industries"
-            value={values.industries}
-            onChange={(v) => set("industries", v)}
-            error={errors.industries}
-            placeholder="Type an industry, press Enter"
-            hint="Press Enter or comma after each one."
-            {...shared}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField
-              id={fieldId("company_size_min")}
-              label="Company size, minimum"
-              inputMode="numeric"
-              value={values.company_size_min}
-              error={errors.company_size_min}
-              onChange={(e) => set("company_size_min", e.target.value)}
-              onBlur={() => check("company_size_min", "company_size_max")}
-              hint="Employees. Leave empty for no minimum."
-              {...shared}
-            />
-            <TextField
-              id={fieldId("company_size_max")}
-              label="Company size, maximum"
-              inputMode="numeric"
-              value={values.company_size_max}
-              error={errors.company_size_max}
-              onChange={(e) => set("company_size_max", e.target.value)}
-              onBlur={() => check("company_size_min", "company_size_max")}
-              hint="Must be at least the minimum."
-              {...shared}
-            />
-          </div>
-          <ChoiceGroup
-            id={fieldId("business_model")}
-            legend="Business model"
-            type="radio"
-            options={BUSINESS_MODELS}
-            value={[values.business_model]}
-            onChange={(v) =>
-              set(
-                "business_model",
-                (v[0] ?? "b2b") as FormValues["business_model"],
-              )
-            }
-            error={errors.business_model}
-            {...shared}
-          />
-        </Card>
-
-        <Card title="Exclusions" className="flex flex-col gap-4">
-          <TagInput
-            id={fieldId("excluded_industries")}
-            label="Excluded industries"
-            value={values.excluded_industries}
-            onChange={(v) => set("excluded_industries", v)}
-            error={errors.excluded_industries}
-            placeholder="Industries to skip"
-            {...shared}
-          />
-          <TagInput
-            id={fieldId("excluded_company_types")}
-            label="Excluded company types"
-            value={values.excluded_company_types}
-            onChange={(v) => set("excluded_company_types", v)}
-            error={errors.excluded_company_types}
-            placeholder="For example Government, Non-profit"
-            {...shared}
-          />
-        </Card>
-
-        <Card title="Buyers" className="flex flex-col gap-4">
-          <TagInput
-            id={fieldId("target_departments")}
-            label="Target departments"
-            value={values.target_departments}
-            onChange={(v) => set("target_departments", v)}
-            error={errors.target_departments}
-            placeholder="For example Sales, Business Development"
-            {...shared}
-          />
-          <OrderedList
-            id={fieldId("preferred_buyer_titles")}
-            label="Preferred buyer titles"
-            value={values.preferred_buyer_titles}
-            onChange={(v) => set("preferred_buyer_titles", v)}
-            error={errors.preferred_buyer_titles}
-            placeholder="Add a title, press Enter"
-            hint="Order matters: the first title is the most preferred. Drag a row, or use the arrow buttons."
-            {...shared}
-          />
-        </Card>
-
-        <Card title="Language" className="flex flex-col gap-4">
-          <ChoiceGroup
-            id={fieldId("outreach_languages")}
-            legend="Outreach languages"
-            type="checkbox"
-            options={OUTREACH_LANGUAGES}
-            value={values.outreach_languages}
-            onChange={(v) => set("outreach_languages", v)}
-            error={errors.outreach_languages}
-            hint="Pick one or both."
-            {...shared}
-          />
-        </Card>
-
-        <Card title="Custom rules" className="flex flex-col gap-4">
-          <Textarea
-            id={fieldId("custom_rules")}
-            label="Qualification rules and notes"
-            rows={5}
-            value={values.custom_rules}
-            error={errors.custom_rules}
-            onChange={(e) => set("custom_rules", e.target.value)}
-            hint="Free-form notes the AI should apply when judging fit."
-            {...shared}
-          />
-          {mode === "edit" ? (
             <Textarea
-              id={fieldId("change_note")}
-              label="What changed"
-              rows={2}
-              value={values.change_note}
-              error={errors.change_note}
-              onChange={(e) => set("change_note", e.target.value)}
-              hint="Optional. Shown in the version history when the rules change."
+              id={fieldId("offer")}
+              label="Offer"
+              required
+              rows={4}
+              value={values.offer}
+              error={errors.offer}
+              onChange={(e) => set("offer", e.target.value)}
+              onBlur={() => check("offer")}
+              hint="What the client sells, in plain words."
               {...shared}
             />
-          ) : null}
-        </Card>
-      </fieldset>
+          </Card>
 
-      <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 border-t border-line bg-surface px-1 py-3">
-        {readOnly ? null : (
-          <Button type="submit" disabled={disabled}>
-            {saving
-              ? "Saving…"
-              : mode === "create"
-                ? "Create campaign"
-                : "Save changes"}
-          </Button>
-        )}
-        <Link
-          href="/campaigns"
-          className={buttonStyles({ variant: "secondary" })}
-        >
-          {readOnly ? "Back to campaigns" : "Cancel"}
-        </Link>
-        {dirty && !readOnly ? (
-          <span className="text-xs text-fg-muted">Unsaved changes</span>
-        ) : null}
-      </div>
-    </form>
+          <Card title="Targeting" className="flex flex-col gap-4">
+            <MultiSelect
+              id={fieldId("countries")}
+              label="Countries"
+              options={countries}
+              value={values.countries}
+              onChange={(v) => set("countries", v)}
+              error={errors.countries}
+              hint="Search by name or ISO code, for example Saudi Arabia or SA."
+              {...shared}
+            />
+            <TagInput
+              id={fieldId("industries")}
+              label="Industries"
+              value={values.industries}
+              onChange={(v) => set("industries", v)}
+              error={errors.industries}
+              placeholder="Type an industry, press Enter"
+              hint="Press Enter or comma after each one."
+              {...shared}
+            />
+            <Suggestions
+              items={INDUSTRY_SUGGESTIONS}
+              have={values.industries}
+              onAdd={add("industries")}
+              disabled={disabled}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                id={fieldId("company_size_min")}
+                label="Company size, minimum"
+                inputMode="numeric"
+                value={values.company_size_min}
+                error={errors.company_size_min}
+                onChange={(e) => set("company_size_min", e.target.value)}
+                onBlur={() => check("company_size_min", "company_size_max")}
+                hint="Employees. Leave empty for no minimum."
+                {...shared}
+              />
+              <TextField
+                id={fieldId("company_size_max")}
+                label="Company size, maximum"
+                inputMode="numeric"
+                value={values.company_size_max}
+                error={errors.company_size_max}
+                onChange={(e) => set("company_size_max", e.target.value)}
+                onBlur={() => check("company_size_min", "company_size_max")}
+                hint="Must be at least the minimum."
+                {...shared}
+              />
+            </div>
+            <ChoiceGroup
+              id={fieldId("business_model")}
+              legend="Business model"
+              type="radio"
+              options={BUSINESS_MODELS}
+              value={[values.business_model]}
+              onChange={(v) =>
+                set(
+                  "business_model",
+                  (v[0] ?? "b2b") as FormValues["business_model"],
+                )
+              }
+              error={errors.business_model}
+              {...shared}
+            />
+          </Card>
+
+          <Card title="Exclusions" className="flex flex-col gap-4">
+            <TagInput
+              id={fieldId("excluded_industries")}
+              label="Excluded industries"
+              value={values.excluded_industries}
+              onChange={(v) => set("excluded_industries", v)}
+              error={errors.excluded_industries}
+              placeholder="Industries to skip"
+              {...shared}
+            />
+            <TagInput
+              id={fieldId("excluded_company_types")}
+              label="Excluded company types"
+              value={values.excluded_company_types}
+              onChange={(v) => set("excluded_company_types", v)}
+              error={errors.excluded_company_types}
+              placeholder="For example Government, Non-profit"
+              {...shared}
+            />
+            <Suggestions
+              items={EXCLUDED_TYPE_SUGGESTIONS}
+              have={values.excluded_company_types}
+              onAdd={add("excluded_company_types")}
+              disabled={disabled}
+            />
+          </Card>
+
+          <Card title="Buyers" className="flex flex-col gap-4">
+            <TagInput
+              id={fieldId("target_departments")}
+              label="Target departments"
+              value={values.target_departments}
+              onChange={(v) => set("target_departments", v)}
+              error={errors.target_departments}
+              placeholder="For example Sales, Business Development"
+              {...shared}
+            />
+            <Suggestions
+              items={DEPARTMENT_SUGGESTIONS}
+              have={values.target_departments}
+              onAdd={add("target_departments")}
+              disabled={disabled}
+            />
+            <OrderedList
+              id={fieldId("preferred_buyer_titles")}
+              label="Preferred buyer titles"
+              value={values.preferred_buyer_titles}
+              onChange={(v) => set("preferred_buyer_titles", v)}
+              error={errors.preferred_buyer_titles}
+              placeholder="Add a title, press Enter"
+              hint="Order matters: the first title is the most preferred. Drag a row, or use the arrow buttons."
+              {...shared}
+            />
+            <Suggestions
+              items={BUYER_TITLE_SUGGESTIONS}
+              have={values.preferred_buyer_titles}
+              onAdd={(item) =>
+                set("preferred_buyer_titles", [
+                  ...values.preferred_buyer_titles,
+                  item,
+                ])
+              }
+              disabled={disabled}
+            />
+          </Card>
+
+          <Card title="Language" className="flex flex-col gap-4">
+            <ChoiceGroup
+              id={fieldId("outreach_languages")}
+              legend="Outreach languages"
+              type="checkbox"
+              options={OUTREACH_LANGUAGES}
+              value={values.outreach_languages}
+              onChange={(v) => set("outreach_languages", v)}
+              error={errors.outreach_languages}
+              hint="Pick one or both."
+              {...shared}
+            />
+          </Card>
+
+          <Card title="Custom rules" className="flex flex-col gap-4">
+            <Textarea
+              id={fieldId("custom_rules")}
+              label="Qualification rules and notes"
+              rows={5}
+              value={values.custom_rules}
+              error={errors.custom_rules}
+              onChange={(e) => set("custom_rules", e.target.value)}
+              hint="Free-form notes the AI should apply when judging fit."
+              {...shared}
+            />
+            {mode === "edit" ? (
+              <Textarea
+                id={fieldId("change_note")}
+                label="What changed"
+                rows={2}
+                value={values.change_note}
+                error={errors.change_note}
+                onChange={(e) => set("change_note", e.target.value)}
+                hint="Optional. Shown in the version history when the rules change."
+                {...shared}
+              />
+            ) : null}
+          </Card>
+        </fieldset>
+
+        <div className="sticky bottom-0 -mx-1 flex flex-wrap items-center gap-3 border-t border-line bg-surface px-1 py-3">
+          {readOnly ? null : (
+            <Button type="submit" disabled={disabled}>
+              {saving
+                ? "Saving…"
+                : mode === "create"
+                  ? "Create campaign"
+                  : "Save changes"}
+            </Button>
+          )}
+          <Link
+            href="/campaigns"
+            className={buttonStyles({ variant: "secondary" })}
+          >
+            {readOnly ? "Back to campaigns" : "Cancel"}
+          </Link>
+          {dirty && !readOnly ? (
+            <span className="text-xs text-fg-muted">Unsaved changes</span>
+          ) : null}
+        </div>
+      </form>
+      <IcpSummary values={values} countryName={countryName} />
+    </div>
   );
 }
