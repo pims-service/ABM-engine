@@ -81,7 +81,7 @@ export function LoginForm({
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-sm p-8">
       <h1 className="mb-1 text-xl font-semibold">Sign in</h1>
       <p className="mb-5 text-sm text-fg-muted">
         Use your ABM Engine account. Ask an administrator if you need one.

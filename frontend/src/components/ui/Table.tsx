@@ -20,7 +20,7 @@ export function Table({
       <table
         className={cn(
           "w-full border-collapse text-left text-sm",
-          "[&_tbody_tr]:border-t [&_tbody_tr]:border-line",
+          "[&_tbody_tr:hover]:bg-surface-muted/60 [&_tbody_tr:not(:first-child)]:border-t [&_tbody_tr]:border-line",
           className,
         )}
       >
@@ -37,7 +37,7 @@ export function Th({ className, ...props }: ComponentProps<"th">) {
     <th
       scope="col"
       className={cn(
-        "bg-surface-muted px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-fg-muted",
+        "border-b border-line px-4 py-2.5 text-xs font-medium text-fg-muted",
         className,
       )}
       {...props}

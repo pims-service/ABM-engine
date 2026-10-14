@@ -22,7 +22,7 @@ export function UserMenu() {
         {user.name || user.email}
       </span>
       <Button
-        variant="secondary"
+        variant="ghost"
         size="sm"
         disabled={pending}
         onClick={async () => {
