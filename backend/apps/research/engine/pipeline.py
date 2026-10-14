@@ -22,6 +22,8 @@ from apps.companies.models import (
 from apps.integrations.fetch import FetchError, PublicWebFetcher, fetch_site_pages
 from apps.integrations.framework.errors import ProviderError
 from apps.integrations.llm import find_ungrounded, pydantic_schema, structured_call
+from apps.outreach.models import ActivityType
+from apps.outreach.services import record_activity
 from apps.research.models import AIRecommendation, ICPAssessment, Signal, SignalType
 from apps.research.services import (
     company_trigger_state,
@@ -171,6 +173,24 @@ def run_analysis(
                 dropped += 1
 
     state = company_trigger_state(company, now)
+    record_activity(
+        company,
+        ActivityType.RESEARCHED,
+        user,
+        source=home.url,
+        pages=len(readable),
+        signals=len(state.signals),
+        model=extract_model,
+    )
+    record_activity(
+        company,
+        ActivityType.RESEARCHED,
+        user,
+        source=home.url,
+        pages=len(readable),
+        signals=len(state.signals),
+        model=extract_model,
+    )
 
     # 3. ICP fit against the campaign rules, then the hard rules, then the recommendation.
     shown = {
@@ -231,6 +251,22 @@ def run_analysis(
             schema_version=SCHEMA_VERSION,
             raw_output={"outreach_angle": verdict.outreach_angle},
         )
+    record_activity(
+        company,
+        ActivityType.RECOMMENDED,
+        user,
+        fit=final.fit,
+        recommendation=final.recommendation,
+        model=assess_model,
+    )
+    record_activity(
+        company,
+        ActivityType.RECOMMENDED,
+        user,
+        fit=final.fit,
+        recommendation=final.recommendation,
+        model=assess_model,
+    )
     logger.info(
         "company analysis done company=%s fit=%s recommendation=%s signals=%s dropped=%s",
         company.pk,

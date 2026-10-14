@@ -15,7 +15,12 @@ import { errorMessage, formatDateTime } from "@/lib/format";
 import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
 import { researchWebsite, type WebsiteResearch } from "./api";
-import { getCard, requestAnalysis, type ResearchCard } from "./cardApi";
+import {
+  getActivity,
+  getCard,
+  requestAnalysis,
+  type ResearchCard,
+} from "./cardApi";
 import { ResearchCardView } from "./ResearchCardView";
 
 const KIND_LABELS: Record<string, string> = {
@@ -35,6 +40,9 @@ export function CompanyDetail({ id }: { id: string }) {
     loading,
     reload,
   } = useApiQuery(`card:${id}`, (signal) => getCard(id, signal));
+  const activity = useApiQuery(`activity:${id}`, (signal) =>
+    getActivity(id, signal),
+  );
   const [updated, setUpdated] = useState<ResearchCard | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -44,6 +52,7 @@ export function CompanyDetail({ id }: { id: string }) {
   const refresh = () => {
     setUpdated(null);
     reload();
+    activity.reload();
   };
 
   async function analyse() {
@@ -133,7 +142,13 @@ export function CompanyDetail({ id }: { id: string }) {
           Could not start the analysis. {startError}
         </Alert>
       ) : null}
-      <ResearchCardView card={card} onChange={setUpdated} reload={refresh} />
+      <ResearchCardView
+        card={card}
+        activity={activity.data ?? []}
+        onChange={setUpdated}
+        reload={refresh}
+        onActivity={activity.reload}
+      />
       <WebsitePreview id={id} />
     </>
   );

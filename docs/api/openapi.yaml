@@ -2877,6 +2877,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/activity/:
+    get:
+      operationId: companies_activity
+      description: 'What happened to this company, newest first (Brief section 14):
+        research runs, AI recommendations, human decisions and feedback. The latest
+        50. Needs the `READ` level: any member. Others get 403; companies of clients
+        you are not a member of give 404.'
+      summary: Activity timeline
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityItem'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/analyze/:
     post:
       operationId: companies_analyze
@@ -3106,6 +3166,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResearchCard'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/feedback/:
+    post:
+      operationId: companies_feedback
+      description: 'Brief section 16: wrong buyer, not B2B, unsuitable industry, a
+        signal that should not count, CEO as primary or not, government company, incorrect
+        data, other (needs a note). Optionally point at one signal, contact, angle
+        or message of this company. Stored on the timeline for later rule and prompt
+        improvements; it changes nothing by itself. Returns the new timeline entry.
+        Needs the `DECIDE` level: reviewer, manager and admin. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: Flag something the system got wrong
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityItem'
           description: ''
         '400':
           content:
@@ -5113,6 +5246,32 @@ components:
       - total
       - trigger_yes
       - weak
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        summary:
+          type: string
+          description: One plain sentence describing what happened.
+        detail:
+          type: string
+        actor:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - actor
+      - created_at
+      - detail
+      - id
+      - summary
+      - type
     AnalysisJob:
       type: object
       description: The background job behind an "Analyze Company" request (see `GET`
@@ -6705,6 +6864,22 @@ components:
           $ref: '#/components/schemas/ErrorBody'
       required:
       - error
+    FeedbackRequestRequest:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        note:
+          type: string
+          default: ''
+          maxLength: 2000
+        target_type:
+          $ref: '#/components/schemas/TargetTypeEnum'
+        target_id:
+          type: string
+          format: uuid
+      required:
+      - kind
     Health:
       type: object
       description: Body of `/healthz` (documentation only).
@@ -7207,6 +7382,28 @@ components:
         * `succeeded` - Succeeded
         * `partial` - Partially succeeded
         * `failed` - Failed
+    KindEnum:
+      enum:
+      - wrong_buyer
+      - not_b2b
+      - unsuitable_industry
+      - not_a_trigger
+      - ceo_should_be_primary
+      - ceo_should_not_be_primary
+      - government_company
+      - incorrect_company_data
+      - other
+      type: string
+      description: |-
+        * `wrong_buyer` - Wrong buyer
+        * `not_b2b` - Company is not B2B
+        * `unsuitable_industry` - Industry is unsuitable
+        * `not_a_trigger` - Signal should not count as a trigger
+        * `ceo_should_be_primary` - CEO should be primary
+        * `ceo_should_not_be_primary` - CEO should not be primary
+        * `government_company` - Company is government
+        * `incorrect_company_data` - Incorrect company data
+        * `other` - Other
     LastTestStatusEnum:
       enum:
       - ok
@@ -8645,6 +8842,20 @@ components:
         * `allow` - allow
         * `warn` - warn
         * `deny` - deny
+    TargetTypeEnum:
+      enum:
+      - company
+      - signal
+      - contact
+      - angle
+      - message
+      type: string
+      description: |-
+        * `company` - Company
+        * `signal` - Signal
+        * `contact` - Contact
+        * `angle` - Outreach angle
+        * `message` - Message
     TokenObtainPairRequest:
       type: object
       properties:

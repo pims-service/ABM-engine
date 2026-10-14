@@ -40,9 +40,14 @@ from apps.imports.manual import (
 )
 from apps.imports.models import ImportRowOutcome
 from apps.imports.services import COMPANY_REJECTED
+from apps.outreach.models import ActivityType
+from apps.outreach.services import record_activity, record_feedback
 from apps.research.card import (
+    ActivityItemSerializer,
     DecisionRequestSerializer,
+    FeedbackRequestSerializer,
     ResearchCardSerializer,
+    build_activity,
     build_card,
 )
 from apps.research.models import AIRecommendation
@@ -281,6 +286,8 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "website_research": Level.EDIT,
         "card": Level.READ,
         "decision": Level.DECIDE,
+        "activity": Level.READ,
+        "feedback": Level.DECIDE,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -371,14 +378,73 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         if company.is_archived:
             raise ValidationError({"non_field_errors": ["Archived companies are read-only."]})
         with api_validation():
-            record_human_decision(
+            recommendation = AIRecommendation.objects.latest_for(company)
+            record = record_human_decision(
                 company,
                 body.validated_data["decision"],
                 self._user(),
-                ai_recommendation=AIRecommendation.objects.latest_for(company),
+                ai_recommendation=recommendation,
                 note=body.validated_data["note"],
             )
+            record_activity(
+                company,
+                ActivityType.DECIDED,
+                self._user(),
+                decision=record.decision,
+                note=record.note,
+                agrees_with_ai=(
+                    None if recommendation is None else recommendation.status == record.decision
+                ),
+            )
         return Response(ResearchCardSerializer(build_card(company)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_activity",
+        summary="Activity timeline",
+        description="What happened to this company, newest first (Brief section 14): research "
+        "runs, AI recommendations, human decisions and feedback. The latest 50. "
+        + _levels("READ", "any member"),
+        responses={
+            200: ActivityItemSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def activity(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(ActivityItemSerializer(build_activity(company), many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_feedback",
+        summary="Flag something the system got wrong",
+        description="Brief section 16: wrong buyer, not B2B, unsuitable industry, a signal that "
+        "should not count, CEO as primary or not, government company, incorrect data, other "
+        "(needs a note). Optionally point at one signal, contact, angle or message of this "
+        "company. Stored on the timeline for later rule and prompt improvements; it changes "
+        "nothing by itself. Returns the new timeline entry. "
+        + _levels("DECIDE", "reviewer, manager and admin"),
+        request=FeedbackRequestSerializer,
+        responses={201: ActivityItemSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"])
+    def feedback(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = FeedbackRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        target = None
+        if data.get("target_type") and data.get("target_id"):
+            target = {"type": data["target_type"], "id": str(data["target_id"])}
+        if company.is_archived:
+            raise ValidationError({"non_field_errors": ["Archived companies are read-only."]})
+        with api_validation():
+            record_feedback(
+                company, data["kind"], target=target, note=data["note"], actor=self._user()
+            )
+        latest = build_activity(company, limit=1)[0]
+        return Response(ActivityItemSerializer(latest).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         tags=TAGS,
