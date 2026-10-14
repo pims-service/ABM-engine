@@ -31,13 +31,13 @@ const STEPS = [
     title: "Pick a client and campaign",
     body: "Use the switcher at the top. Everything you see belongs to that campaign.",
     href: "/campaigns",
-    cta: "Campaigns",
+    cta: "Pick a campaign",
   },
   {
     title: "Add target companies",
     body: "Enter a name and website, or import a list.",
     href: "/companies",
-    cta: "Companies",
+    cta: "Add a company",
   },
   {
     title: "Research a company",
