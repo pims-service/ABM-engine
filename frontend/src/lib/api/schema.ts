@@ -618,6 +618,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/activity/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Activity timeline
+     * @description What happened to this company, newest first (Brief section 14): research runs, AI recommendations, human decisions and feedback. The latest 50. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_activity"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/analyze/": {
     parameters: {
       query?: never;
@@ -692,6 +712,26 @@ export interface paths {
      * @description Add, hold or skip (Brief section 11). Stored separately from the AI recommendation, which is never changed; the decision points at the recommendation it answered (if any) so agreement can be measured. Changing your mind adds a new decision. Returns the updated card. 400 for an archived company. Needs the `DECIDE` level: reviewer, manager and admin. Others get 403; companies of clients you are not a member of give 404.
      */
     post: operations["companies_decision"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/feedback/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Flag something the system got wrong
+     * @description Brief section 16: wrong buyer, not B2B, unsuitable industry, a signal that should not count, CEO as primary or not, government company, incorrect data, other (needs a note). Optionally point at one signal, contact, angle or message of this company. Stored on the timeline for later rule and prompt improvements; it changes nothing by itself. Returns the new timeline entry. Needs the `DECIDE` level: reviewer, manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_feedback"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1178,6 +1218,17 @@ export interface components {
       human_add: number;
       human_hold: number;
       human_skip: number;
+    };
+    ActivityItem: {
+      /** Format: uuid */
+      id: string;
+      type: string;
+      /** @description One plain sentence describing what happened. */
+      summary: string;
+      detail: string;
+      actor: string | null;
+      /** Format: date-time */
+      created_at: string;
     };
     /** @description The background job behind an "Analyze Company" request (see `GET` job status in M4). */
     AnalysisJob: {
@@ -1876,6 +1927,14 @@ export interface components {
     ErrorEnvelope: {
       error: components["schemas"]["ErrorBody"];
     };
+    FeedbackRequestRequest: {
+      kind: components["schemas"]["KindEnum"];
+      /** @default  */
+      note: string;
+      target_type?: components["schemas"]["TargetTypeEnum"];
+      /** Format: uuid */
+      target_id?: string;
+    };
     /** @description Body of `/healthz` (documentation only). */
     Health: {
       status: components["schemas"]["HealthStatusEnum"];
@@ -2093,6 +2152,28 @@ export interface components {
      * @enum {string}
      */
     JobStatusEnum: "queued" | "running" | "succeeded" | "partial" | "failed";
+    /**
+     * @description * `wrong_buyer` - Wrong buyer
+     *     * `not_b2b` - Company is not B2B
+     *     * `unsuitable_industry` - Industry is unsuitable
+     *     * `not_a_trigger` - Signal should not count as a trigger
+     *     * `ceo_should_be_primary` - CEO should be primary
+     *     * `ceo_should_not_be_primary` - CEO should not be primary
+     *     * `government_company` - Company is government
+     *     * `incorrect_company_data` - Incorrect company data
+     *     * `other` - Other
+     * @enum {string}
+     */
+    KindEnum:
+      | "wrong_buyer"
+      | "not_b2b"
+      | "unsuitable_industry"
+      | "not_a_trigger"
+      | "ceo_should_be_primary"
+      | "ceo_should_not_be_primary"
+      | "government_company"
+      | "incorrect_company_data"
+      | "other";
     /**
      * @description * `ok` - OK
      *     * `failed` - Failed
@@ -2751,6 +2832,15 @@ export interface components {
      * @enum {string}
      */
     StateEnum: "allow" | "warn" | "deny";
+    /**
+     * @description * `company` - Company
+     *     * `signal` - Signal
+     *     * `contact` - Contact
+     *     * `angle` - Outreach angle
+     *     * `message` - Message
+     * @enum {string}
+     */
+    TargetTypeEnum: "company" | "signal" | "contact" | "angle" | "message";
     TokenObtainPairRequest: {
       email: string;
       password: string;
@@ -5793,6 +5883,73 @@ export interface operations {
       };
     };
   };
+  companies_activity: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityItem"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   companies_analyze: {
     parameters: {
       query?: never;
@@ -6034,6 +6191,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResearchCard"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FeedbackRequestRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ActivityItem"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

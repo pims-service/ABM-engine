@@ -12,10 +12,16 @@ import { Textarea } from "@/components/ui/Textarea";
 import { errorMessage, formatDate, formatDateTime } from "@/lib/format";
 
 import {
+  type ActivityItem,
   type DecisionChoice,
   recordDecision,
   type ResearchCard,
 } from "./cardApi";
+import {
+  ActivityCard,
+  FeedbackCard,
+  FlagSignalButton,
+} from "./FeedbackAndActivity";
 
 const POLL_MS = 3000;
 
@@ -52,12 +58,16 @@ function List({ items, warn }: { items: string[]; warn?: boolean }) {
 /** The account research card (Brief section 10): the main review screen. */
 export function ResearchCardView({
   card,
+  activity,
   onChange,
   reload,
+  onActivity,
 }: {
   card: ResearchCard;
+  activity: ActivityItem[];
   onChange: (card: ResearchCard) => void;
   reload: () => void;
+  onActivity: () => void;
 }) {
   const { company, research, trigger, icp, recommendation, decision } = card;
   const running =
@@ -125,7 +135,13 @@ export function ResearchCardView({
         ) : null}
       </Card>
 
-      <DecisionBar card={card} onChange={onChange} />
+      <DecisionBar
+        card={card}
+        onChange={(next) => {
+          onChange(next);
+          onActivity();
+        }}
+      />
 
       <div className="grid items-start gap-5 lg:grid-cols-2">
         <div className="flex flex-col gap-5">
@@ -183,6 +199,13 @@ export function ResearchCardView({
                       </span>
                     </div>
                     <p className="mt-1.5">{signal.evidence}</p>
+                    <div className="mt-1">
+                      <FlagSignalButton
+                        companyId={company.id}
+                        signalId={signal.id}
+                        onSent={onActivity}
+                      />
+                    </div>
                     {signal.source.url ? (
                       <a
                         href={signal.source.url}
@@ -252,6 +275,10 @@ export function ResearchCardView({
               </p>
             )}
           </Card>
+
+          <ActivityCard items={activity} />
+
+          <FeedbackCard companyId={company.id} onSent={onActivity} />
 
           <Card title="Not available yet">
             <ul className="flex flex-col gap-2 text-sm text-fg-muted">

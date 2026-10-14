@@ -13,6 +13,8 @@ from rest_framework import serializers
 
 from apps.companies.analysis import latest_analysis_jobs
 from apps.companies.models import Company, CompanyResearch
+from apps.outreach.models import Activity, ActivityType
+from apps.outreach.services import FeedbackKind, FeedbackTargetType
 from apps.research.models import (
     AIRecommendation,
     HumanDecision,
@@ -257,3 +259,71 @@ def build_card(company: Company) -> dict[str, Any]:
         else {"job_id": job.pk, "status": job.status, "error_summary": job.error_summary},
         "gaps": gaps,
     }
+
+
+# ------------------------------------------------------------------ activity and feedback
+
+
+class ActivityItemSerializer(serializers.Serializer[Any]):
+    id = serializers.UUIDField()
+    type = serializers.CharField()
+    summary = serializers.CharField(help_text="One plain sentence describing what happened.")
+    detail = serializers.CharField(allow_blank=True)
+    actor = serializers.CharField(allow_null=True)
+    created_at = serializers.DateTimeField()
+
+
+class FeedbackRequestSerializer(serializers.Serializer[Any]):
+    kind = serializers.ChoiceField(choices=FeedbackKind.choices)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=2000, default="")
+    target_type = serializers.ChoiceField(choices=FeedbackTargetType.choices, required=False)
+    target_id = serializers.UUIDField(required=False)
+
+
+def describe_activity(activity: Activity) -> tuple[str, str]:
+    """(summary, detail) of one timeline entry, from its type and payload."""
+    p = activity.payload or {}
+    kind = activity.type
+    if kind == ActivityType.RESEARCHED:
+        pages, signals = p.get("pages"), p.get("signals")
+        detail = f"{pages} pages read" if pages else ""
+        if signals is not None:
+            detail += f"{', ' if detail else ''}{signals} current signal(s)"
+        return "Researched the company website", detail
+    if kind == ActivityType.RECOMMENDED:
+        fit = str(p.get("fit", "")).capitalize()
+        rec = str(p.get("recommendation", "")).upper()
+        return f"AI judged the fit {fit} and recommended {rec}", ""
+    if kind == ActivityType.DECIDED:
+        agree = p.get("agrees_with_ai")
+        tail = ""
+        if agree is not None:
+            tail = " (agrees with the AI)" if agree else " (differs from the AI)"
+        return f"Decided {str(p.get('decision', '')).upper()}{tail}", str(p.get("note", ""))
+    if kind == ActivityType.FEEDBACK:
+        raw = str(p.get("kind", ""))
+        label = dict(FeedbackKind.choices).get(raw, raw)
+        return f"Feedback: {label}", str(p.get("note", ""))
+    return activity.get_type_display(), ""
+
+
+def build_activity(company: Company, limit: int = 50) -> list[dict[str, Any]]:
+    """The company's timeline, newest first."""
+    items = Activity.objects.timeline(company).select_related("actor")[:limit]
+    rows = []
+    for item in items:
+        summary, detail = describe_activity(item)
+        actor = None
+        if item.actor is not None:
+            actor = item.actor.name or item.actor.email
+        rows.append(
+            {
+                "id": item.pk,
+                "type": item.type,
+                "summary": summary,
+                "detail": detail,
+                "actor": actor,
+                "created_at": item.created_at,
+            }
+        )
+    return rows

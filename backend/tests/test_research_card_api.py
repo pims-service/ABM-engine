@@ -143,3 +143,93 @@ def test_an_archived_company_takes_no_decision(world) -> None:
         decision_url(company), {"decision": "add"}, format="json"
     )
     assert response.status_code == 400
+
+
+# ------------------------------------------------------------------ activity and feedback
+
+
+def activity_url(company: Any) -> str:
+    return f"/api/v1/companies/{company.pk}/activity/"
+
+
+def feedback_url(company: Any) -> str:
+    return f"/api/v1/companies/{company.pk}/feedback/"
+
+
+def test_a_decision_appears_on_the_timeline(world) -> None:
+    client, company = world
+    api = api_for("reviewer", client)
+    api.post(decision_url(company), {"decision": "skip", "note": "Too small"}, format="json")
+    items = api.get(activity_url(company)).json()
+    assert len(items) == 1
+    assert items[0]["type"] == "decided"
+    assert items[0]["summary"] == "Decided SKIP"
+    assert items[0]["detail"] == "Too small"
+    assert items[0]["actor"]
+
+
+def test_the_timeline_is_newest_first_and_marks_disagreement(world) -> None:
+    client, company = world
+    research = make_research(company=company)
+    assessment = make_icp_assessment(company=company, company_research=research)
+    make_ai_recommendation(icp_assessment=assessment, status="add")
+    api = api_for("reviewer", client)
+    api.post(decision_url(company), {"decision": "hold"}, format="json")
+    api.post(decision_url(company), {"decision": "add"}, format="json")
+    summaries = [i["summary"] for i in api.get(activity_url(company)).json()]
+    assert summaries == ["Decided ADD (agrees with the AI)", "Decided HOLD (differs from the AI)"]
+
+
+def test_feedback_is_stored_on_the_timeline_and_changes_nothing_else(world) -> None:
+    client, company = world
+    api = api_for("reviewer", client)
+    response = api.post(
+        feedback_url(company), {"kind": "not_b2b", "note": "Sells to consumers"}, format="json"
+    )
+    assert response.status_code == 201, response.content
+    assert response.json()["summary"] == "Feedback: Company is not B2B"
+    assert response.json()["detail"] == "Sells to consumers"
+    assert not HumanDecision.objects.exists()
+
+
+def test_feedback_can_point_at_one_signal_of_the_company(world) -> None:
+    client, company = world
+    signal = make_signal(company=company, evidence="Opened an office")
+    response = api_for("reviewer", client).post(
+        feedback_url(company),
+        {"kind": "not_a_trigger", "target_type": "signal", "target_id": str(signal.pk)},
+        format="json",
+    )
+    assert response.status_code == 201, response.content
+
+
+def test_feedback_cannot_point_at_another_companys_signal(world) -> None:
+    client, company = world
+    other = make_signal(company=make_company(campaign=company.campaign))
+    response = api_for("reviewer", client).post(
+        feedback_url(company),
+        {"kind": "not_a_trigger", "target_type": "signal", "target_id": str(other.pk)},
+        format="json",
+    )
+    assert response.status_code == 400
+
+
+def test_other_feedback_needs_a_note_and_unknown_kinds_are_rejected(world) -> None:
+    client, company = world
+    api = api_for("reviewer", client)
+    assert api.post(feedback_url(company), {"kind": "other"}, format="json").status_code == 400
+    assert api.post(feedback_url(company), {"kind": "nonsense"}, format="json").status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("role", "status"), [("viewer", 403), ("reviewer", 201), ("manager", 201), ("admin", 201)]
+)
+def test_feedback_needs_the_reviewer_level(world, role, status) -> None:
+    client, company = world
+    response = api_for(role, client).post(feedback_url(company), {"kind": "not_b2b"}, format="json")
+    assert response.status_code == status
+
+
+def test_every_role_can_read_the_timeline(world) -> None:
+    client, company = world
+    assert api_for("viewer", client).get(activity_url(company)).status_code == 200
