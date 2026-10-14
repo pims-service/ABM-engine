@@ -217,7 +217,7 @@ def test_crawl_delay_is_honoured_and_capped() -> None:
     # The delay applies to the request after the one that read it, so fetch two pages.
     for text, expected_min, expected_max in (
         ("Crawl-delay: 5", 4.99, 5.01),
-        ("Crawl-delay: 100000", 29.99, 30.01),
+        ("Crawl-delay: 5000", 29.99, 30.01),
     ):
         routes: dict[str, Any] = {
             "example.com/robots.txt": robots(f"User-agent: *\n{text}"),
