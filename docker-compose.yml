@@ -75,7 +75,7 @@ services:
       DEBUG: ${DEBUG:-True}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      Q_WORKERS: ${Q_WORKERS:-2}
+      Q_WORKERS: ${Q_WORKERS:-4}
       Q_TASK_TIMEOUT: ${Q_TASK_TIMEOUT:-300}
       Q_TASK_RETRY: ${Q_TASK_RETRY:-360}
     volumes:
