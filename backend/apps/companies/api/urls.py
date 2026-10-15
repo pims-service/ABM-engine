@@ -35,5 +35,10 @@ urlpatterns = [
         AccountViewSet.as_view({"get": "export"}),
         name="campaign-accounts-export",
     ),
+    path(
+        "campaigns/<uuid:campaign_pk>/accounts/push-to-crm/",
+        AccountViewSet.as_view({"post": "push_to_crm"}),
+        name="campaign-accounts-push-to-crm",
+    ),
     path("", include(router.urls)),
 ]

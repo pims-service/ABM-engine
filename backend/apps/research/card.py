@@ -13,6 +13,7 @@ from rest_framework import serializers
 
 from apps.companies.analysis import latest_analysis_jobs
 from apps.companies.models import Company, CompanyResearch
+from apps.integrations.crm_connection import crm_provider
 from apps.outreach.models import Activity, ActivityType, OutreachAngle
 from apps.outreach.services import FeedbackKind, FeedbackTargetType
 from apps.research.models import (
@@ -133,6 +134,12 @@ class ResearchCardSerializer(serializers.Serializer[Any]):
     gaps = serializers.ListField(child=serializers.CharField())
     outreach_languages = serializers.ListField(child=serializers.CharField())
     outreach_status = serializers.CharField(help_text="none, contacted, replied or meeting_booked.")
+    crm_provider = serializers.CharField(
+        allow_null=True, help_text="Provider of the client's CRM connection, or null."
+    )
+    exported_at = serializers.DateTimeField(
+        allow_null=True, help_text="When an approved message was last exported or pushed."
+    )
     has_angle = serializers.BooleanField(
         help_text="True when an outreach angle exists, so messages can be written."
     )
@@ -225,6 +232,18 @@ def _decision(row: HumanDecision | None) -> dict[str, Any] | None:
     }
 
 
+def _exported_at(company: Company) -> Any:
+    from apps.outreach.models import Message
+
+    row = (
+        Message.objects.current()
+        .filter(company=company, exported_at__isnull=False)
+        .order_by("-exported_at")
+        .first()
+    )
+    return row.exported_at if row else None
+
+
 def _outreach_stage(company: Company) -> str:
     # Imported here: the companies API imports this module.
     from apps.companies.api.pipeline import outreach_stage
@@ -285,6 +304,8 @@ def build_card(company: Company) -> dict[str, Any]:
         "outreach_languages": list(company.campaign.current_profile.outreach_languages),
         "has_angle": OutreachAngle.objects.filter(company=company).exists(),
         "outreach_status": _outreach_stage(company),
+        "crm_provider": crm_provider(company.client_id),
+        "exported_at": _exported_at(company),
     }
 
 

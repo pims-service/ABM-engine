@@ -63,12 +63,12 @@ export function categoryLabel(value: string): string {
  * key can still be typed.
  */
 export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
-  llm: ["fake"],
+  llm: ["anthropic", "fake"],
   company_data: ["fake"],
   people_data: ["fake"],
   email_enrichment: ["fake"],
   email_verification: ["fake"],
-  crm: ["fake"],
+  crm: ["gohighlevel", "fake"],
   outreach: ["fake"],
   storage: ["fake"],
   automation: ["fake"],
@@ -85,6 +85,16 @@ export interface ProviderHints {
 }
 
 export const PROVIDER_HINTS: Record<string, ProviderHints> = {
+  anthropic: {
+    credentialNames: ["api_key"],
+    configHint:
+      'Required: {"model": "the model id from your Anthropic account"}. The credential is your Anthropic API key.',
+  },
+  gohighlevel: {
+    credentialNames: ["api_key"],
+    configHint:
+      'Required: {"location_id": "your HighLevel location id"}. The credential is a Private Integration token with contact permissions. Optional: "tag" and "source".',
+  },
   fake: {
     credentialNames: ["api_key"],
     configHint:

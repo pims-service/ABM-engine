@@ -9,8 +9,11 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 from apps.companies.models import Company, Contact
+from apps.integrations.crm_connection import CRMUnavailable, get_crm_adapter
+from apps.integrations.framework.errors import ProviderError
 from apps.integrations.llm_connection import LLMUnavailable, get_llm_adapter
 
+from .crm_push import PushBlocked, push_account
 from .generate import GenerationFailed, generate_messages
 from .models import Channel, Message
 from .services import approve_message, mark_exported, supersede_message
@@ -179,3 +182,81 @@ def edit_for(company: Company, data: dict[str, Any], user: Any) -> Message:
     except DjangoValidationError as exc:
         raise _django_errors(exc) from exc
     return find_message(company, new.pk)
+
+
+class CrmPushRequestSerializer(serializers.Serializer[Any]):
+    refresh_note = serializers.BooleanField(
+        required=False,
+        default=False,
+        help_text="Add the note again to a contact that already exists in the CRM.",
+    )
+
+
+class CrmPushResultSerializer(serializers.Serializer[Any]):
+    action = serializers.CharField(help_text="created or updated in the CRM.")
+    remote_id = serializers.CharField()
+    exported_messages = serializers.IntegerField(help_text="Approved messages now marked exported.")
+
+
+class CrmSkippedSerializer(serializers.Serializer[Any]):
+    company_id = serializers.UUIDField()
+    company = serializers.CharField()
+    reason = serializers.CharField()
+
+
+class BulkCrmResultSerializer(serializers.Serializer[Any]):
+    pushed = serializers.IntegerField()
+    skipped = CrmSkippedSerializer(many=True)
+
+
+def _crm_error(exc: Exception) -> ValidationError:
+    return ValidationError({"non_field_errors": [str(exc)]})
+
+
+def push_for(company: Company, refresh_note: bool, user: Any) -> dict[str, Any]:
+    """Push one account (see ``crm_push``): safe, plain error messages."""
+    try:
+        adapter = get_crm_adapter(company.client_id, campaign=company.campaign, user=user)
+        pushed = push_account(company, adapter, user, refresh_note=refresh_note)
+    except (CRMUnavailable, PushBlocked) as exc:
+        raise _crm_error(exc) from exc
+    except ProviderError as exc:
+        raise ValidationError(
+            {"non_field_errors": [f"The CRM refused the push ({exc.code}): {exc}"]}
+        ) from exc
+    except DjangoValidationError as exc:
+        raise _django_errors(exc) from exc
+    return {
+        "action": pushed.action,
+        "remote_id": pushed.remote_id,
+        "exported_messages": pushed.exported,
+    }
+
+
+def bulk_push(companies: list[Company], campaign: Any, user: Any) -> dict[str, Any]:
+    """Push every account that is ready; the others are listed with why they were skipped."""
+    if not companies:
+        return {"pushed": 0, "skipped": []}
+    try:
+        adapter = get_crm_adapter(campaign.client_id, campaign=campaign, user=user)
+    except CRMUnavailable as exc:
+        raise _crm_error(exc) from exc
+    pushed = 0
+    skipped: list[dict[str, Any]] = []
+    for company in companies:
+        try:
+            push_account(company, adapter, user)
+            pushed += 1
+        except PushBlocked as exc:
+            skipped.append(
+                {
+                    "company_id": company.pk,
+                    "company": company.name,
+                    "reason": "; ".join(exc.messages),
+                }
+            )
+        except ProviderError as exc:
+            skipped.append(
+                {"company_id": company.pk, "company": company.name, "reason": f"CRM: {exc}"}
+            )
+    return {"pushed": pushed, "skipped": skipped}

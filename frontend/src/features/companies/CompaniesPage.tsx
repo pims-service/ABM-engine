@@ -32,6 +32,7 @@ import {
   stageLabel,
 } from "./accountsApi";
 import { addCompany } from "./api";
+import { pushApprovedToCrm } from "./crmApi";
 
 const POLL_MS = 4000;
 const PAGE_SIZE = 50;
@@ -273,6 +274,31 @@ export function CompaniesPage() {
           <>
             <Button variant="secondary" onClick={() => setAdding(!adding)}>
               Add one
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "Push every account you decided ADD to the CRM? Accounts that are not ready are skipped and listed.",
+                  )
+                )
+                  return;
+                try {
+                  const result = await pushApprovedToCrm(campaign.id);
+                  const skipped = result.skipped
+                    .map((s) => `${s.company} (${s.reason})`)
+                    .join("; ");
+                  setNotice(
+                    `Pushed ${result.pushed} to the CRM.${skipped ? ` Skipped: ${skipped}` : ""}`,
+                  );
+                  refresh();
+                } catch (cause) {
+                  setNotice(`Could not push. ${errorMessage(cause)}`);
+                }
+              }}
+            >
+              Push to CRM
             </Button>
             <Button
               variant="secondary"

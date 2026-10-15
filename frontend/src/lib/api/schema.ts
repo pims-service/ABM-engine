@@ -270,6 +270,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/push-to-crm/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Push approved accounts to the CRM
+     * @description Pushes up to 100 accounts you decided ADD (the primary person, a tag and a note with the approved messages) to the client's CRM. Accounts that are not ready (no primary person, no email, no approved message) are skipped and listed with the reason. Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_push_to_crm"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/summary/": {
     parameters: {
       query?: never;
@@ -1058,6 +1078,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/push-to-crm/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Push the approved account to the CRM
+     * @description Brief section 12: after you approve a message, push the primary person to the client's CRM (GoHighLevel). The CRM gets the person, the company name, a tag and one note with the research summary, the angle and the approved messages. Needs a human ADD decision, a primary person with an email address and at least one approved message; the approved messages are then marked exported. Pushing again updates the same CRM contact and does not add the note twice (unless `refresh_note`). Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_push_to_crm"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/restore/": {
     parameters: {
       query?: never;
@@ -1692,6 +1732,10 @@ export interface components {
       queued: number;
       already_running: number;
     };
+    BulkCrmResult: {
+      pushed: number;
+      skipped: components["schemas"]["CrmSkipped"][];
+    };
     /**
      * @description * `b2b` - B2B
      *     * `b2c` - B2C
@@ -2224,6 +2268,26 @@ export interface components {
      * @enum {string}
      */
     ContactRoleEnum: "primary" | "secondary" | "none";
+    CrmPushRequestRequest: {
+      /**
+       * @description Add the note again to a contact that already exists in the CRM.
+       * @default false
+       */
+      refresh_note: boolean;
+    };
+    CrmPushResult: {
+      /** @description created or updated in the CRM. */
+      action: string;
+      remote_id: string;
+      /** @description Approved messages now marked exported. */
+      exported_messages: number;
+    };
+    CrmSkipped: {
+      /** Format: uuid */
+      company_id: string;
+      company: string;
+      reason: string;
+    };
     /** @description 202 response: the work is queued (or, in tests, already done). */
     CsvImportAccepted: {
       batch: components["schemas"]["ImportBatch"];
@@ -3192,6 +3256,13 @@ export interface components {
       outreach_languages: string[];
       /** @description none, contacted, replied or meeting_booked. */
       outreach_status: string;
+      /** @description Provider of the client's CRM connection, or null. */
+      crm_provider: string | null;
+      /**
+       * Format: date-time
+       * @description When an approved message was last exported or pushed.
+       */
+      exported_at: string | null;
       /** @description True when an outreach angle exists, so messages can be written. */
       has_angle: boolean;
     };
@@ -4535,6 +4606,81 @@ export interface operations {
         };
         content: {
           "text/csv": string;
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_push_to_crm: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkCrmResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
@@ -8036,6 +8182,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OutreachStatus"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_push_to_crm: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["CrmPushRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrmPushResult"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

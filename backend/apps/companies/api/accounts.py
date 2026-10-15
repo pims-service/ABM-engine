@@ -43,6 +43,7 @@ from apps.core.permissions import ClientScopedViewSet, request_roles
 from apps.core.roles import Level, role_allows
 from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
+from apps.outreach.messages_api import BulkCrmResultSerializer, bulk_push
 from apps.outreach.models import Activity, ActivityType
 from apps.research.models import (
     AIRecommendation,
@@ -329,6 +330,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "summary": Level.READ,
         "analyze": Level.EDIT,
         "export": Level.EDIT,
+        "push_to_crm": Level.EDIT,
     }
 
     def _campaign(self, level: Level) -> Campaign:
@@ -481,3 +483,26 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         response = HttpResponse(body, content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="approved-accounts.csv"'
         return response
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_push_to_crm",
+        summary="Push approved accounts to the CRM",
+        description="Pushes up to 100 accounts you decided ADD (the primary person, a tag and a "
+        "note with the approved messages) to the client's CRM. Accounts that are not ready (no "
+        "primary person, no email, no approved message) are skipped and listed with the reason. "
+        "Needs the EDIT level.",
+        request=None,
+        responses={200: BulkCrmResultSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(detail=False, methods=["post"], url_path="push-to-crm")
+    def push_to_crm(self, request: Request, campaign_pk: str | None = None) -> Response:
+        campaign = self._campaign(Level.EDIT)
+        companies = list(
+            self._campaign_companies(Level.EDIT)
+            .filter(_latest(HumanDecision, decision="add"))
+            .select_related("campaign")
+            .order_by("name", "id")[:100]
+        )
+        user = request.user if isinstance(request.user, User) else None
+        return Response(BulkCrmResultSerializer(bulk_push(companies, campaign, user)).data)
