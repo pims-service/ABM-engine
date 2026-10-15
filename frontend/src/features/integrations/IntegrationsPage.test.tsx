@@ -180,7 +180,8 @@ describe("listing", () => {
     const { container } = renderPage();
     expect(await screen.findByText(evil)).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector("a")).toBeNull();
+    // The page has its own links (for example to AI usage); the message adds none.
+    expect(container.querySelector('a[href="https://evil.test"]')).toBeNull();
   });
 });
 
