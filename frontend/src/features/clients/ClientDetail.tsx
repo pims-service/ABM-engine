@@ -16,6 +16,7 @@ import { ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
 import { useClient } from "./api";
+import { TeamCard } from "./TeamCard";
 import { useClientActions } from "./useClientActions";
 
 /** `/clients/[id]`: the client's details and actions, with its campaigns underneath. */
@@ -139,6 +140,11 @@ export function ClientDetail({ id }: { id: string }) {
         </div>
         <CampaignList clientId={client.id} />
       </section>
+      {access.can("manage", client.id) ? (
+        <div className="mt-8">
+          <TeamCard clientId={client.id} />
+        </div>
+      ) : null}
       {actions.dialogs}
     </>
   );

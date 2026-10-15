@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/Button";
@@ -14,13 +15,14 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="hidden max-w-48 truncate text-sm text-fg-muted lg:inline"
-        title={user.email}
+      <Link
+        href="/account"
+        className="hidden max-w-48 truncate text-sm text-fg-muted hover:text-fg lg:inline"
+        title="Your account and password"
         data-testid="current-user"
       >
         {user.name || user.email}
-      </span>
+      </Link>
       <Button
         variant="ghost"
         size="sm"

@@ -6,10 +6,12 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -22,6 +24,7 @@ from apps.core.schema import error_responses
 from .cookies import clear_refresh_cookie, cookie_enabled, deliver_tokens
 from .models import User
 from .serializers import (
+    ChangePasswordSerializer,
     RefreshSerializer,
     RefreshTokenSerializer,
     TokenResponseSerializer,
@@ -131,3 +134,31 @@ class MeView(APIView):
     )
     def get(self, request: Request) -> Response:
         return Response(UserSerializer(cast(User, request.user)).data)
+
+
+class ChangePasswordView(APIView):
+    """Change your own password (the current one is required)."""
+
+    permission_classes = (IsAuthenticated,)
+
+    @extend_schema(
+        tags=["auth"],
+        operation_id="auth_change_password",
+        summary="Change your password",
+        description="Needs your current password. The new one must pass the password rules.",
+        request=ChangePasswordSerializer,
+        responses={204: None, **error_responses(400, 401, 429, 500)},
+    )
+    def post(self, request: Request) -> Response:
+        body = ChangePasswordSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        user = cast(User, request.user)
+        if not user.check_password(body.validated_data["current_password"]):
+            raise ValidationError({"current_password": ["That is not your current password."]})
+        try:
+            validate_password(body.validated_data["new_password"], user)
+        except DjangoValidationError as exc:
+            raise ValidationError({"new_password": exc.messages}) from exc
+        user.set_password(body.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

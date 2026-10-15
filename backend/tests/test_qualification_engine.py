@@ -275,7 +275,8 @@ def test_the_task_runs_the_engine_and_marks_the_company_analyzed(
     from apps.core.jobs import add_items, create_job
 
     monkeypatch.setattr(
-        "apps.research.engine.get_llm_adapter", lambda client_id: ScriptedLLM([facts(), verdict()])
+        "apps.research.engine.get_llm_adapter",
+        lambda client_id, **kwargs: ScriptedLLM([facts(), verdict()]),
     )
 
     def fetch_with_fake_site(url: str, **kwargs: Any) -> Any:

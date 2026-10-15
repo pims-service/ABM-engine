@@ -46,3 +46,8 @@ class RefreshSerializer(TokenRefreshSerializer):
             raise AuthenticationFailed(
                 self.error_messages["no_active_account"], "no_active_account"
             ) from exc
+
+
+class ChangePasswordSerializer(serializers.Serializer[Any]):
+    current_password = serializers.CharField(write_only=True, style={"input_type": "password"})
+    new_password = serializers.CharField(write_only=True, style={"input_type": "password"})

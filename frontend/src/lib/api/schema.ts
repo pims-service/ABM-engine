@@ -24,6 +24,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/change-password/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Change your password
+     * @description Needs your current password. The new one must pass the password rules.
+     */
+    post: operations["auth_change_password"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login/": {
     parameters: {
       query?: never;
@@ -578,6 +598,26 @@ export interface paths {
     patch: operations["clients_partial_update"];
     trace?: never;
   };
+  "/api/v1/clients/{id}/add-member/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Add a person to the team
+     * @description Gives the person a role (viewer, reviewer, manager, admin). If they have no account yet, send a `password` for them (they can change it after signing in); there is no email invitation in V1. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["clients_add_member"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/clients/{id}/archive/": {
     parameters: {
       query?: never;
@@ -598,6 +638,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/clients/{id}/members/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The client's team
+     * @description Everyone with access to this client and their role. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    get: operations["clients_members"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/clients/{id}/remove-member/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Remove a person from the team
+     * @description Ends their access at once (the history is kept). The last admin of a client cannot be removed. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["clients_remove_member"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/clients/{id}/restore/": {
     parameters: {
       query?: never;
@@ -612,6 +692,26 @@ export interface paths {
      * @description 400 on `name` if another active client now uses the name. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
      */
     post: operations["clients_restore"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/clients/{id}/set-member-role/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Change a person's role
+     * @description The last admin of a client cannot be demoted. Needs the `MANAGE` level: admin. Others get 403; clients you are not a member of give 404.
+     */
+    post: operations["clients_set_member_role"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1457,6 +1557,15 @@ export interface components {
       /** Format: date-time */
       created_at: string;
     };
+    AddMemberRequest: {
+      /** Format: email */
+      email: string;
+      role: components["schemas"]["TeamRoleEnum"];
+      /** @default  */
+      name: string;
+      /** @description Only for a person who has no account yet. They can change it after signing in. */
+      password?: string;
+    };
     /** @description The background job behind an "Analyze Company" request (see `GET` job status in M4). */
     AnalysisJob: {
       /** Format: uuid */
@@ -1772,6 +1881,10 @@ export interface components {
       | "outreach"
       | "storage"
       | "automation";
+    ChangePasswordRequest: {
+      current_password: string;
+      new_password: string;
+    };
     /**
      * @description * `linkedin` - linkedin
      *     * `email` - email
@@ -2555,6 +2668,15 @@ export interface components {
       country: string;
       archived: boolean;
     };
+    Member: {
+      /** Format: uuid */
+      user_id: string;
+      email: string;
+      name: string;
+      /** @description viewer, reviewer, manager or admin. */
+      role: string;
+      is_you: boolean;
+    };
     Message: {
       /** Format: uuid */
       id: string;
@@ -2997,6 +3119,10 @@ export interface components {
       /** @description Refresh token. May be omitted when the refresh cookie is enabled. */
       refresh?: string;
     };
+    RemoveMemberRequest: {
+      /** Format: uuid */
+      user_id: string;
+    };
     ResearchCard: {
       company: components["schemas"]["CardCompany"];
       research: components["schemas"]["CardResearch"] | null;
@@ -3151,6 +3277,11 @@ export interface components {
       page_size: number;
       cursor?: string | null;
     };
+    SetMemberRoleRequest: {
+      /** Format: uuid */
+      user_id: string;
+      role: components["schemas"]["TeamRoleEnum"];
+    };
     SkippedPage: {
       url: string;
       kind: string;
@@ -3195,6 +3326,14 @@ export interface components {
      * @enum {string}
      */
     TargetTypeEnum: "company" | "signal" | "contact" | "angle" | "message";
+    /**
+     * @description * `admin` - Admin
+     *     * `manager` - Manager
+     *     * `reviewer` - Reviewer
+     *     * `viewer` - Viewer
+     * @enum {string}
+     */
+    TeamRoleEnum: "admin" | "manager" | "reviewer" | "viewer";
     TokenObtainPairRequest: {
       email: string;
       password: string;
@@ -3295,6 +3434,64 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ApiRoot"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  auth_change_password: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangePasswordRequest"];
+      };
+    };
+    responses: {
+      /** @description No response body */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Throttled (`throttled`, with `details.retry_after`). */
@@ -6091,6 +6288,86 @@ export interface operations {
       };
     };
   };
+  clients_add_member: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this client. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddMemberRequest"];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Member"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   clients_archive: {
     parameters: {
       query?: never;
@@ -6167,6 +6444,157 @@ export interface operations {
       };
     };
   };
+  clients_members: {
+    parameters: {
+      query?: {
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A search term. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this client. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Member"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  clients_remove_member: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this client. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RemoveMemberRequest"];
+      };
+    };
+    responses: {
+      /** @description No response body */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   clients_restore: {
     parameters: {
       query?: never;
@@ -6185,6 +6613,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Client"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  clients_set_member_role: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this client. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetMemberRoleRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Member"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
