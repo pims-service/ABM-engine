@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listCampaignCompanies } from "@/features/companies/api";
 import { useOptionalSelection } from "@/features/selection/SelectionProvider";
+import { useOptionalAuth } from "@/lib/auth/AuthProvider";
 import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
 function Stat({
@@ -47,9 +48,18 @@ const STEPS = [
   },
 ] as const;
 
+function greeting(name: string, rest: string): string {
+  const hour = new Date().getHours();
+  const part =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  return `${part}${name ? `, ${name}` : ""}. ${rest}`;
+}
+
 /** `/dashboard`: real counts for the current selection, and the three steps to get going. */
 export function Dashboard() {
   const selection = useOptionalSelection();
+  const user = useOptionalAuth()?.user;
+  const name = (user?.name || user?.email || "").split(/[\s@]/)[0] ?? "";
   const campaign = selection?.campaign ?? null;
   const companies = useApiQuery(
     `dashboard-companies:${campaign?.id ?? "none"}`,
@@ -61,11 +71,12 @@ export function Dashboard() {
     <>
       <PageHeader
         title="Dashboard"
-        description={
+        description={greeting(
+          name,
           campaign
             ? `${selection?.client?.name ?? "Client"} · ${campaign.name}`
-            : "Pick a client and a campaign to get started."
-        }
+            : "Pick a client and a campaign to get started.",
+        )}
       />
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Clients" value={selection?.clients.length ?? "—"} />

@@ -5,7 +5,7 @@ import { type FormEvent, useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -227,13 +227,21 @@ export function CompaniesPage() {
         actions={
           <>
             <Button variant="secondary" onClick={() => setAdding(!adding)}>
-              Add company
+              Add one
             </Button>
+            <Link
+              href="/companies/import"
+              className={buttonStyles({ variant: "secondary" })}
+            >
+              Import a CSV
+            </Link>
             <Button
               disabled={unassessed === 0}
               onClick={() => setConfirm(true)}
             >
-              Analyze {unassessed || ""} not analyzed
+              {unassessed === 0
+                ? "Everything is analyzed"
+                : `Analyze ${unassessed} ${unassessed === 1 ? "company" : "companies"}`}
             </Button>
           </>
         }
@@ -251,6 +259,21 @@ export function CompaniesPage() {
             refresh();
           }}
         />
+      ) : null}
+
+      {!filtered && (counts?.needs_review ?? 0) > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface-raised px-4 py-3 text-sm">
+          <span>
+            <span className="font-medium">
+              {counts?.needs_review}{" "}
+              {counts?.needs_review === 1 ? "account is" : "accounts are"}
+            </span>{" "}
+            waiting for your decision.
+          </span>
+          <Button size="sm" onClick={() => set("review", "needs_review")}>
+            Start reviewing
+          </Button>
+        </div>
       ) : null}
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -291,7 +314,7 @@ export function CompaniesPage() {
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="min-w-48 flex-1">
+        <div className="min-w-40 flex-1">
           <TextField
             label="Search"
             placeholder="Name or website"
@@ -319,7 +342,7 @@ export function CompaniesPage() {
             </select>
           </label>
         ))}
-        <div className="w-40">
+        <div className="w-32">
           <TextField
             label="Industry"
             value={typed.industry}
@@ -363,7 +386,19 @@ export function CompaniesPage() {
           description={
             filtered
               ? "Change or clear the filters."
-              : "Add one above, then analyze it to see its fit and a recommendation."
+              : "Add a company by hand or import a CSV. Then analyze them to see which ones fit and what to do next."
+          }
+          action={
+            filtered ? undefined : (
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => setAdding(true)}>
+                  Add one
+                </Button>
+                <Link href="/companies/import" className={buttonStyles()}>
+                  Import a CSV
+                </Link>
+              </div>
+            )
           }
         />
       ) : (
