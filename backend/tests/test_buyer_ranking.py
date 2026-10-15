@@ -11,6 +11,8 @@ from apps.research.buyers import DEFAULT_LARGE_TITLES, rank_people
 from tests.factories import make_campaign, make_client, make_company, make_contact, make_research
 from tests.test_company_api import api_for
 
+pytestmark = [pytest.mark.django_db]
+
 PREFERRED = ["VP BD", "Head of BD", "Commercial Director", "Sales Director", "CEO", "Founder"]
 
 
