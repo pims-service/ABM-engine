@@ -381,6 +381,12 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
         Scenario("GET /api/v1/campaigns/{campaign_pk}/accounts/", "campaign_nested", Level.READ),
         Scenario(
+            "POST /api/v1/campaigns/{campaign_pk}/accounts/push-to-crm/",
+            "campaign_nested",
+            Level.EDIT,
+            body=lambda: {},
+        ),
+        Scenario(
             "GET /api/v1/campaigns/{campaign_pk}/accounts/export/", "campaign_nested", Level.EDIT
         ),
         Scenario(
@@ -405,6 +411,13 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/companies/{pk}/activity/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/contacts/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/messages/", "item", Level.READ, "company"),
+        Scenario(
+            "POST /api/v1/companies/{pk}/push-to-crm/",
+            "item",
+            Level.EDIT,
+            "company",
+            body=lambda: {},
+        ),
         Scenario(
             "POST /api/v1/companies/{pk}/commercial-team/",
             "item",

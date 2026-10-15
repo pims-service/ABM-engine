@@ -41,6 +41,8 @@ from apps.imports.manual import (
 from apps.imports.models import ImportRowOutcome
 from apps.imports.services import COMPANY_REJECTED
 from apps.outreach.messages_api import (
+    CrmPushRequestSerializer,
+    CrmPushResultSerializer,
     GenerateRequestSerializer,
     GenerateResultSerializer,
     MessageEditSerializer,
@@ -52,6 +54,7 @@ from apps.outreach.messages_api import (
     export_for,
     generate_for,
     message_body,
+    push_for,
 )
 from apps.outreach.models import ActivityType
 from apps.outreach.services import record_activity, record_feedback
@@ -334,6 +337,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "feedback": Level.DECIDE,
         "outreach_status": Level.EDIT,
         "commercial_team": Level.EDIT,
+        "push_to_crm": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -695,6 +699,28 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         body.is_valid(raise_exception=True)
         record_commercial_team(company, dict(body.validated_data), self._user())
         return Response(ResearchCardSerializer(build_card(company)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_push_to_crm",
+        summary="Push the approved account to the CRM",
+        description="Brief section 12: after you approve a message, push the primary person to the "
+        "client's CRM (GoHighLevel). The CRM gets the person, the company name, a tag and one "
+        "note with the research summary, the angle and the approved messages. Needs a human ADD "
+        "decision, a primary person with an email address and at least one approved message; "
+        "the approved messages are then marked exported. Pushing again updates the same CRM "
+        "contact and does not add the note twice (unless `refresh_note`). "
+        + _levels("EDIT", "manager and admin"),
+        request=CrmPushRequestSerializer,
+        responses={200: CrmPushResultSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="push-to-crm")
+    def push_to_crm(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = CrmPushRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        result = push_for(company, body.validated_data["refresh_note"], self._user())
+        return Response(CrmPushResultSerializer(result).data)
 
     @extend_schema(
         tags=TAGS,

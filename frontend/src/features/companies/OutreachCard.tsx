@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
@@ -12,6 +13,7 @@ import { errorMessage, formatDate, formatDateTime } from "@/lib/format";
 
 import { stageLabel } from "./accountsApi";
 import type { ResearchCard } from "./cardApi";
+import { pushToCrm } from "./crmApi";
 import {
   approveMessage,
   type Channel,
@@ -156,6 +158,14 @@ export function OutreachCard({
           Some drafts were refused because they were not grounded in the
           research: {rejected.join("; ")}
         </Alert>
+      ) : null}
+      {decided && messages.some((m) => m.status !== "draft") ? (
+        <CrmStep
+          companyId={card.company.id}
+          provider={card.crm_provider}
+          exportedAt={card.exported_at}
+          onChange={onChange}
+        />
       ) : null}
       {messages.length > 0 ? (
         <ul className="mt-5 flex flex-col gap-4">
@@ -398,6 +408,86 @@ function Progress({
           </Button>
         ))}
       </div>
+      {error ? (
+        <Alert tone="danger" className="mt-2">
+          {error}
+        </Alert>
+      ) : null}
+    </div>
+  );
+}
+
+/** The last step of the approved workflow: put the person and the approved messages in the CRM. */
+function CrmStep({
+  companyId,
+  provider,
+  exportedAt,
+  onChange,
+}: {
+  companyId: string;
+  provider: string | null | undefined;
+  exportedAt: string | null | undefined;
+  onChange: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  if (!provider) {
+    return (
+      <p className="mt-4 text-sm text-fg-muted">
+        To send approved messages to your CRM, connect it under{" "}
+        <Link
+          href="/settings/integrations"
+          className="text-accent underline-offset-2 hover:underline"
+        >
+          Integrations
+        </Link>
+        .
+      </p>
+    );
+  }
+  return (
+    <div className="mt-4 rounded-md border border-line p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="font-medium">CRM</span>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            setDone(null);
+            try {
+              const result = await pushToCrm(companyId);
+              setDone(
+                result.action === "created"
+                  ? "Added to the CRM with a note."
+                  : "Already in the CRM: updated and tagged.",
+              );
+              onChange();
+            } catch (cause) {
+              setError(errorMessage(cause));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy
+            ? "Sending…"
+            : `Send to ${provider === "gohighlevel" ? "GoHighLevel" : provider}`}
+        </Button>
+        {exportedAt ? (
+          <span className="text-xs text-fg-muted">
+            Last exported {formatDateTime(exportedAt)}
+          </span>
+        ) : null}
+      </div>
+      {done ? (
+        <Alert tone="success" className="mt-2">
+          {done}
+        </Alert>
+      ) : null}
       {error ? (
         <Alert tone="danger" className="mt-2">
           {error}

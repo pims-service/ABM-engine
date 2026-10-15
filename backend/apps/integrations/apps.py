@@ -8,6 +8,7 @@ class IntegrationsConfig(AppConfig):
 
     def ready(self) -> None:
         # "Test connection" needs a tester per provider that has an adapter.
-        from .llm_connection import register_testers
+        from . import crm_connection, llm_connection
 
-        register_testers()
+        llm_connection.register_testers()
+        crm_connection.register_testers()

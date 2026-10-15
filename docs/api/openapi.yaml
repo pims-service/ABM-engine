@@ -1130,6 +1130,69 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/push-to-crm/:
+    post:
+      operationId: campaign_accounts_push_to_crm
+      description: Pushes up to 100 accounts you decided ADD (the primary person,
+        a tag and a note with the approved messages) to the client's CRM. Accounts
+        that are not ready (no primary person, no email, no approved message) are
+        skipped and listed with the reason. Needs the EDIT level.
+      summary: Push approved accounts to the CRM
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkCrmResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/summary/:
     get:
       operationId: campaign_accounts_summary
@@ -4351,6 +4414,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/push-to-crm/:
+    post:
+      operationId: companies_push_to_crm
+      description: 'Brief section 12: after you approve a message, push the primary
+        person to the client''s CRM (GoHighLevel). The CRM gets the person, the company
+        name, a tag and one note with the research summary, the angle and the approved
+        messages. Needs a human ADD decision, a primary person with an email address
+        and at least one approved message; the approved messages are then marked exported.
+        Pushing again updates the same CRM contact and does not add the note twice
+        (unless `refresh_note`). Needs the `EDIT` level: manager and admin. Others
+        get 403; companies of clients you are not a member of give 404.'
+      summary: Push the approved account to the CRM
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrmPushRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrmPushResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/restore/:
     post:
       operationId: companies_restore
@@ -6677,6 +6813,18 @@ components:
       - already_running
       - queued
       - requested
+    BulkCrmResult:
+      type: object
+      properties:
+        pushed:
+          type: integer
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrmSkipped'
+      required:
+      - pushed
+      - skipped
     BusinessModelEnum:
       enum:
       - b2b
@@ -7983,6 +8131,43 @@ components:
         * `primary` - Primary
         * `secondary` - Secondary
         * `none` - None
+    CrmPushRequestRequest:
+      type: object
+      properties:
+        refresh_note:
+          type: boolean
+          default: false
+          description: Add the note again to a contact that already exists in the
+            CRM.
+    CrmPushResult:
+      type: object
+      properties:
+        action:
+          type: string
+          description: created or updated in the CRM.
+        remote_id:
+          type: string
+        exported_messages:
+          type: integer
+          description: Approved messages now marked exported.
+      required:
+      - action
+      - exported_messages
+      - remote_id
+    CrmSkipped:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        company:
+          type: string
+        reason:
+          type: string
+      required:
+      - company
+      - company_id
+      - reason
     CsvImportAccepted:
       type: object
       description: '202 response: the work is queued (or, in tests, already done).'
@@ -10051,13 +10236,24 @@ components:
         outreach_status:
           type: string
           description: none, contacted, replied or meeting_booked.
+        crm_provider:
+          type: string
+          nullable: true
+          description: Provider of the client's CRM connection, or null.
+        exported_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When an approved message was last exported or pushed.
         has_angle:
           type: boolean
           description: True when an outreach angle exists, so messages can be written.
       required:
       - analysis
       - company
+      - crm_provider
       - decision
+      - exported_at
       - gaps
       - has_angle
       - icp
