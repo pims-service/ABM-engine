@@ -89,6 +89,7 @@ def test_every_call_is_logged_with_tokens_and_the_campaign(transport, setup) -> 
     assert (call.input_tokens, call.output_tokens) == (1500, 500)
     assert call.model == "claude-sonnet-5-5"
     assert call.campaign_id == setup["campaign"].pk
+    assert call.credits is not None
     assert float(call.credits) == 2.0  # thousand tokens
 
 
