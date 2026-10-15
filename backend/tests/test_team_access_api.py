@@ -162,7 +162,7 @@ def test_the_current_password_is_required_and_the_new_one_must_be_strong() -> No
     api = as_user(user)
     wrong = api.post(
         "/api/v1/auth/change-password/",
-        {"current_password": "nope", "new_password": NEW_PASSWORD},
+        {"current_password": "nope",  # pragma: allowlist secret "new_password": NEW_PASSWORD},
         format="json",
     )
     weak = api.post(
