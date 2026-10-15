@@ -738,11 +738,7 @@ def test_another_clients_object_is_indistinguishable_from_a_missing_one(ctx, key
 
     # Creating needs the level in SOME client first: a role that never reaches it is refused
     # up front (403) whatever client is named, which is still the same answer for B and "none".
-    early_403 = (
-        s.kind in {"create", "nested", "campaign_nested"}
-        and method == "POST"
-        and not role_allows(role, s.level)
-    )
+    early_403 = s.kind in {"create", "nested", "campaign_nested"} and not role_allows(role, s.level)
     expected = 403 if early_403 else 404
     assert missing.status_code == expected, (key, role, missing.content)
     assert foreign.status_code == expected, (key, role, foreign.content)
