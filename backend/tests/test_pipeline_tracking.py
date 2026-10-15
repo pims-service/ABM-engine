@@ -106,7 +106,7 @@ def test_progress_shows_on_the_card_the_rows_and_the_counts(world) -> None:
 @pytest.mark.parametrize(
     ("query", "expected"),
     [
-        ("outreach=none", ["Bravo", "Cedar"]),
+        ("outreach=none", ["Bravo"]),
         ("outreach=contacted", ["Cedar"]),
         ("outreach=replied", ["Atlas"]),
         ("outreach=meeting_booked", []),
