@@ -126,7 +126,8 @@ def build_prompt(
             angle.angle,
             angle.rationale,
             *facts,
-            *signal_lines,
+            # Without the ids: digits inside an id must not make an invented number look real.
+            *(f"{x.get_type_display()} ({x.event_date}): {x.evidence}" for x in signals),
         ]
     )
     system = (

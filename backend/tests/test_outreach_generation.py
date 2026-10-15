@@ -320,3 +320,20 @@ def test_invented_numbers_ignore_numbers_that_are_in_the_evidence() -> None:
 def test_arabic_digits_are_compared_as_digits() -> None:
     arabic = "".join(chr(0x660 + int(digit)) for digit in "155")
     assert invented_numbers(f"{arabic} staff", "155 employees") == set()
+
+
+def test_the_evidence_for_the_number_check_contains_no_ids(world) -> None:
+    from apps.outreach.generate import build_prompt
+
+    company = world["company"]
+    _, evidence = build_prompt(
+        company,
+        world["contact"],
+        world["angle"],
+        None,
+        [world["signal"]],
+        ["email"],
+        "en",
+    )
+    assert str(world["signal"].pk) not in evidence
+    assert "Opened a new office in Jeddah" in evidence
