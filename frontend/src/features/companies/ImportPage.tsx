@@ -11,14 +11,17 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Table, Td, Th } from "@/components/ui/Table";
 import { useOptionalSelection } from "@/features/selection/SelectionProvider";
-import { errorMessage } from "@/lib/format";
+import { errorMessage, formatDateTime } from "@/lib/format";
+import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
 import {
+  cancelImport,
   type CsvPreview,
   downloadProblems,
   downloadTemplate,
   getImportBatch,
   type ImportBatch,
+  listImports,
   type Mapping,
   previewCsv,
   startCsvImport,
@@ -123,6 +126,7 @@ export function ImportPage() {
       <>
         {header}
         <Progress batch={batch} />
+        <RecentImports campaignId={campaign.id} refreshKey={batch.status} />
       </>
     );
   }
@@ -192,6 +196,8 @@ export function ImportPage() {
           </Alert>
         ) : null}
       </Card>
+
+      <RecentImports campaignId={campaign.id} refreshKey="idle" />
 
       {preview ? (
         <>
@@ -387,6 +393,80 @@ function Progress({ batch }: { batch: ImportBatch }) {
             </Button>
           ) : null}
         </div>
+      ) : null}
+    </Card>
+  );
+}
+
+/** The campaign's recent imports, with a way to stop one that is still running. */
+function RecentImports({
+  campaignId,
+  refreshKey,
+}: {
+  campaignId: string;
+  refreshKey: string;
+}) {
+  const { data, reload } = useApiQuery(
+    `imports:${campaignId}:${refreshKey}`,
+    (signal) => listImports(campaignId, signal),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const rows = Array.isArray(data) ? data.slice(0, 8) : [];
+  if (rows.length === 0) return null;
+  return (
+    <Card title="Recent imports" className="mt-5">
+      <ul className="flex flex-col gap-3 text-sm">
+        {rows.map((row) => {
+          const running =
+            row.status === "pending" || row.status === "processing";
+          return (
+            <li
+              key={row.id}
+              className="flex flex-wrap items-center justify-between gap-2"
+            >
+              <span>
+                <span className="font-medium">
+                  {row.original_filename || "Manual entry"}
+                </span>{" "}
+                <span className="text-fg-muted">
+                  {formatDateTime(row.created_at)} · {row.created_count} added
+                  {row.failed_count ? `, ${row.failed_count} failed` : ""}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <Badge
+                  tone={
+                    row.status === "completed"
+                      ? "success"
+                      : row.status === "failed" || row.status === "partial"
+                        ? "warning"
+                        : "neutral"
+                  }
+                >
+                  {row.status}
+                </Badge>
+                {running ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() =>
+                      cancelImport(row.id).then(reload, (c) =>
+                        setError(errorMessage(c)),
+                      )
+                    }
+                  >
+                    Cancel
+                  </Button>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {error ? (
+        <Alert tone="danger" className="mt-3">
+          {error}
+        </Alert>
       ) : null}
     </Card>
   );

@@ -16,10 +16,12 @@ import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
 import { researchWebsite, type WebsiteResearch } from "./api";
 import {
+  archiveCompany,
   getActivity,
   getCard,
   requestAnalysis,
   type ResearchCard,
+  restoreCompany,
 } from "./cardApi";
 import { getMessages } from "./messagesApi";
 import { getContacts } from "./peopleApi";
@@ -134,17 +136,62 @@ export function CompanyDetail({ id }: { id: string }) {
         title={card.company.name}
         description={card.company.website || "No website on file."}
         actions={
-          <Button onClick={analyse} disabled={starting || busy || loading}>
-            {busy
-              ? "Analyzing…"
-              : starting
-                ? "Starting…"
-                : card.icp
-                  ? "Re-run analysis"
-                  : "Run analysis"}
-          </Button>
+          <>
+            {card.company.archived ? null : (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      "Archive this company? It leaves the lists. Its research and history are kept and you can restore it.",
+                    )
+                  ) {
+                    archiveCompany(id).then(refresh, (c) =>
+                      setStartError(errorMessage(c)),
+                    );
+                  }
+                }}
+              >
+                Archive
+              </Button>
+            )}
+            <Button
+              onClick={analyse}
+              disabled={starting || busy || loading || card.company.archived}
+            >
+              {busy
+                ? "Analyzing…"
+                : starting
+                  ? "Starting…"
+                  : card.icp
+                    ? "Re-run analysis"
+                    : "Run analysis"}
+            </Button>
+          </>
         }
       />
+      {card.company.archived ? (
+        <Alert
+          tone="warning"
+          className="mb-4"
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                restoreCompany(id).then(refresh, (c) =>
+                  setStartError(errorMessage(c)),
+                )
+              }
+            >
+              Restore
+            </Button>
+          }
+        >
+          This company is archived. It is hidden from the lists but nothing was
+          deleted.
+        </Alert>
+      ) : null}
       {startError ? (
         <Alert tone="danger" className="mb-4">
           Could not start the analysis. {startError}
