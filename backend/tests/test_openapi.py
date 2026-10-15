@@ -93,6 +93,11 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "companies_activity": ("GET", "/api/v1/companies/{id}/activity/"),
         "companies_contacts": ("GET", "/api/v1/companies/{id}/contacts/"),
         "companies_messages": ("GET", "/api/v1/companies/{id}/messages/"),
+        "companies_buyer_ranking": ("GET", "/api/v1/companies/{id}/buyer-ranking/"),
+        "companies_apply_buyer_ranking": (
+            "POST",
+            "/api/v1/companies/{id}/apply-buyer-ranking/",
+        ),
         "companies_push_to_crm": ("POST", "/api/v1/companies/{id}/push-to-crm/"),
         "campaign_accounts_push_to_crm": (
             "POST",

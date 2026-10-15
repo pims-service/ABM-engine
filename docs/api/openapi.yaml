@@ -3531,6 +3531,71 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/apply-buyer-ranking/:
+    post:
+      operationId: companies_apply_buyer_ranking
+      description: 'Saves the ranks and makes the first suggested person the primary
+        target and the second the secondary target (the previous holders lose the
+        role). You can change any of it afterwards. Needs the `EDIT` level: manager
+        and admin. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Apply the suggested ranking
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerRanking'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/approve-message/:
     post:
       operationId: companies_approve_message
@@ -3698,6 +3763,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/buyer-ranking/:
+    get:
+      operationId: companies_buyer_ranking
+      description: 'Brief sections 8 and 15: who to contact first, with the reasons.
+        Uses only the people already entered, the campaign''s ordered preferred titles
+        and target departments, and the company''s size (a small company: the founder
+        or CEO first; a larger one: the CEO is not assumed to be the best target).
+        Nothing is stored; it is a suggestion. Needs the `READ` level: any member.
+        Others get 403; companies of clients you are not a member of give 404.'
+      summary: Suggested ranking of the people
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerRanking'
+          description: ''
         '401':
           content:
             application/json:
@@ -6835,6 +6960,19 @@ components:
         * `b2b` - B2B
         * `b2c` - B2C
         * `both` - B2B and B2C
+    BuyerRanking:
+      type: object
+      properties:
+        note:
+          type: string
+          description: How the company's size shaped the ranking.
+        people:
+          type: array
+          items:
+            $ref: '#/components/schemas/RankedPerson'
+      required:
+      - note
+      - people
     Campaign:
       type: object
       description: A campaign with its current profile. ``status`` changes only through
@@ -10159,6 +10297,32 @@ components:
       - search
       - total_estimate
       - warnings
+    RankedPerson:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        title:
+          type: string
+        rank:
+          type: integer
+        suggested_role:
+          type: string
+          description: primary, secondary or none.
+        reasons:
+          type: array
+          items:
+            type: string
+      required:
+      - contact_id
+      - name
+      - rank
+      - reasons
+      - suggested_role
+      - title
     Readiness:
       type: object
       description: 'Body of `/readyz`: 200 when `status` is `ok`, 503 when `unavailable`.'
