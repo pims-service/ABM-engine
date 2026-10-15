@@ -72,7 +72,7 @@ export function TeamCard({ clientId }: { clientId: string }) {
             </tr>
           </thead>
           <tbody>
-            {(data ?? []).map((member) => (
+            {(Array.isArray(data) ? data : []).map((member) => (
               <tr key={member.user_id}>
                 <Td>
                   <span className="font-medium">

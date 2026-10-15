@@ -14,6 +14,7 @@ from tests.test_company_api import api_for, as_user
 pytestmark = [pytest.mark.api, pytest.mark.django_db]
 
 PASSWORD = "Correct-Horse-9-battery"  # pragma: allowlist secret
+NEW_PASSWORD = "Another-Strong-Pass-42"  # pragma: allowlist secret
 
 
 def url(client: Any, action: str) -> str:
@@ -146,12 +147,12 @@ def test_changing_your_own_password() -> None:
     api = as_user(user)
     response = api.post(
         "/api/v1/auth/change-password/",
-        {"current_password": PASSWORD, "new_password": "Another-Strong-Pass-42"},
+        {"current_password": PASSWORD, "new_password": NEW_PASSWORD},
         format="json",
     )
     assert response.status_code == 204, response.content
     user.refresh_from_db()
-    assert user.check_password("Another-Strong-Pass-42")
+    assert user.check_password(NEW_PASSWORD)
 
 
 def test_the_current_password_is_required_and_the_new_one_must_be_strong() -> None:
@@ -161,7 +162,7 @@ def test_the_current_password_is_required_and_the_new_one_must_be_strong() -> No
     api = as_user(user)
     wrong = api.post(
         "/api/v1/auth/change-password/",
-        {"current_password": "nope", "new_password": "Another-Strong-Pass-42"},
+        {"current_password": "nope", "new_password": NEW_PASSWORD},
         format="json",
     )
     weak = api.post(
