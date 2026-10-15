@@ -42,7 +42,7 @@ def stages_for(company_ids: Iterable[Any]) -> dict[Any, str]:
     best: dict[Any, int] = {}
     rows = Activity.objects.filter(company__in=list(company_ids), type__in=list(_RANK))
     for company_id, kind in rows.values_list("company_id", "type"):
-        best[company_id] = max(best.get(company_id, 0), _RANK[kind])
+        best[company_id] = max(best.get(company_id, 0), _RANK[ActivityType(kind)])
     return {cid: STAGES[rank] for cid, rank in best.items()}
 
 
@@ -58,8 +58,10 @@ def record_outreach(company: Company, stage: str, note: str, user: Any) -> str:
         raise ValidationError("Archived companies are read-only.")
     if latest_human_decision(company) != ADD:
         raise ValidationError("Only an account you decided ADD for can move through outreach.")
-    payload = {"note": note.strip()} if note.strip() else {}
-    record_activity(company, STAGE_ACTIVITY[stage], user, **payload)
+    if note.strip():
+        record_activity(company, STAGE_ACTIVITY[stage], user, note=note.strip())
+    else:
+        record_activity(company, STAGE_ACTIVITY[stage], user)
     return outreach_stage(company)
 
 
@@ -126,7 +128,7 @@ def approved_accounts_csv(companies: Iterable[Company]) -> str:
         mine = messages.get(company.pk, [])
         linkedin = next((m for m in mine if m.channel == "linkedin" and not m.is_followup), None)
         email = next((m for m in mine if m.channel == "email" and not m.is_followup), None)
-        angle = angles.get(company.pk)
+        latest_angle = angles.get(company.pk)
         statuses = sorted({m.status for m in mine})
         writer.writerow(
             [
@@ -145,7 +147,7 @@ def approved_accounts_csv(companies: Iterable[Company]) -> str:
                     contact.title if contact else "",
                     contact.email if contact else "",
                     contact.profile_url if contact else "",
-                    angle.angle if angle else "",
+                    latest_angle.angle if latest_angle else "",
                     linkedin.body if linkedin else "",
                     email.subject if email else "",
                     email.body if email else "",
