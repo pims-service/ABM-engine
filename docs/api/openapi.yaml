@@ -34,6 +34,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/auth/change-password/:
+    post:
+      operationId: auth_change_password
+      description: Needs your current password. The new one must pass the password
+        rules.
+      summary: Change your password
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/auth/login/:
     post:
       operationId: auth_login
@@ -2691,6 +2735,76 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/clients/{id}/add-member/:
+    post:
+      operationId: clients_add_member
+      description: 'Gives the person a role (viewer, reviewer, manager, admin). If
+        they have no account yet, send a `password` for them (they can change it after
+        signing in); there is no email invitation in V1. Needs the `MANAGE` level:
+        admin. Others get 403; clients you are not a member of give 404.'
+      summary: Add a person to the team
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this client.
+        required: true
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddMemberRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/clients/{id}/archive/:
     post:
       operationId: clients_archive
@@ -2755,6 +2869,142 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/clients/{id}/members/:
+    get:
+      operationId: clients_members
+      description: 'Everyone with access to this client and their role. Needs the
+        `MANAGE` level: admin. Others get 403; clients you are not a member of give
+        404.'
+      summary: The client's team
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this client.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - clients
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/clients/{id}/remove-member/:
+    post:
+      operationId: clients_remove_member
+      description: 'Ends their access at once (the history is kept). The last admin
+        of a client cannot be removed. Needs the `MANAGE` level: admin. Others get
+        403; clients you are not a member of give 404.'
+      summary: Remove a person from the team
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this client.
+        required: true
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveMemberRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/clients/{id}/restore/:
     post:
       operationId: clients_restore
@@ -2780,6 +3030,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Client'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/clients/{id}/set-member-role/:
+    post:
+      operationId: clients_set_member_role
+      description: 'The last admin of a client cannot be demoted. Needs the `MANAGE`
+        level: admin. Others get 403; clients you are not a member of give 404.'
+      summary: Change a person's role
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this client.
+        required: true
+      tags:
+      - clients
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetMemberRoleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Member'
           description: ''
         '400':
           content:
@@ -5879,6 +6197,28 @@ components:
       - id
       - summary
       - type
+    AddMemberRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 254
+        role:
+          $ref: '#/components/schemas/TeamRoleEnum'
+        name:
+          type: string
+          default: ''
+          maxLength: 150
+        password:
+          type: string
+          writeOnly: true
+          description: Only for a person who has no account yet. They can change it
+            after signing in.
+      required:
+      - email
+      - role
     AnalysisJob:
       type: object
       description: The background job behind an "Analyze Company" request (see `GET`
@@ -6644,6 +6984,20 @@ components:
         * `outreach` - Outreach
         * `storage` - Storage
         * `automation` - Automation
+    ChangePasswordRequest:
+      type: object
+      properties:
+        current_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - current_password
+      - new_password
     ChannelsEnum:
       enum:
       - linkedin
@@ -7268,7 +7622,7 @@ components:
           nullable: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/ContactRoleEnum'
           default: none
       required:
       - name
@@ -7306,7 +7660,7 @@ components:
           minimum: 1
           nullable: true
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/ContactRoleEnum'
       required:
       - contact_id
     ContactRefRequest:
@@ -7317,6 +7671,16 @@ components:
           format: uuid
       required:
       - contact_id
+    ContactRoleEnum:
+      enum:
+      - primary
+      - secondary
+      - none
+      type: string
+      description: |-
+        * `primary` - Primary
+        * `secondary` - Secondary
+        * `none` - None
     CsvImportAccepted:
       type: object
       description: '202 response: the work is queued (or, in tests, already done).'
@@ -8328,6 +8692,27 @@ components:
       - id
       - name
       - website
+    Member:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          description: viewer, reviewer, manager or admin.
+        is_you:
+          type: boolean
+      required:
+      - email
+      - is_you
+      - name
+      - role
+      - user_id
     Message:
       type: object
       properties:
@@ -9263,6 +9648,14 @@ components:
           type: string
           minLength: 1
           description: Refresh token. May be omitted when the refresh cookie is enabled.
+    RemoveMemberRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+      required:
+      - user_id
     ResearchCard:
       type: object
       properties:
@@ -9417,16 +9810,6 @@ components:
         * `ok` - ok
         * `failed` - failed
         * `unconfigured` - unconfigured
-    RoleEnum:
-      enum:
-      - primary
-      - secondary
-      - none
-      type: string
-      description: |-
-        * `primary` - Primary
-        * `secondary` - Secondary
-        * `none` - None
     RulesSummary:
       type: object
       description: |-
@@ -9682,6 +10065,17 @@ components:
           nullable: true
           minLength: 1
           maxLength: 512
+    SetMemberRoleRequest:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/TeamRoleEnum'
+      required:
+      - role
+      - user_id
     SkippedPage:
       type: object
       properties:
@@ -9746,6 +10140,18 @@ components:
         * `contact` - Contact
         * `angle` - Outreach angle
         * `message` - Message
+    TeamRoleEnum:
+      enum:
+      - admin
+      - manager
+      - reviewer
+      - viewer
+      type: string
+      description: |-
+        * `admin` - Admin
+        * `manager` - Manager
+        * `reviewer` - Reviewer
+        * `viewer` - Viewer
     TokenObtainPairRequest:
       type: object
       properties:

@@ -194,6 +194,8 @@ SPECTACULAR_SETTINGS = {
         "JobStatusEnum": "apps.core.models.JobStatus",
         "ImportBatchStatusEnum": "apps.imports.models.ImportBatchStatus",
         "ImportRowOutcomeEnum": "apps.imports.models.ImportRowOutcome",
+        "ContactRoleEnum": "apps.companies.models.ContactRole",
+        "TeamRoleEnum": "apps.core.roles.Role",
     },
     "TAGS": [
         {"name": "auth", "description": "JWT login, refresh, logout and the current user."},
