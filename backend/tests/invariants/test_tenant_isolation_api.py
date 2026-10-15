@@ -60,6 +60,7 @@ PUBLIC_ENDPOINTS = {
     "/api/v1/auth/refresh/": "authentication",
     "/api/v1/auth/logout/": "authentication",
     "/api/v1/auth/me/": "the caller's own profile",
+    "/api/v1/auth/change-password/": "the caller's own password",
     "/api/v1/imports/csv-template/": "static CSV template, no client data (login required)",
 }
 
@@ -260,6 +261,28 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"name": unique("C")},
         ),
         Scenario("GET /api/v1/clients/{pk}/", "item", Level.READ, "client"),
+        Scenario("GET /api/v1/clients/{pk}/members/", "item", Level.MANAGE, "client"),
+        Scenario(
+            "POST /api/v1/clients/{pk}/add-member/",
+            "item",
+            Level.MANAGE,
+            "client",
+            body=lambda: {"email": "probe@example.com", "role": "viewer"},
+        ),
+        Scenario(
+            "POST /api/v1/clients/{pk}/set-member-role/",
+            "item",
+            Level.MANAGE,
+            "client",
+            body=lambda: {"user_id": str(uuid.uuid4()), "role": "viewer"},
+        ),
+        Scenario(
+            "POST /api/v1/clients/{pk}/remove-member/",
+            "item",
+            Level.MANAGE,
+            "client",
+            body=lambda: {"user_id": str(uuid.uuid4())},
+        ),
         Scenario(
             "PUT /api/v1/clients/{pk}/",
             "item",

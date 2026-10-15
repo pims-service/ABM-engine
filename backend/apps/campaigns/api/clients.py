@@ -28,6 +28,16 @@ from apps.core.roles import Level
 from apps.core.schema import error_responses
 
 from .client_serializers import ClientListQuerySerializer, ClientSerializer
+from .members import (
+    AddMemberSerializer,
+    MemberSerializer,
+    RemoveMemberSerializer,
+    SetMemberRoleSerializer,
+    add_member,
+    list_members,
+    remove,
+    set_role,
+)
 
 TAGS = ["clients"]
 
@@ -133,6 +143,10 @@ class ClientViewSet(
         "partial_update": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
+        "members": Level.MANAGE,
+        "add_member": Level.MANAGE,
+        "set_member_role": Level.MANAGE,
+        "remove_member": Level.MANAGE,
     }
 
     def get_queryset(self) -> Any:
@@ -202,3 +216,72 @@ class ClientViewSet(
         with api_validation():
             services.restore_client(client, self._user())
         return Response(ClientSerializer(client).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="clients_members",
+        summary="The client's team",
+        description="Everyone with access to this client and their role. "
+        + _levels("MANAGE", "admin"),
+        responses={
+            200: MemberSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def members(self, request: Request, pk: str | None = None) -> Response:
+        client = self.get_object()
+        return Response(MemberSerializer(list_members(client, request.user), many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="clients_add_member",
+        summary="Add a person to the team",
+        description="Gives the person a role (viewer, reviewer, manager, admin). If they have no "
+        "account yet, send a `password` for them (they can change it after signing in); there "
+        "is no email invitation in V1. " + _levels("MANAGE", "admin"),
+        request=AddMemberSerializer,
+        responses={201: MemberSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["post"], url_path="add-member")
+    def add_member(self, request: Request, pk: str | None = None) -> Response:
+        client = self.get_object()
+        body = AddMemberSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        member = add_member(client, dict(body.validated_data), self._user())
+        return Response(MemberSerializer(member).data, status=201)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="clients_set_member_role",
+        summary="Change a person's role",
+        description="The last admin of a client cannot be demoted. " + _levels("MANAGE", "admin"),
+        request=SetMemberRoleSerializer,
+        responses={200: MemberSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["post"], url_path="set-member-role")
+    def set_member_role(self, request: Request, pk: str | None = None) -> Response:
+        client = self.get_object()
+        body = SetMemberRoleSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        member = set_role(
+            client, body.validated_data["user_id"], body.validated_data["role"], self._user()
+        )
+        return Response(MemberSerializer(member).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="clients_remove_member",
+        summary="Remove a person from the team",
+        description="Ends their access at once (the history is kept). The last admin of a client "
+        "cannot be removed. " + _levels("MANAGE", "admin"),
+        request=RemoveMemberSerializer,
+        responses={204: None, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["post"], url_path="remove-member")
+    def remove_member(self, request: Request, pk: str | None = None) -> Response:
+        client = self.get_object()
+        body = RemoveMemberSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        remove(client, body.validated_data["user_id"], self._user())
+        return Response(status=204)
