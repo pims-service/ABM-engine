@@ -82,7 +82,9 @@ def drafts(world: dict[str, Any], **overrides: Any) -> dict[str, Any]:
 
 def use_llm(monkeypatch: pytest.MonkeyPatch, outputs: list[Any]) -> ScriptedLLM:
     llm = ScriptedLLM(outputs)
-    monkeypatch.setattr("apps.outreach.messages_api.get_llm_adapter", lambda client_id: llm)
+    monkeypatch.setattr(
+        "apps.outreach.messages_api.get_llm_adapter", lambda client_id, **kwargs: llm
+    )
     return llm
 
 

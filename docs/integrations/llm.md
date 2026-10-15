@@ -119,3 +119,15 @@ headers or bodies. HTTP statuses go through `map_http_status`; `retry-after` is 
   `claude-fable-5-1` and `claude-haiku-4-5-20251001`; the provider choice is still a proposal
   ([provider shortlist](provider-shortlist.md)).
 - No call was made to the live API (no key, no network in tests).
+
+
+## Metering, budgets and the key test
+
+`apps.integrations.llm_connection.get_llm_adapter(client_id, job=, campaign=, user=)` is how the
+product obtains the client's model adapter. The adapter it returns is metered: every call writes
+one `ProviderCall` row (tokens, who, campaign, failures too) and the connection's monthly budget
+is checked first, so a call over the limit raises `BudgetExceeded` and nothing is sent. The
+Anthropic adapter reports usage in thousands of tokens as `credits` (no price list is built in),
+so a **credit limit** on the connection caps monthly usage; set it on the connection's budget.
+Settings > Integrations "Test connection" asks the provider to authenticate the key (no tokens are
+generated); it does not check that the configured model exists.

@@ -134,7 +134,7 @@ def generate_for(company: Company, data: dict[str, Any], user: Any) -> dict[str,
             {"contact_id": ["Add a person and make them the primary target first."]}
         )
     try:
-        adapter = get_llm_adapter(company.client_id)
+        adapter = get_llm_adapter(company.client_id, campaign=company.campaign, user=user)
         generated = generate_messages(
             company,
             contact,
