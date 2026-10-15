@@ -21,7 +21,7 @@ vi.mock("@/lib/api", async (original) => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("./teamApi", async (original) => ({
   ...(await original<typeof import("./teamApi")>()),
-  getMembers: vi.fn().mockResolvedValue([]),
+  getMembers: () => Promise.resolve([]),
 }));
 
 const selection = vi.hoisted(() => ({ value: null as unknown }));
