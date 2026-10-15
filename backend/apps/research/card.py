@@ -124,6 +124,7 @@ class ResearchCardSerializer(serializers.Serializer[Any]):
     analysis = CardAnalysisSerializer(allow_null=True)
     gaps = serializers.ListField(child=serializers.CharField())
     outreach_languages = serializers.ListField(child=serializers.CharField())
+    outreach_status = serializers.CharField(help_text="none, contacted, replied or meeting_booked.")
     has_angle = serializers.BooleanField(
         help_text="True when an outreach angle exists, so messages can be written."
     )
@@ -213,6 +214,13 @@ def _decision(row: HumanDecision | None) -> dict[str, Any] | None:
     }
 
 
+def _outreach_stage(company: Company) -> str:
+    # Imported here: the companies API imports this module.
+    from apps.companies.api.pipeline import outreach_stage
+
+    return outreach_stage(company)
+
+
 def build_card(company: Company) -> dict[str, Any]:
     """The card of ``company``: latest research, trigger state, ICP, recommendation, decision."""
     research = (
@@ -264,6 +272,7 @@ def build_card(company: Company) -> dict[str, Any]:
         "gaps": gaps,
         "outreach_languages": list(company.campaign.current_profile.outreach_languages),
         "has_angle": OutreachAngle.objects.filter(company=company).exists(),
+        "outreach_status": _outreach_stage(company),
     }
 
 

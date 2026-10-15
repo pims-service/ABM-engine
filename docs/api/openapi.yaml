@@ -812,6 +812,21 @@ paths:
         description: Which field to use when ordering the results.
         schema:
           type: string
+      - in: query
+        name: outreach
+        schema:
+          enum:
+          - none
+          - contacted
+          - replied
+          - meeting_booked
+          type: string
+          minLength: 1
+        description: |-
+          * `none` - none
+          * `contacted` - contacted
+          * `replied` - replied
+          * `meeting_booked` - meeting_booked
       - name: page
         required: false
         in: query
@@ -982,6 +997,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/export/:
+    get:
+      operationId: campaign_accounts_export
+      description: 'One row per account you decided ADD: research, primary person,
+        outreach angle and approved messages, for the tool that sends them (Brief
+        section 22). Cells are protected against spreadsheet formulas. Contains contact
+        details, so it needs the EDIT level.'
+      summary: Export approved accounts (CSV)
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          description: ''
         '401':
           content:
             application/json:
@@ -3815,6 +3888,76 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/outreach-status/:
+    post:
+      operationId: companies_outreach_status
+      description: 'Log that the account was contacted, replied or booked a meeting
+        (the furthest step shows on the dashboard). Only for an account you decided
+        ADD for. Needs the `EDIT` level: manager and admin. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: Record outreach progress
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutreachStatusRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OutreachStatus'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/restore/:
     post:
       operationId: companies_restore
@@ -5792,6 +5935,10 @@ components:
         primary_buyer:
           type: string
           nullable: true
+        outreach_status:
+          type: string
+          description: none, contacted, replied or meeting_booked (the furthest step
+            reached).
         analysis:
           allOf:
           - $ref: '#/components/schemas/AccountAnalysis'
@@ -5807,6 +5954,7 @@ components:
       - id
       - industry
       - name
+      - outreach_status
       - primary_buyer
       - review
       - status
@@ -5840,15 +5988,26 @@ components:
           type: integer
         human_skip:
           type: integer
+        contacted:
+          type: integer
+          description: Contacted, whatever happened after.
+        replied:
+          type: integer
+          description: Replied or booked a meeting.
+        meetings:
+          type: integer
       required:
       - analyzing
+      - contacted
       - failed
       - human_add
       - human_hold
       - human_skip
       - medium
+      - meetings
       - needs_review
       - not_assessed
+      - replied
       - strong
       - total
       - trigger_yes
@@ -7265,7 +7424,7 @@ components:
           nullable: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/ContactRoleEnum'
           default: none
       required:
       - name
@@ -7303,7 +7462,7 @@ components:
           minimum: 1
           nullable: true
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/ContactRoleEnum'
       required:
       - contact_id
     ContactRefRequest:
@@ -7314,6 +7473,16 @@ components:
           format: uuid
       required:
       - contact_id
+    ContactRoleEnum:
+      enum:
+      - primary
+      - secondary
+      - none
+      type: string
+      description: |-
+        * `primary` - Primary
+        * `secondary` - Secondary
+        * `none` - None
     CsvImportAccepted:
       type: object
       description: '202 response: the work is queued (or, in tests, already done).'
@@ -8447,6 +8616,24 @@ components:
       - failed
       - restored
       - skipped
+    OutreachStatus:
+      type: object
+      properties:
+        outreach_status:
+          type: string
+      required:
+      - outreach_status
+    OutreachStatusRequestRequest:
+      type: object
+      properties:
+        stage:
+          $ref: '#/components/schemas/StageEnum'
+        note:
+          type: string
+          default: ''
+          maxLength: 1000
+      required:
+      - stage
     PaginatedAccountRowList:
       type: object
       required:
@@ -9295,6 +9482,9 @@ components:
           type: array
           items:
             type: string
+        outreach_status:
+          type: string
+          description: none, contacted, replied or meeting_booked.
         has_angle:
           type: boolean
           description: True when an outreach angle exists, so messages can be written.
@@ -9306,6 +9496,7 @@ components:
       - has_angle
       - icp
       - outreach_languages
+      - outreach_status
       - recommendation
       - research
       - trigger
@@ -9414,16 +9605,6 @@ components:
         * `ok` - ok
         * `failed` - failed
         * `unconfigured` - unconfigured
-    RoleEnum:
-      enum:
-      - primary
-      - secondary
-      - none
-      type: string
-      description: |-
-        * `primary` - Primary
-        * `secondary` - Secondary
-        * `none` - None
     RulesSummary:
       type: object
       description: |-
@@ -9719,6 +9900,16 @@ components:
       - name
       - retrieved_at
       - url
+    StageEnum:
+      enum:
+      - contacted
+      - replied
+      - meeting_booked
+      type: string
+      description: |-
+        * `contacted` - contacted
+        * `replied` - replied
+        * `meeting_booked` - meeting_booked
     StateEnum:
       enum:
       - allow

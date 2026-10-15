@@ -30,5 +30,10 @@ urlpatterns = [
         AccountViewSet.as_view({"post": "analyze"}),
         name="campaign-accounts-analyze",
     ),
+    path(
+        "campaigns/<uuid:campaign_pk>/accounts/export/",
+        AccountViewSet.as_view({"get": "export"}),
+        name="campaign-accounts-export",
+    ),
     path("", include(router.urls)),
 ]

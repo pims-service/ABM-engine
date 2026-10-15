@@ -16,7 +16,7 @@ from typing import Any, ClassVar, cast
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import filters, mixins, status
+from rest_framework import filters, mixins, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
@@ -77,6 +77,7 @@ from .contacts import (
     find_contact,
     update_contact_of,
 )
+from .pipeline import STAGE_ACTIVITY, record_outreach
 from .serializers import (
     AnalysisRequestSerializer,
     CompanyDetailSerializer,
@@ -88,6 +89,15 @@ from .serializers import (
 from .website_research import WebsiteResearchSerializer, research_website
 
 TAGS = ["companies"]
+
+
+class OutreachStatusRequestSerializer(serializers.Serializer[Any]):
+    stage = serializers.ChoiceField(choices=list(STAGE_ACTIVITY))
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000, default="")
+
+
+class OutreachStatusSerializer(serializers.Serializer[Any]):
+    outreach_status = serializers.CharField()
 
 
 @contextmanager
@@ -321,6 +331,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "edit_message": Level.DECIDE,
         "export_message": Level.DECIDE,
         "feedback": Level.DECIDE,
+        "outreach_status": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -639,6 +650,27 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         body.is_valid(raise_exception=True)
         message = export_for(company, body.validated_data["message_id"], self._user())
         return Response(MessageSerializer(message_body(message)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_outreach_status",
+        summary="Record outreach progress",
+        description="Log that the account was contacted, replied or booked a meeting (the "
+        "furthest step shows on the dashboard). Only for an account you decided ADD for. "
+        + _levels("EDIT", "manager and admin"),
+        request=OutreachStatusRequestSerializer,
+        responses={200: OutreachStatusSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="outreach-status")
+    def outreach_status(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = OutreachStatusRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            stage = record_outreach(
+                company, body.validated_data["stage"], body.validated_data["note"], self._user()
+            )
+        return Response({"outreach_status": stage})
 
     @extend_schema(
         tags=TAGS,
