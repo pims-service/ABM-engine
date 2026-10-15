@@ -91,6 +91,26 @@ def _call(adapter: Any, prompt: Any, model: type, max_tokens: int) -> Any:
         raise AnalysisFailed(error.code, str(error)) from error
 
 
+def _kept_numbers(company: Company) -> dict[str, Any]:
+    """Commercial team numbers and growth a person entered earlier. A new snapshot made from the
+    website alone has none of them, so they are carried forward instead of being lost."""
+    previous = CompanyResearch.objects.latest_for(company)
+    if previous is None:
+        return {}
+    names = (
+        "employee_count",
+        "sales_headcount",
+        "bd_headcount",
+        "marketing_headcount",
+        "commercial_partnerships_headcount",
+        "department_growth",
+        "headcount_change_3m",
+        "headcount_change_6m",
+        "headcount_change_12m",
+    )
+    return {n: getattr(previous, n) for n in names if getattr(previous, n) is not None}
+
+
 def _count_stated(count: int | None, text: str) -> int | None:
     """Keep an employee count only when the number appears on the pages."""
     if count is None:
@@ -151,6 +171,8 @@ def run_analysis(
             if facts.classification in Classification.values
             else Classification.UNKNOWN
         )
+        kept = _kept_numbers(company)
+        kept_count = kept.pop("employee_count", None)
         research = CompanyResearch(
             company=company,
             data_source=home,
@@ -158,11 +180,12 @@ def run_analysis(
             industry=facts.industry,
             description=facts.description,
             headquarters=facts.headquarters,
-            employee_count=_count_stated(facts.employee_count, all_text),
+            employee_count=_count_stated(facts.employee_count, all_text) or kept_count,
             business_model=facts.business_model,
             classification=classification,
             products_services=facts.products_services,
             target_customers=facts.target_customers,
+            **kept,
         )
         research.save()
 
@@ -202,6 +225,13 @@ def run_analysis(
         "classification": research.classification,
         "products_services": research.products_services,
         "target_customers": research.target_customers,
+        "sales_headcount": research.sales_headcount,
+        "business_development_headcount": research.bd_headcount,
+        "marketing_headcount": research.marketing_headcount,
+        "commercial_partnerships_headcount": research.commercial_partnerships_headcount,
+        "headcount_change_3_months_percent": research.headcount_change_3m,
+        "headcount_change_6_months_percent": research.headcount_change_6m,
+        "headcount_change_12_months_percent": research.headcount_change_12m,
     }
     known: dict[str, object] = {k: v for k, v in shown.items() if v not in (None, "")}
     judged = _call(

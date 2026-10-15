@@ -60,6 +60,13 @@ class CardResearchSerializer(serializers.Serializer[Any]):
     sales_headcount = serializers.IntegerField(allow_null=True)
     bd_headcount = serializers.IntegerField(allow_null=True)
     marketing_headcount = serializers.IntegerField(allow_null=True)
+    commercial_partnerships_headcount = serializers.IntegerField(allow_null=True)
+    headcount_change_3m = serializers.DecimalField(
+        max_digits=6, decimal_places=2, allow_null=True, coerce_to_string=False
+    )
+    headcount_change_6m = serializers.DecimalField(
+        max_digits=6, decimal_places=2, allow_null=True, coerce_to_string=False
+    )
     headcount_change_12m = serializers.DecimalField(
         max_digits=6, decimal_places=2, allow_null=True, coerce_to_string=False
     )
@@ -156,6 +163,9 @@ def _research(row: CompanyResearch | None) -> dict[str, Any] | None:
         "sales_headcount": row.sales_headcount,
         "bd_headcount": row.bd_headcount,
         "marketing_headcount": row.marketing_headcount,
+        "commercial_partnerships_headcount": row.commercial_partnerships_headcount,
+        "headcount_change_3m": row.headcount_change_3m,
+        "headcount_change_6m": row.headcount_change_6m,
         "headcount_change_12m": row.headcount_change_12m,
         "source": _source(row.data_source),
     }
