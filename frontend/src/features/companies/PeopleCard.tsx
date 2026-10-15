@@ -16,6 +16,7 @@ import {
   type ContactRole,
   setContactRole,
 } from "./peopleApi";
+import { RankingPanel } from "./RankingPanel";
 
 const ROLE_LABEL: Record<string, string> = {
   primary: "Primary target",
@@ -127,6 +128,11 @@ export function PeopleCard({
         <Alert tone="danger" className="mt-3">
           {error}
         </Alert>
+      ) : null}
+      {contacts.length > 0 ? (
+        <div className="mt-4">
+          <RankingPanel companyId={companyId} onApplied={onChange} />
+        </div>
       ) : null}
       <div className="mt-4">
         {adding ? (

@@ -411,6 +411,14 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/companies/{pk}/activity/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/contacts/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/messages/", "item", Level.READ, "company"),
+        Scenario("GET /api/v1/companies/{pk}/buyer-ranking/", "item", Level.READ, "company"),
+        Scenario(
+            "POST /api/v1/companies/{pk}/apply-buyer-ranking/",
+            "item",
+            Level.EDIT,
+            "company",
+            body=lambda: {},
+        ),
         Scenario(
             "POST /api/v1/companies/{pk}/push-to-crm/",
             "item",

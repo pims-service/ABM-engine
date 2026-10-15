@@ -58,6 +58,12 @@ from apps.outreach.messages_api import (
 )
 from apps.outreach.models import ActivityType
 from apps.outreach.services import record_activity, record_feedback
+from apps.research.buyers import (
+    BuyerRankingSerializer,
+    apply_ranking,
+    ranking_body,
+    ranking_for,
+)
 from apps.research.card import (
     ActivityItemSerializer,
     DecisionRequestSerializer,
@@ -338,6 +344,8 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "outreach_status": Level.EDIT,
         "commercial_team": Level.EDIT,
         "push_to_crm": Level.EDIT,
+        "buyer_ranking": Level.READ,
+        "apply_buyer_ranking": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -721,6 +729,40 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         body.is_valid(raise_exception=True)
         result = push_for(company, body.validated_data["refresh_note"], self._user())
         return Response(CrmPushResultSerializer(result).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_buyer_ranking",
+        summary="Suggested ranking of the people",
+        description="Brief sections 8 and 15: who to contact first, with the reasons. Uses only "
+        "the "
+        "people already entered, the campaign's ordered preferred titles and target departments, "
+        "and the company's size (a small company: the founder or CEO first; a larger one: the CEO "
+        "is not assumed to be the best target). Nothing is stored; it is a suggestion. "
+        + _levels("READ", "any member"),
+        responses={200: BuyerRankingSerializer, **error_responses(401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["get"], url_path="buyer-ranking")
+    def buyer_ranking(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(BuyerRankingSerializer(ranking_body(ranking_for(company))).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_apply_buyer_ranking",
+        summary="Apply the suggested ranking",
+        description="Saves the ranks and makes the first suggested person the primary target and "
+        "the second the secondary target (the previous holders lose the role). You can change "
+        "any of it afterwards. " + _levels("EDIT", "manager and admin"),
+        request=None,
+        responses={200: BuyerRankingSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="apply-buyer-ranking")
+    def apply_buyer_ranking(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        if company.is_archived:
+            raise ValidationError({"non_field_errors": ["Archived companies are read-only."]})
+        return Response(BuyerRankingSerializer(ranking_body(apply_ranking(company))).data)
 
     @extend_schema(
         tags=TAGS,
