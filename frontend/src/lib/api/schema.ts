@@ -1794,6 +1794,7 @@ export interface components {
       status: string;
       /** Format: uuid */
       campaign: string;
+      archived: boolean;
     };
     CardDecision: {
       /** Format: uuid */

@@ -233,3 +233,11 @@ def test_feedback_needs_the_reviewer_level(world, role, status) -> None:
 def test_every_role_can_read_the_timeline(world) -> None:
     client, company = world
     assert api_for("viewer", client).get(activity_url(company)).status_code == 200
+
+
+def test_the_card_says_when_a_company_is_archived(world) -> None:
+    client, company = world
+    api = api_for("viewer", client)
+    assert api.get(card_url(company)).json()["company"]["archived"] is False
+    company.archive()
+    assert api.get(card_url(company)).json()["company"]["archived"] is True

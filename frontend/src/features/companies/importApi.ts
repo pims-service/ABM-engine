@@ -82,3 +82,21 @@ export async function downloadProblems(batchId: string): Promise<void> {
   );
   save(String(data), "rows-with-problems.csv");
 }
+
+export async function listImports(
+  campaignId: string,
+  signal?: AbortSignal,
+): Promise<ImportBatch[]> {
+  const { data } = await getApiClient().GET(
+    "/api/v1/campaigns/{campaign_id}/imports/",
+    { params: { path: { campaign_id: campaignId } }, signal },
+  );
+  return (data as { results: ImportBatch[] }).results;
+}
+
+/** Stop an import that has not finished (manager level). Rows already added stay. */
+export async function cancelImport(batchId: string): Promise<void> {
+  await getApiClient().POST("/api/v1/imports/{batch_id}/cancel/", {
+    params: { path: { batch_id: batchId } },
+  });
+}

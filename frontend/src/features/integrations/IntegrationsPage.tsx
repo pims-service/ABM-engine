@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ListSkeleton } from "@/components/ListSkeleton";
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Button, buttonStyles } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -96,9 +97,17 @@ export function ClientIntegrations({
         title="Integrations"
         description={`Provider connections for ${clientName}. Secrets are write-only: they are never shown after saving.`}
         actions={
-          canManage ? (
-            <Button onClick={() => actions.create()}>Add connection</Button>
-          ) : null
+          <>
+            <Link
+              href="/settings/usage"
+              className={buttonStyles({ variant: "secondary" })}
+            >
+              AI usage and limits
+            </Link>
+            {canManage ? (
+              <Button onClick={() => actions.create()}>Add connection</Button>
+            ) : null}
+          </>
         }
       />
       {!canManage ? (

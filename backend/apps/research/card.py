@@ -44,6 +44,7 @@ class CardCompanySerializer(serializers.Serializer[Any]):
     country = serializers.CharField(allow_blank=True)
     status = serializers.CharField()
     campaign = serializers.UUIDField()
+    archived = serializers.BooleanField()
 
 
 class CardResearchSerializer(serializers.Serializer[Any]):
@@ -257,6 +258,7 @@ def build_card(company: Company) -> dict[str, Any]:
             "country": company.country,
             "status": company.status,
             "campaign": company.campaign_id,
+            "archived": company.is_archived,
         },
         "research": _research(research),
         "trigger": {

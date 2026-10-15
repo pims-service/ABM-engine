@@ -6929,7 +6929,10 @@ components:
         campaign:
           type: string
           format: uuid
+        archived:
+          type: boolean
       required:
+      - archived
       - campaign
       - country
       - domain

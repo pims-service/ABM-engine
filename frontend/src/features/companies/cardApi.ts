@@ -82,3 +82,16 @@ export async function sendFeedback(
     body: { ...input, note: input.note ?? "" },
   });
 }
+
+/** Archive a company (admin level): it leaves the lists, its research and history are kept. */
+export async function archiveCompany(id: string): Promise<void> {
+  await getApiClient().POST("/api/v1/companies/{id}/archive/", {
+    params: { path: { id } },
+  });
+}
+
+export async function restoreCompany(id: string): Promise<void> {
+  await getApiClient().POST("/api/v1/companies/{id}/restore/", {
+    params: { path: { id } },
+  });
+}
