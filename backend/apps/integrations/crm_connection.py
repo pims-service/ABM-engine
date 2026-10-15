@@ -65,7 +65,7 @@ def get_crm_adapter(client_id: Any, *, campaign: Any = None, user: Any = None) -
     try:
         credentials = get_credentials(connection, purpose="crm_push")
         spec = ConnectionSpec("crm", connection.provider, connection.config, credentials.reveal())
-        adapter = _registry().resolve(spec)
+        adapter: Any = _registry().resolve(spec)
     except (ConnectionUnavailableError, CredentialsNotSetError):
         raise CRMUnavailable(
             "The CRM connection has no token. Add it under Settings > Integrations."

@@ -76,6 +76,7 @@ def contact(**fields: str) -> CRMContact:
 def test_a_new_contact_is_upserted_tagged_and_gets_the_note() -> None:
     fake = FakeHighLevel(new=True)
     result = adapter(fake).push_contact(contact())
+    assert result.data is not None
     assert (result.data.action, result.data.remote_id) == ("created", "cid1")
     assert fake.paths() == ["/contacts/upsert", "/contacts/cid1/tags", "/contacts/cid1/notes"]
     upsert = fake.body("/contacts/upsert")
@@ -102,6 +103,7 @@ def test_requests_carry_the_token_and_the_api_version() -> None:
 def test_an_existing_contact_is_updated_and_the_note_is_not_added_twice() -> None:
     fake = FakeHighLevel(new=False)
     result = adapter(fake).push_contact(contact())
+    assert result.data is not None
     assert result.data.action == "updated"
     assert fake.paths() == ["/contacts/upsert", "/contacts/cid1/tags"]
 
