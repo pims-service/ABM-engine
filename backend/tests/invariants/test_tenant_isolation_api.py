@@ -381,6 +381,9 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/campaigns/{campaign_pk}/companies/", "campaign_nested", Level.READ),
         Scenario("GET /api/v1/campaigns/{campaign_pk}/accounts/", "campaign_nested", Level.READ),
         Scenario(
+            "GET /api/v1/campaigns/{campaign_pk}/accounts/export/", "campaign_nested", Level.EDIT
+        ),
+        Scenario(
             "GET /api/v1/campaigns/{campaign_pk}/accounts/summary/", "campaign_nested", Level.READ
         ),
         Scenario(
@@ -402,6 +405,13 @@ def _scenarios() -> dict[str, Scenario]:
         Scenario("GET /api/v1/companies/{pk}/activity/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/contacts/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/messages/", "item", Level.READ, "company"),
+        Scenario(
+            "POST /api/v1/companies/{pk}/outreach-status/",
+            "item",
+            Level.EDIT,
+            "company",
+            body=lambda: {"stage": "contacted"},
+        ),
         Scenario(
             "POST /api/v1/companies/{pk}/generate-messages/",
             "item",
@@ -751,11 +761,7 @@ def test_another_clients_object_is_indistinguishable_from_a_missing_one(ctx, key
 
     # Creating needs the level in SOME client first: a role that never reaches it is refused
     # up front (403) whatever client is named, which is still the same answer for B and "none".
-    early_403 = (
-        s.kind in {"create", "nested", "campaign_nested"}
-        and method == "POST"
-        and not role_allows(role, s.level)
-    )
+    early_403 = s.kind in {"create", "nested", "campaign_nested"} and not role_allows(role, s.level)
     expected = 403 if early_403 else 404
     assert missing.status_code == expected, (key, role, missing.content)
     assert foreign.status_code == expected, (key, role, foreign.content)

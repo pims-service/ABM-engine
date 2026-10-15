@@ -26,13 +26,31 @@ import {
   type AccountRow,
   analyzeUnassessed,
   EMPTY_FILTERS,
+  exportApproved,
   getAccountSummary,
   listAccounts,
+  stageLabel,
 } from "./accountsApi";
 import { addCompany } from "./api";
 
 const POLL_MS = 4000;
 const PAGE_SIZE = 50;
+
+const TRIGGER_TYPES = [
+  ["sales_hiring", "Sales hiring"],
+  ["bd_hiring", "Business development hiring"],
+  ["commercial_hiring", "Commercial hiring"],
+  ["partnerships_hiring", "Partnerships hiring"],
+  ["headcount_growth", "Headcount growth"],
+  ["commercial_team_growth", "Commercial team growth"],
+  ["funding", "Funding"],
+  ["market_expansion", "Market expansion"],
+  ["new_leadership", "New leadership"],
+  ["new_office", "New office"],
+  ["new_product", "New product"],
+  ["major_partnership", "Major partnership"],
+  ["other", "Other"],
+] as const;
 
 const SELECTS = [
   {
@@ -60,6 +78,26 @@ const SELECTS = [
       ["add", "Add"],
       ["hold", "Hold"],
       ["skip", "Skip"],
+    ],
+  },
+  {
+    key: "human",
+    label: "Your decision",
+    options: [
+      ["add", "Add"],
+      ["hold", "Hold"],
+      ["skip", "Skip"],
+      ["undecided", "Undecided"],
+    ],
+  },
+  {
+    key: "outreach",
+    label: "Outreach",
+    options: [
+      ["none", "Not started"],
+      ["contacted", "Contacted"],
+      ["replied", "Replied"],
+      ["meeting_booked", "Meeting booked"],
     ],
   },
   {
@@ -217,6 +255,13 @@ export function CompaniesPage() {
     filters.ai,
     filters.review,
     filters.industry,
+    filters.human,
+    filters.outreach,
+    filters.country,
+    filters.size_min,
+    filters.size_max,
+    filters.trigger_type,
+    filters.buyer_title,
   ].some((value) => value !== "");
 
   return (
@@ -228,6 +273,16 @@ export function CompaniesPage() {
           <>
             <Button variant="secondary" onClick={() => setAdding(!adding)}>
               Add one
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                exportApproved(campaign.id).catch((cause) =>
+                  setNotice(`Could not export. ${errorMessage(cause)}`),
+                )
+              }
+            >
+              Export approved
             </Button>
             <Link
               href="/companies/import"
@@ -313,6 +368,27 @@ export function CompaniesPage() {
         <Tile label="Analyzing now" value={counts?.analyzing ?? "…"} />
       </div>
 
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:max-w-md">
+        <Tile
+          label="Contacted"
+          value={counts?.contacted ?? "…"}
+          active={filters.outreach === "contacted"}
+          onClick={() => set("outreach", "contacted")}
+        />
+        <Tile
+          label="Replied"
+          value={counts?.replied ?? "…"}
+          active={filters.outreach === "replied"}
+          onClick={() => set("outreach", "replied")}
+        />
+        <Tile
+          label="Meetings"
+          value={counts?.meetings ?? "…"}
+          active={filters.outreach === "meeting_booked"}
+          onClick={() => set("outreach", "meeting_booked")}
+        />
+      </div>
+
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="min-w-40 flex-1">
           <TextField
@@ -362,6 +438,63 @@ export function CompaniesPage() {
           </select>
         </label>
       </div>
+
+      <details className="mb-4 text-sm">
+        <summary className="cursor-pointer text-fg-muted">More filters</summary>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="w-28">
+            <TextField
+              label="Country"
+              placeholder="SA"
+              maxLength={2}
+              value={filters.country}
+              onChange={(e) => set("country", e.target.value.toUpperCase())}
+            />
+          </div>
+          <div className="w-28">
+            <TextField
+              label="Size from"
+              inputMode="numeric"
+              value={filters.size_min}
+              onChange={(e) =>
+                set("size_min", e.target.value.replace(/\D/g, ""))
+              }
+            />
+          </div>
+          <div className="w-28">
+            <TextField
+              label="Size to"
+              inputMode="numeric"
+              value={filters.size_max}
+              onChange={(e) =>
+                set("size_max", e.target.value.replace(/\D/g, ""))
+              }
+            />
+          </div>
+          <div className="w-48">
+            <TextField
+              label="Buyer title"
+              value={filters.buyer_title}
+              onChange={(e) => set("buyer_title", e.target.value)}
+            />
+          </div>
+          <label className="flex flex-col gap-1.5 text-sm font-medium">
+            Trigger type
+            <select
+              value={filters.trigger_type}
+              onChange={(e) => set("trigger_type", e.target.value)}
+              className="rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-normal"
+            >
+              <option value="">Any</option>
+              {TRIGGER_TYPES.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </details>
 
       {rows.error ? (
         <Alert
@@ -414,6 +547,7 @@ export function CompaniesPage() {
                 <Th>Industry</Th>
                 <Th>Size</Th>
                 <Th>Primary buyer</Th>
+                <Th>Outreach</Th>
               </tr>
             </thead>
             <tbody>
@@ -467,6 +601,11 @@ export function CompaniesPage() {
                   <Td className="text-fg-muted">{row.industry ?? "—"}</Td>
                   <Td className="text-fg-muted">{row.employee_count ?? "—"}</Td>
                   <Td className="text-fg-muted">{row.primary_buyer ?? "—"}</Td>
+                  <Td className="text-fg-muted">
+                    {row.outreach_status === "none"
+                      ? "—"
+                      : stageLabel(row.outreach_status)}
+                  </Td>
                 </tr>
               ))}
             </tbody>

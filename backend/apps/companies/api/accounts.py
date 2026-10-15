@@ -25,7 +25,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import filters, mixins, serializers, status
 from rest_framework.decorators import action
@@ -43,6 +43,7 @@ from apps.core.permissions import ClientScopedViewSet, request_roles
 from apps.core.roles import Level, role_allows
 from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
+from apps.outreach.models import Activity, ActivityType
 from apps.research.models import (
     AIRecommendation,
     Fit,
@@ -52,6 +53,8 @@ from apps.research.models import (
     Signal,
     SignalType,
 )
+
+from .pipeline import approved_accounts_csv, stages_for
 
 TAGS = ["campaigns"]
 MAX_BULK = 500
@@ -84,6 +87,9 @@ class AccountRowSerializer(serializers.Serializer[Any]):
         help_text="`not_assessed`, `needs_review` (assessed, no human decision) or `decided`."
     )
     primary_buyer = serializers.CharField(allow_null=True)
+    outreach_status = serializers.CharField(
+        help_text="none, contacted, replied or meeting_booked (the furthest step reached)."
+    )
     analysis = AccountAnalysisSerializer(allow_null=True)
 
 
@@ -103,6 +109,9 @@ class AccountQuerySerializer(serializers.Serializer[dict[str, str]]):
     size_min = serializers.IntegerField(required=False, min_value=0)
     size_max = serializers.IntegerField(required=False, min_value=0)
     buyer_title = serializers.CharField(required=False, max_length=200)
+    outreach = serializers.ChoiceField(
+        choices=["none", "contacted", "replied", "meeting_booked"], required=False
+    )
     archived = serializers.ChoiceField(choices=["false", "true", "all"], required=False)
 
 
@@ -119,6 +128,9 @@ class AccountSummarySerializer(serializers.Serializer[Any]):
     human_add = serializers.IntegerField()
     human_hold = serializers.IntegerField()
     human_skip = serializers.IntegerField()
+    contacted = serializers.IntegerField(help_text="Contacted, whatever happened after.")
+    replied = serializers.IntegerField(help_text="Replied or booked a meeting.")
+    meetings = serializers.IntegerField()
 
 
 class BulkAnalyzeRequestSerializer(serializers.Serializer[Any]):
@@ -144,6 +156,10 @@ class BulkAnalyzeResultSerializer(serializers.Serializer[Any]):
 def _latest(model: Any, **extra: Any) -> Any:
     """Exists: the company's current (latest) row of ``model`` matches ``extra``."""
     return Exists(model.objects.current().filter(company=OuterRef("pk"), **extra))
+
+
+def _reached(*types: str) -> Any:
+    return Exists(Activity.objects.filter(company=OuterRef("pk"), type__in=types))
 
 
 def _fresh_signals(**extra: Any) -> Any:
@@ -191,6 +207,21 @@ def filter_accounts(queryset: QuerySet[Company], params: dict[str, Any]) -> Quer
     research: dict[str, Any] = {}
     if industry := params.get("industry"):
         research["industry__icontains"] = industry
+    if (stage := params.get("outreach")) == "none":
+        queryset = queryset.filter(
+            ~_reached(ActivityType.CONTACTED, ActivityType.REPLIED, ActivityType.MEETING_BOOKED)
+        )
+    elif stage == "contacted":
+        queryset = queryset.filter(
+            _reached(ActivityType.CONTACTED, ActivityType.REPLIED, ActivityType.MEETING_BOOKED),
+            ~_reached(ActivityType.REPLIED, ActivityType.MEETING_BOOKED),
+        )
+    elif stage == "replied":
+        queryset = queryset.filter(
+            _reached(ActivityType.REPLIED), ~_reached(ActivityType.MEETING_BOOKED)
+        )
+    elif stage == "meeting_booked":
+        queryset = queryset.filter(_reached(ActivityType.MEETING_BOOKED))
     if (low := params.get("size_min")) is not None:
         research["employee_count__gte"] = low
     if (high := params.get("size_max")) is not None:
@@ -223,6 +254,7 @@ def build_rows(companies: list[Company]) -> list[dict[str, Any]]:
         c.company_id: c for c in Contact.objects.active().filter(company__in=ids, role="primary")
     }
     jobs = latest_analysis_jobs(ids)
+    stages = stages_for(ids)
     rows = []
     for company in companies:
         snap = research.get(company.pk)
@@ -247,6 +279,7 @@ def build_rows(companies: list[Company]) -> list[dict[str, Any]]:
                 "ai_recommendation": recs[company.pk].status if company.pk in recs else None,
                 "human_decision": decision.decision if decision else None,
                 "review": review,
+                "outreach_status": stages.get(company.pk, "none"),
                 "primary_buyer": (
                     f"{buyer.name}, {buyer.title}" if buyer and buyer.title else buyer.name
                 )
@@ -295,6 +328,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "list": Level.READ,
         "summary": Level.READ,
         "analyze": Level.EDIT,
+        "export": Level.EDIT,
     }
 
     def _campaign(self, level: Level) -> Campaign:
@@ -370,6 +404,13 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
             "human_add": companies.filter(_latest(HumanDecision, decision="add")).count(),
             "human_hold": companies.filter(_latest(HumanDecision, decision="hold")).count(),
             "human_skip": companies.filter(_latest(HumanDecision, decision="skip")).count(),
+            "contacted": companies.filter(
+                _reached(ActivityType.CONTACTED, ActivityType.REPLIED, ActivityType.MEETING_BOOKED)
+            ).count(),
+            "replied": companies.filter(
+                _reached(ActivityType.REPLIED, ActivityType.MEETING_BOOKED)
+            ).count(),
+            "meetings": companies.filter(_reached(ActivityType.MEETING_BOOKED)).count(),
         }
         return Response(AccountSummarySerializer(body).data)
 
@@ -417,3 +458,26 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
             {"requested": len(picked), "queued": queued, "already_running": running},
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_export",
+        summary="Export approved accounts (CSV)",
+        description="One row per account you decided ADD: research, primary person, outreach "
+        "angle and approved messages, for the tool that sends them (Brief section 22). Cells "
+        "are protected against spreadsheet formulas. Contains contact details, so it needs "
+        "the EDIT level.",
+        responses={
+            (200, "text/csv"): {"type": "string", "format": "binary"},
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["get"])
+    def export(self, request: Request, campaign_pk: str | None = None) -> HttpResponse:
+        companies = self._campaign_companies(Level.EDIT).filter(
+            _latest(HumanDecision, decision="add")
+        )
+        body = approved_accounts_csv(companies.order_by("name", "id"))
+        response = HttpResponse(body, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = 'attachment; filename="approved-accounts.csv"'
+        return response

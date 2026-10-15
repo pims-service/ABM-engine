@@ -250,6 +250,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/export/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export approved accounts (CSV)
+     * @description One row per account you decided ADD: research, primary person, outreach angle and approved messages, for the tool that sends them (Brief section 22). Cells are protected against spreadsheet formulas. Contains contact details, so it needs the EDIT level.
+     */
+    get: operations["campaign_accounts_export"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/summary/": {
     parameters: {
       query?: never;
@@ -998,6 +1018,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/outreach-status/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Record outreach progress
+     * @description Log that the account was contacted, replied or booked a meeting (the furthest step shows on the dashboard). Only for an account you decided ADD for. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_outreach_status"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/restore/": {
     parameters: {
       query?: never;
@@ -1483,6 +1523,8 @@ export interface components {
       /** @description `not_assessed`, `needs_review` (assessed, no human decision) or `decided`. */
       review: string;
       primary_buyer: string | null;
+      /** @description none, contacted, replied or meeting_booked (the furthest step reached). */
+      outreach_status: string;
       analysis: components["schemas"]["AccountAnalysis"] | null;
     };
     AccountSummary: {
@@ -1498,6 +1540,11 @@ export interface components {
       human_add: number;
       human_hold: number;
       human_skip: number;
+      /** @description Contacted, whatever happened after. */
+      contacted: number;
+      /** @description Replied or booked a meeting. */
+      replied: number;
+      meetings: number;
     };
     ActivityItem: {
       /** Format: uuid */
@@ -2678,6 +2725,14 @@ export interface components {
       skipped: number;
       failed: number;
     };
+    OutreachStatus: {
+      outreach_status: string;
+    };
+    OutreachStatusRequestRequest: {
+      stage: components["schemas"]["StageEnum"];
+      /** @default  */
+      note: string;
+    };
     PaginatedAccountRowList: {
       /** @example 123 */
       count: number;
@@ -3078,6 +3133,8 @@ export interface components {
       analysis: components["schemas"]["CardAnalysis"] | null;
       gaps: string[];
       outreach_languages: string[];
+      /** @description none, contacted, replied or meeting_booked. */
+      outreach_status: string;
       /** @description True when an outreach angle exists, so messages can be written. */
       has_angle: boolean;
     };
@@ -3246,6 +3303,13 @@ export interface components {
       /** Format: date-time */
       retrieved_at: string;
     };
+    /**
+     * @description * `contacted` - contacted
+     *     * `replied` - replied
+     *     * `meeting_booked` - meeting_booked
+     * @enum {string}
+     */
+    StageEnum: "contacted" | "replied" | "meeting_booked";
     /**
      * @description * `allow` - allow
      *     * `warn` - warn
@@ -4191,6 +4255,13 @@ export interface operations {
         industry?: string;
         /** @description Which field to use when ordering the results. */
         ordering?: string;
+        /**
+         * @description * `none` - none
+         *     * `contacted` - contacted
+         *     * `replied` - replied
+         *     * `meeting_booked` - meeting_booked
+         */
+        outreach?: "none" | "contacted" | "replied" | "meeting_booked";
         /** @description A page number within the paginated result set. */
         page?: number;
         /** @description Number of results to return per page. */
@@ -4341,6 +4412,72 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_export: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
@@ -7691,6 +7828,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Message"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_outreach_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["OutreachStatusRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OutreachStatus"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */

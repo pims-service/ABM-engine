@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { TextField } from "@/components/ui/TextField";
 import { errorMessage, formatDate, formatDateTime } from "@/lib/format";
 
+import { stageLabel } from "./accountsApi";
 import type { ResearchCard } from "./cardApi";
 import {
   approveMessage,
@@ -19,6 +20,7 @@ import {
   generateMessages,
   type OutreachMessage,
 } from "./messagesApi";
+import { recordOutreach, type Stage } from "./outreachApi";
 import type { Contact } from "./peopleApi";
 
 const LANGUAGE_LABEL: Record<string, string> = { en: "English", ar: "Arabic" };
@@ -85,6 +87,13 @@ export function OutreachCard({
         Drafts use only the research above. A person approves each one; nothing
         is sent from here.
       </p>
+      {decided ? (
+        <Progress
+          companyId={card.company.id}
+          stage={card.outreach_status}
+          onChange={onChange}
+        />
+      ) : null}
       {blocker ? (
         <p className="text-sm text-fg-muted">{blocker}</p>
       ) : (
@@ -338,5 +347,62 @@ function MessageItem({
         </div>
       ) : null}
     </li>
+  );
+}
+
+const STEPS: ReadonlyArray<readonly [Stage, string]> = [
+  ["contacted", "Mark contacted"],
+  ["replied", "They replied"],
+  ["meeting_booked", "Meeting booked"],
+];
+
+/** Where the account is after you reached out. Each step is logged on the timeline. */
+function Progress({
+  companyId,
+  stage,
+  onChange,
+}: {
+  companyId: string;
+  stage: string;
+  onChange: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="mb-4 rounded-md border border-line p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium">Progress:</span>
+        <Badge tone={stage === "none" ? "neutral" : "success"}>
+          {stageLabel(stage)}
+        </Badge>
+        {STEPS.map(([value, label]) => (
+          <Button
+            key={value}
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setError(null);
+              try {
+                await recordOutreach(companyId, value);
+                onChange();
+              } catch (cause) {
+                setError(errorMessage(cause));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+      {error ? (
+        <Alert tone="danger" className="mt-2">
+          {error}
+        </Alert>
+      ) : null}
+    </div>
   );
 }
