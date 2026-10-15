@@ -37,6 +37,7 @@ import copy
 import json
 from collections.abc import Callable, Mapping
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, ClassVar
 from urllib.parse import urlsplit
 
@@ -297,9 +298,16 @@ class AnthropicAdapter(LLMAdapter):
         raw = data.get("usage")
         usage = raw if isinstance(raw, Mapping) else {}
         model = data.get("model")
+        tokens_in, tokens_out = usage.get("input_tokens"), usage.get("output_tokens")
+        credits = None
+        if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+            # No price list is built in, so the provider's unit is "thousand tokens": a monthly
+            # credit limit on the connection then caps usage without knowing the price.
+            credits = Decimal(tokens_in + tokens_out) / 1000
         return Usage(
-            input_tokens=usage.get("input_tokens"),
-            output_tokens=usage.get("output_tokens"),
+            credits=credits,
+            input_tokens=tokens_in,
+            output_tokens=tokens_out,
             model=model if isinstance(model, str) else str(self.config["model"]),
         )
 

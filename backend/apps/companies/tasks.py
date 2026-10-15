@@ -40,7 +40,9 @@ def analyze_company(job: Job, company_id: str) -> dict[str, Any]:
     for item in job.items.exclude(status__in=ITEM_TERMINAL):
         start_item(item)
         try:
-            adapter = get_llm_adapter(company.client_id)
+            adapter = get_llm_adapter(
+                company.client_id, job=job, campaign=company.campaign, user=job.created_by
+            )
             _set_status(company_id, CompanyStatus.ANALYZING)
             outcome = run_analysis(company, adapter, user=job.created_by)
         except AnalysisUnavailable as exc:
