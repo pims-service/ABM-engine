@@ -63,6 +63,7 @@ from apps.research.card import (
     build_activity,
     build_card,
 )
+from apps.research.commercial import CommercialTeamRequestSerializer, record_commercial_team
 from apps.research.models import AIRecommendation
 from apps.research.services import record_human_decision
 
@@ -332,6 +333,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "export_message": Level.DECIDE,
         "feedback": Level.DECIDE,
         "outreach_status": Level.EDIT,
+        "commercial_team": Level.EDIT,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -671,6 +673,28 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
                 company, body.validated_data["stage"], body.validated_data["note"], self._user()
             )
         return Response({"outreach_status": stage})
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_commercial_team",
+        summary="Enter the commercial team's numbers",
+        description="Type what you found: current headcounts of the company and of its sales, "
+        "business development, marketing and commercial teams, and the same numbers 3, 6 and "
+        "12 months ago if you know them. Needs a source note (where the numbers come from) and "
+        "the date they were true. Saved as a new research snapshot (history is kept) and the "
+        "3, 6 and 12 month growth is calculated from your numbers; a window without data stays "
+        "empty. Returns the updated card. Until a company-data provider is connected this is "
+        "how the commercial team section is filled. " + _levels("EDIT", "manager and admin"),
+        request=CommercialTeamRequestSerializer,
+        responses={200: ResearchCardSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="commercial-team")
+    def commercial_team(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = CommercialTeamRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        record_commercial_team(company, dict(body.validated_data), self._user())
+        return Response(ResearchCardSerializer(build_card(company)).data)
 
     @extend_schema(
         tags=TAGS,

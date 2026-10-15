@@ -17,6 +17,7 @@ import {
   recordDecision,
   type ResearchCard,
 } from "./cardApi";
+import { CommercialTeamCard } from "./CommercialTeamCard";
 import {
   ActivityCard,
   FeedbackCard,
@@ -297,6 +298,8 @@ export function ResearchCardView({
               </p>
             )}
           </Card>
+
+          <CommercialTeamCard card={card} onChange={onChange} />
 
           <PeopleCard
             companyId={company.id}

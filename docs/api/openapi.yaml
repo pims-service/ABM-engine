@@ -3727,6 +3727,81 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/commercial-team/:
+    post:
+      operationId: companies_commercial_team
+      description: 'Type what you found: current headcounts of the company and of
+        its sales, business development, marketing and commercial teams, and the same
+        numbers 3, 6 and 12 months ago if you know them. Needs a source note (where
+        the numbers come from) and the date they were true. Saved as a new research
+        snapshot (history is kept) and the 3, 6 and 12 month growth is calculated
+        from your numbers; a window without data stays empty. Returns the updated
+        card. Until a company-data provider is connected this is how the commercial
+        team section is filled. Needs the `EDIT` level: manager and admin. Others
+        get 403; companies of clients you are not a member of give 404.'
+      summary: Enter the commercial team's numbers
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialTeamRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchCard'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/contacts/:
     get:
       operationId: companies_contacts
@@ -7055,6 +7130,25 @@ components:
         marketing_headcount:
           type: integer
           nullable: true
+        commercial_partnerships_headcount:
+          type: integer
+          nullable: true
+        headcount_change_3m:
+          type: number
+          format: double
+          maximum: 10000
+          minimum: -10000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          nullable: true
+        headcount_change_6m:
+          type: number
+          format: double
+          maximum: 10000
+          minimum: -10000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          nullable: true
         headcount_change_12m:
           type: number
           format: double
@@ -7069,9 +7163,12 @@ components:
       - bd_headcount
       - business_model
       - classification
+      - commercial_partnerships_headcount
       - description
       - employee_count
       - headcount_change_12m
+      - headcount_change_3m
+      - headcount_change_6m
       - headquarters
       - industry
       - marketing_headcount
@@ -7279,6 +7376,52 @@ components:
       description: |-
         * `active` - Active
         * `archived` - Archived
+    CommercialTeamRequestRequest:
+      type: object
+      properties:
+        source_note:
+          type: string
+          minLength: 1
+          description: Where the numbers come from, for example 'LinkedIn company
+            page'.
+          maxLength: 200
+        source_url:
+          oneOf:
+          - type: string
+            format: uri
+            maxLength: 2000
+          - type: string
+            maxLength: 0
+        as_of:
+          type: string
+          format: date
+          description: 'The date the numbers were true (default: today).'
+        employees:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        sales:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        bd:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        marketing:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        commercial:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/HistoryEntryRequest'
+      required:
+      - source_note
     Company:
       type: object
       description: A company as listed. ``analysis`` is its newest analysis job (null
@@ -8203,6 +8346,33 @@ components:
       - ok
       type: string
       description: '* `ok` - ok'
+    HistoryEntryRequest:
+      type: object
+      properties:
+        months_ago:
+          $ref: '#/components/schemas/MonthsAgoEnum'
+        employees:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        sales:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        bd:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        marketing:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+        commercial:
+          type: integer
+          maximum: 10000000
+          minimum: 0
+      required:
+      - months_ago
     ImportBatch:
       type: object
       description: |-
@@ -8956,6 +9126,16 @@ components:
           format: uuid
       required:
       - message_id
+    MonthsAgoEnum:
+      enum:
+      - 3
+      - 6
+      - 12
+      type: integer
+      description: |-
+        * `3` - 3
+        * `6` - 6
+        * `12` - 12
     NullEnum:
       enum:
       - null

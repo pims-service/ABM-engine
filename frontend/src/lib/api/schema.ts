@@ -878,6 +878,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/commercial-team/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Enter the commercial team's numbers
+     * @description Type what you found: current headcounts of the company and of its sales, business development, marketing and commercial teams, and the same numbers 3, 6 and 12 months ago if you know them. Needs a source note (where the numbers come from) and the date they were true. Saved as a new research snapshot (history is kept) and the 3, 6 and 12 month growth is calculated from your numbers; a window without data stays empty. Returns the updated card. Until a company-data provider is connected this is how the commercial team section is filled. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_commercial_team"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/contacts/": {
     parameters: {
       query?: never;
@@ -1840,6 +1860,11 @@ export interface components {
       sales_headcount: number | null;
       bd_headcount: number | null;
       marketing_headcount: number | null;
+      commercial_partnerships_headcount: number | null;
+      /** Format: double */
+      headcount_change_3m: number | null;
+      /** Format: double */
+      headcount_change_6m: number | null;
       /** Format: double */
       headcount_change_12m: number | null;
       source: components["schemas"]["Source"];
@@ -1959,6 +1984,22 @@ export interface components {
      * @enum {string}
      */
     ClientStatusEnum: "active" | "archived";
+    CommercialTeamRequestRequest: {
+      /** @description Where the numbers come from, for example 'LinkedIn company page'. */
+      source_note: string;
+      source_url?: string;
+      /**
+       * Format: date
+       * @description The date the numbers were true (default: today).
+       */
+      as_of?: string;
+      employees?: number;
+      sales?: number;
+      bd?: number;
+      marketing?: number;
+      commercial?: number;
+      history?: components["schemas"]["HistoryEntryRequest"][];
+    };
     /** @description A company as listed. ``analysis`` is its newest analysis job (null if never requested). */
     Company: {
       /** Format: uuid */
@@ -2359,6 +2400,14 @@ export interface components {
      * @enum {string}
      */
     HealthStatusEnum: "ok";
+    HistoryEntryRequest: {
+      months_ago: components["schemas"]["MonthsAgoEnum"];
+      employees?: number;
+      sales?: number;
+      bd?: number;
+      marketing?: number;
+      commercial?: number;
+    };
     /**
      * @description One import batch with its counters. The counters are the source of truth for the outcome;
      *     ``job`` is the background run (``/jobs`` progress is derived from the same counters).
@@ -2711,6 +2760,13 @@ export interface components {
       /** Format: uuid */
       message_id: string;
     };
+    /**
+     * @description * `3` - 3
+     *     * `6` - 6
+     *     * `12` - 12
+     * @enum {integer}
+     */
+    MonthsAgoEnum: 3 | 6 | 12;
     /** @enum {unknown} */
     NullEnum: null;
     OrganizationHint: {
@@ -7295,6 +7351,86 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ResearchCard"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_commercial_team: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommercialTeamRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResearchCard"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
