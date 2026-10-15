@@ -23,7 +23,7 @@ from django.db import transaction
 from django_q.tasks import async_task
 
 from apps.accounts.models import User
-from apps.core.jobs import add_items, create_job, func_path
+from apps.core.jobs import add_items, create_job, func_path, reap_stale_jobs
 from apps.core.models import Job, JobItem, JobStatus
 
 from .models import Company
@@ -77,6 +77,7 @@ def request_analysis(company: Company, user: User | None = None) -> AnalysisRequ
     """Queue an analysis of ``company`` (or return the one already queued or running)."""
     if company.is_archived:
         raise ValidationError("Archived companies cannot be analyzed; restore the company first.")
+    reap_stale_jobs(campaign_id=company.campaign_id)
     with transaction.atomic():
         # Serialize concurrent requests for the same company on its row.
         locked = Company.objects.select_for_update().select_related("campaign").get(pk=company.pk)

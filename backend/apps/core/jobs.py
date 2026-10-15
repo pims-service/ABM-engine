@@ -41,9 +41,10 @@ from contextlib import contextmanager
 from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
@@ -217,6 +218,34 @@ def fail_job(job: Job, error: str) -> None:
         locked.error_summary = _clip(error)
         locked.finished_at = timezone.now()
         locked.save(update_fields=["status", "error_summary", "finished_at", "updated_at"])
+
+
+def reap_stale_jobs(*, campaign_id: Any = None) -> int:
+    """Fail jobs whose worker died: RUNNING with no update for ``JOB_STALE_RUNNING_SECONDS`` (the
+    hard task timeout has long passed), or QUEUED for ``JOB_STALE_QUEUED_SECONDS`` (its task was
+    dropped). Without this a killed worker leaves the job open forever: re-analysis returns the
+    dead job and the dashboard polls for ever. One UPDATE; returns how many jobs were closed."""
+    now = timezone.now()
+    stale = Job.objects.filter(
+        Q(status=JobStatus.RUNNING, updated_at__lt=now - timedelta(seconds=_stale_running()))
+        | Q(status=JobStatus.QUEUED, updated_at__lt=now - timedelta(seconds=_stale_queued()))
+    )
+    if campaign_id is not None:
+        stale = stale.filter(campaign_id=campaign_id)
+    return stale.update(
+        status=JobStatus.FAILED,
+        error_summary="The worker stopped before this finished. Run it again.",
+        finished_at=now,
+        updated_at=now,
+    )
+
+
+def _stale_running() -> int:
+    return int(getattr(settings, "JOB_STALE_RUNNING_SECONDS", 1800))
+
+
+def _stale_queued() -> int:
+    return int(getattr(settings, "JOB_STALE_QUEUED_SECONDS", 86400))
 
 
 def set_total(job: Job, total: int) -> None:

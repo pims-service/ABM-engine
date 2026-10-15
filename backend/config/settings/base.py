@@ -233,7 +233,9 @@ Q_CLUSTER = {
     "name": "abm",
     "orm": "default",
     "cache": "q_stats",  # cluster heartbeats, read by /readyz (apps/core/health.py)
-    "workers": env.int("Q_WORKERS", default=2),
+    # Analyses wait on the network (website, AI provider), so workers are cheap: raise Q_WORKERS
+    # (and run more cluster processes) for throughput. See docs/operations/scaling.md.
+    "workers": env.int("Q_WORKERS", default=4),
     "timeout": env.int("Q_TASK_TIMEOUT", default=300),  # hard limit per task, seconds
     "retry": env.int("Q_TASK_RETRY", default=360),  # must exceed timeout
     "max_attempts": 3,  # redeliveries of a task whose worker died before acking
@@ -242,6 +244,10 @@ Q_CLUSTER = {
     "save_limit": 500,  # finished task rows kept for the admin; older ones are pruned
     "catch_up": False,  # do not replay missed schedules after downtime
 }
+
+# A job whose worker died is failed after this long without an update (apps/core/jobs.py).
+JOB_STALE_RUNNING_SECONDS = env.int("JOB_STALE_RUNNING_SECONDS", default=1800)
+JOB_STALE_QUEUED_SECONDS = env.int("JOB_STALE_QUEUED_SECONDS", default=86400)
 
 # CSV import (issue #62). Uploaded CSV files wait here, under a random name (the batch id),
 # until the worker has processed them; they are deleted when the batch ends. The directory is

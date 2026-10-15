@@ -16,9 +16,11 @@ from typing import Any, ClassVar
 
 from django.db.models import (
     Case,
+    Count,
     Exists,
     IntegerField,
     OuterRef,
+    Q,
     QuerySet,
     Subquery,
     Value,
@@ -38,7 +40,8 @@ from apps.campaigns.models import Campaign
 from apps.companies.analysis import latest_analysis_jobs, request_analysis
 from apps.companies.models import Company, CompanyResearch, CompanyStatus, Contact
 from apps.companies.tasks import ANALYSIS_JOB_TYPE
-from apps.core.models import Job, JobStatus
+from apps.core.jobs import reap_stale_jobs
+from apps.core.models import Job, JobItem, JobStatus
 from apps.core.permissions import ClientScopedViewSet, request_roles
 from apps.core.roles import Level, role_allows
 from apps.core.schema import error_responses
@@ -157,6 +160,18 @@ class BulkAnalyzeResultSerializer(serializers.Serializer[Any]):
 def _latest(model: Any, **extra: Any) -> Any:
     """Exists: the company's current (latest) row of ``model`` matches ``extra``."""
     return Exists(model.objects.current().filter(company=OuterRef("pk"), **extra))
+
+
+def _busy_company_ids(ids: list[Any]) -> set[Any]:
+    """Companies with an analysis already queued or running, in ONE query."""
+    return set(
+        JobItem.objects.filter(
+            subject_type="company",
+            subject_id__in=ids,
+            job__type=ANALYSIS_JOB_TYPE,
+            job__status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
+        ).values_list("subject_id", flat=True)
+    )
 
 
 def _reached(*types: str) -> Any:
@@ -386,34 +401,41 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
     @action(detail=False, methods=["get"])
     def summary(self, request: Request, campaign_pk: str | None = None) -> Response:
         companies = self._campaign_companies(Level.READ)
-        total = companies.count()
-        assessed = companies.filter(_latest(ICPAssessment))
+        reap_stale_jobs(campaign_id=self.kwargs["campaign_pk"])
         analyzing = Job.objects.filter(
             campaign_id=self.kwargs["campaign_pk"],
             type=ANALYSIS_JOB_TYPE,
             status__in=[JobStatus.QUEUED, JobStatus.RUNNING],
         ).count()
-        body = {
-            "total": total,
-            "not_assessed": companies.filter(~_latest(ICPAssessment)).count(),
-            "analyzing": analyzing,
-            "failed": companies.filter(status=CompanyStatus.FAILED).count(),
-            "strong": companies.filter(_latest(ICPAssessment, fit="strong")).count(),
-            "medium": companies.filter(_latest(ICPAssessment, fit="medium")).count(),
-            "weak": companies.filter(_latest(ICPAssessment, fit="weak")).count(),
-            "trigger_yes": companies.filter(_fresh_signals()).count(),
-            "needs_review": assessed.filter(~_latest(HumanDecision)).count(),
-            "human_add": companies.filter(_latest(HumanDecision, decision="add")).count(),
-            "human_hold": companies.filter(_latest(HumanDecision, decision="hold")).count(),
-            "human_skip": companies.filter(_latest(HumanDecision, decision="skip")).count(),
-            "contacted": companies.filter(
-                _reached(ActivityType.CONTACTED, ActivityType.REPLIED, ActivityType.MEETING_BOOKED)
-            ).count(),
-            "replied": companies.filter(
-                _reached(ActivityType.REPLIED, ActivityType.MEETING_BOOKED)
-            ).count(),
-            "meetings": companies.filter(_reached(ActivityType.MEETING_BOOKED)).count(),
-        }
+        assessed = Q(_latest(ICPAssessment))
+        # One scan of the companies instead of fifteen counts (the page polls this).
+        body = companies.aggregate(
+            total=Count("pk"),
+            not_assessed=Count("pk", filter=~assessed),
+            failed=Count("pk", filter=Q(status=CompanyStatus.FAILED)),
+            strong=Count("pk", filter=Q(_latest(ICPAssessment, fit="strong"))),
+            medium=Count("pk", filter=Q(_latest(ICPAssessment, fit="medium"))),
+            weak=Count("pk", filter=Q(_latest(ICPAssessment, fit="weak"))),
+            trigger_yes=Count("pk", filter=Q(_fresh_signals())),
+            needs_review=Count("pk", filter=assessed & ~Q(_latest(HumanDecision))),
+            human_add=Count("pk", filter=Q(_latest(HumanDecision, decision="add"))),
+            human_hold=Count("pk", filter=Q(_latest(HumanDecision, decision="hold"))),
+            human_skip=Count("pk", filter=Q(_latest(HumanDecision, decision="skip"))),
+            contacted=Count(
+                "pk",
+                filter=Q(
+                    _reached(
+                        ActivityType.CONTACTED, ActivityType.REPLIED, ActivityType.MEETING_BOOKED
+                    )
+                ),
+            ),
+            replied=Count(
+                "pk",
+                filter=Q(_reached(ActivityType.REPLIED, ActivityType.MEETING_BOOKED)),
+            ),
+            meetings=Count("pk", filter=Q(_reached(ActivityType.MEETING_BOOKED))),
+        )
+        body["analyzing"] = analyzing
         return Response(AccountSummarySerializer(body).data)
 
     @extend_schema(
@@ -437,9 +459,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         scope = body.validated_data["scope"]
         companies = self._campaign_companies(Level.EDIT)
         if scope == "unassessed":
-            companies = companies.filter(~_latest(ICPAssessment)).exclude(
-                status=CompanyStatus.ANALYZING
-            )
+            companies = companies.filter(~_latest(ICPAssessment))
         elif scope == "failed":
             companies = companies.filter(status=CompanyStatus.FAILED)
         else:
@@ -449,8 +469,13 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
             companies = companies.filter(pk__in=ids)
         user = request.user if isinstance(request.user, User) else None
         queued = running = 0
+        reap_stale_jobs(campaign_id=self.kwargs["campaign_pk"])
         picked = list(companies.order_by("name", "id")[:MAX_BULK])
+        busy = _busy_company_ids([c.pk for c in picked])
         for company in picked:
+            if company.pk in busy:  # already queued or running: no lock, no write
+                running += 1
+                continue
             result = request_analysis(company, user)
             if result.created:
                 queued += 1
