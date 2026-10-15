@@ -25,7 +25,7 @@ def _age(job: Job, **fields: object) -> None:
 def test_a_dead_running_job_is_closed_and_the_company_can_be_analyzed_again() -> None:
     company = make_company()
     first = request_analysis(company).job
-    _age(first, status=JobStatus.RUNNING)
+    _age(first, status=JobStatus.RUNNING, finished_at=None)
     second = request_analysis(company)
     assert second.created
     first.refresh_from_db()
@@ -36,7 +36,7 @@ def test_a_dead_running_job_is_closed_and_the_company_can_be_analyzed_again() ->
 def test_a_fresh_running_job_is_left_alone() -> None:
     company = make_company()
     job = request_analysis(company).job
-    Job.objects.filter(pk=job.pk).update(status=JobStatus.RUNNING)
+    Job.objects.filter(pk=job.pk).update(status=JobStatus.RUNNING, finished_at=None)
     assert reap_stale_jobs() == 0
     assert request_analysis(company).created is False
 
