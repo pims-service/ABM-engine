@@ -83,7 +83,12 @@ class CommercialTeamRequestSerializer(serializers.Serializer[Any]):
     bd = _count()
     marketing = _count()
     commercial = _count()
-    history = HistoryEntrySerializer(many=True, required=False, max_length=3)
+    history = HistoryEntrySerializer(many=True, required=False)
+
+    def validate_history(self, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if len(value) > 3:
+            raise serializers.ValidationError("At most three earlier periods (3, 6 and 12 months).")
+        return value
 
 
 def _points(when: date, source: str, values: dict[str, Any]) -> list[HeadcountPoint]:
