@@ -138,3 +138,40 @@ const STAGE_LABEL: Record<string, string> = {
 export function stageLabel(stage: string): string {
   return STAGE_LABEL[stage] ?? stage;
 }
+
+export type BulkDecisionResult = components["schemas"]["BulkDecisionResult"];
+
+/** The ids of the accounts waiting for a decision (assessed, undecided), in dashboard order. */
+export async function listReviewQueue(
+  campaignId: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const ids: string[] = [];
+  for (let page = 1; page <= 20; page += 1) {
+    const result = await listAccounts(
+      campaignId,
+      { ...EMPTY_FILTERS, review: "needs_review", page },
+      signal,
+    );
+    ids.push(...result.results.map((row) => row.id));
+    if (!result.next) break;
+  }
+  return ids;
+}
+
+/** One decision for many accounts; the answer says what happened to each (reviewer level). */
+export async function decideMany(
+  campaignId: string,
+  companyIds: string[],
+  decision: "add" | "hold" | "skip",
+  note = "",
+): Promise<BulkDecisionResult> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/campaigns/{campaign_pk}/accounts/decide/",
+    {
+      params: { path: { campaign_pk: campaignId } },
+      body: { company_ids: companyIds, decision, note },
+    },
+  );
+  return data as BulkDecisionResult;
+}

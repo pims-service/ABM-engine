@@ -1072,6 +1072,77 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/decide/:
+    post:
+      operationId: campaign_accounts_decide
+      description: 'Records the same human decision (add, hold or skip) with an optional
+        note for up to 200 accounts of this campaign. Each account is handled on its
+        own: the answer lists `saved`, `unchanged` (it already had this decision and
+        no new note) or `error` per account, so one problem never blocks the rest.
+        Repeating a request changes nothing. Deciding never starts outreach, enrichment
+        or an export. Needs the DECIDE level.'
+      summary: Decide on many accounts
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkDecisionRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkDecisionResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/export/:
     get:
       operationId: campaign_accounts_export
@@ -6950,6 +7021,67 @@ components:
       required:
       - pushed
       - skipped
+    BulkDecisionItem:
+      type: object
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        result:
+          $ref: '#/components/schemas/BulkDecisionItemResultEnum'
+        error:
+          type: string
+      required:
+      - company_id
+      - error
+      - result
+    BulkDecisionItemResultEnum:
+      enum:
+      - saved
+      - unchanged
+      - error
+      type: string
+      description: |-
+        * `saved` - saved
+        * `unchanged` - unchanged
+        * `error` - error
+    BulkDecisionRequestRequest:
+      type: object
+      properties:
+        company_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 1
+        decision:
+          $ref: '#/components/schemas/DecisionEnum'
+        note:
+          type: string
+          default: ''
+          maxLength: 2000
+      required:
+      - company_ids
+      - decision
+    BulkDecisionResult:
+      type: object
+      properties:
+        saved:
+          type: integer
+        unchanged:
+          type: integer
+        failed:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BulkDecisionItem'
+      required:
+      - failed
+      - results
+      - saved
+      - unchanged
     BusinessModelEnum:
       enum:
       - b2b
@@ -8087,7 +8219,7 @@ components:
       properties:
         result:
           allOf:
-          - $ref: '#/components/schemas/ResultEnum'
+          - $ref: '#/components/schemas/ConnectionTestResultResultEnum'
           readOnly: true
           description: |-
             `ok` or `failed` (stored on the connection), or `unconfigured` when no test exists for this provider yet (nothing is stored and nothing succeeded).
@@ -8113,6 +8245,16 @@ components:
       - message
       - ok
       - result
+    ConnectionTestResultResultEnum:
+      enum:
+      - ok
+      - failed
+      - unconfigured
+      type: string
+      description: |-
+        * `ok` - ok
+        * `failed` - failed
+        * `unconfigured` - unconfigured
     ConnectionUpdateRequest:
       type: object
       description: 'Category and provider are fixed: create a new connection to switch
@@ -10521,16 +10663,6 @@ components:
       - title
       - truncated
       - url
-    ResultEnum:
-      enum:
-      - ok
-      - failed
-      - unconfigured
-      type: string
-      description: |-
-        * `ok` - ok
-        * `failed` - failed
-        * `unconfigured` - unconfigured
     RulesSummary:
       type: object
       description: |-
