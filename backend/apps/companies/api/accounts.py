@@ -51,6 +51,13 @@ from apps.core.tenancy import is_global_admin
 from apps.outreach.messages_api import BulkCrmResultSerializer, bulk_push
 from apps.outreach.models import Activity, ActivityType
 from apps.outreach.services import record_activity
+from apps.research.agreement import (
+    AgreementQuerySerializer,
+    AgreementReportSerializer,
+    agreement_report,
+    bounds,
+    feedback_csv,
+)
 from apps.research.models import (
     AIRecommendation,
     Fit,
@@ -375,6 +382,8 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "export": Level.EDIT,
         "push_to_crm": Level.EDIT,
         "decide": Level.DECIDE,
+        "agreement": Level.EDIT,
+        "feedback_export": Level.EDIT,
     }
 
     def _campaign(self, level: Level) -> Campaign:
@@ -590,6 +599,51 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
                 "results": results,
             }
         )
+
+    def _range(self) -> tuple[Any, Any]:
+        query = AgreementQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return bounds(query.validated_data.get("start"), query.validated_data.get("end"))
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_agreement",
+        summary="AI versus human agreement and feedback counts",
+        description="How often the latest human decision matched the AI recommendation it "
+        "answered, the AI-versus-human table, and the flags people raised, optionally between "
+        "two dates. Decisions made without a recommendation are counted apart. Needs the EDIT "
+        "level.",
+        parameters=[AgreementQuerySerializer],
+        responses={200: AgreementReportSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(detail=False, methods=["get"])
+    def agreement(self, request: Request, campaign_pk: str | None = None) -> Response:
+        campaign = self._campaign(Level.EDIT)
+        low, high = self._range()
+        return Response(AgreementReportSerializer(agreement_report(campaign.pk, low, high)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_feedback_export",
+        summary="Export feedback (CSV)",
+        description="Every flag people raised, with the assessment text, the AI recommendation "
+        "and the prompt version that produced it, to improve prompts and rules. Cells are "
+        "protected against spreadsheet formulas. Needs the EDIT level.",
+        parameters=[AgreementQuerySerializer],
+        responses={
+            (200, "text/csv"): {"type": "string", "format": "binary"},
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["get"], url_path="feedback-export")
+    def feedback_export(self, request: Request, campaign_pk: str | None = None) -> HttpResponse:
+        campaign = self._campaign(Level.EDIT)
+        low, high = self._range()
+        response = HttpResponse(
+            feedback_csv(campaign.pk, low, high), content_type="text/csv; charset=utf-8"
+        )
+        response["Content-Disposition"] = 'attachment; filename="feedback.csv"'
+        return response
 
     @extend_schema(
         tags=TAGS,

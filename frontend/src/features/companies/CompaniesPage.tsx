@@ -311,6 +311,12 @@ export function CompaniesPage() {
               Export approved
             </Button>
             <Link
+              href="/companies/agreement"
+              className={buttonStyles({ variant: "secondary" })}
+            >
+              AI vs you
+            </Link>
+            <Link
               href="/companies/review"
               className={buttonStyles({ variant: "secondary" })}
             >
