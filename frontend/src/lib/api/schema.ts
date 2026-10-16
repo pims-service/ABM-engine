@@ -250,6 +250,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/decide/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Decide on many accounts
+     * @description Records the same human decision (add, hold or skip) with an optional note for up to 200 accounts of this campaign. Each account is handled on its own: the answer lists `saved`, `unchanged` (it already had this decision and no new note) or `error` per account, so one problem never blocks the rest. Repeating a request changes nothing. Deciding never starts outreach, enrichment or an export. Needs the DECIDE level.
+     */
+    post: operations["campaign_accounts_decide"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/export/": {
     parameters: {
       query?: never;
@@ -1776,6 +1796,31 @@ export interface components {
       pushed: number;
       skipped: components["schemas"]["CrmSkipped"][];
     };
+    BulkDecisionItem: {
+      /** Format: uuid */
+      company_id: string;
+      result: components["schemas"]["BulkDecisionItemResultEnum"];
+      error: string;
+    };
+    /**
+     * @description * `saved` - saved
+     *     * `unchanged` - unchanged
+     *     * `error` - error
+     * @enum {string}
+     */
+    BulkDecisionItemResultEnum: "saved" | "unchanged" | "error";
+    BulkDecisionRequestRequest: {
+      company_ids: string[];
+      decision: components["schemas"]["DecisionEnum"];
+      /** @default  */
+      note: string;
+    };
+    BulkDecisionResult: {
+      saved: number;
+      unchanged: number;
+      failed: number;
+      results: components["schemas"]["BulkDecisionItem"][];
+    };
     /**
      * @description * `b2b` - B2B
      *     * `b2c` - B2C
@@ -2245,13 +2290,20 @@ export interface components {
        *     * `failed` - failed
        *     * `unconfigured` - unconfigured
        */
-      readonly result: components["schemas"]["ResultEnum"];
+      readonly result: components["schemas"]["ConnectionTestResultResultEnum"];
       /** @description True only for `ok`. */
       readonly ok: boolean;
       /** @description Short, scrubbed reason. Never contains credentials. Render as plain text. */
       readonly message: string;
       readonly connection: components["schemas"]["Connection"];
     };
+    /**
+     * @description * `ok` - ok
+     *     * `failed` - failed
+     *     * `unconfigured` - unconfigured
+     * @enum {string}
+     */
+    ConnectionTestResultResultEnum: "ok" | "failed" | "unconfigured";
     /** @description Category and provider are fixed: create a new connection to switch provider. */
     ConnectionUpdateRequest: {
       name?: string;
@@ -3359,13 +3411,6 @@ export interface components {
       robots: string;
       organizations: components["schemas"]["OrganizationHint"][];
     };
-    /**
-     * @description * `ok` - ok
-     *     * `failed` - failed
-     *     * `unconfigured` - unconfigured
-     * @enum {string}
-     */
-    ResultEnum: "ok" | "failed" | "unconfigured";
     /**
      * @description The profile in the structure the AI prompts consume. Versioned by `schema_version`.
      *
@@ -4586,6 +4631,85 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["BulkAnalyzeResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_decide: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkDecisionRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BulkDecisionResult"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

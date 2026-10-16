@@ -117,6 +117,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "campaign_accounts_list": ("GET", "/api/v1/campaigns/{campaign_pk}/accounts/"),
         "campaign_accounts_summary": ("GET", "/api/v1/campaigns/{campaign_pk}/accounts/summary/"),
         "campaign_accounts_analyze": ("POST", "/api/v1/campaigns/{campaign_pk}/accounts/analyze/"),
+        "campaign_accounts_decide": ("POST", "/api/v1/campaigns/{campaign_pk}/accounts/decide/"),
         "companies_decision": ("POST", "/api/v1/companies/{id}/decision/"),
         "companies_archive": ("POST", "/api/v1/companies/{id}/archive/"),
         "companies_restore": ("POST", "/api/v1/companies/{id}/restore/"),

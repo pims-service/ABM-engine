@@ -311,6 +311,12 @@ export function CompaniesPage() {
               Export approved
             </Button>
             <Link
+              href="/companies/review"
+              className={buttonStyles({ variant: "secondary" })}
+            >
+              Review queue
+            </Link>
+            <Link
               href="/companies/import"
               className={buttonStyles({ variant: "secondary" })}
             >

@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, ClassVar
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import (
     Case,
     Count,
@@ -48,6 +50,7 @@ from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
 from apps.outreach.messages_api import BulkCrmResultSerializer, bulk_push
 from apps.outreach.models import Activity, ActivityType
+from apps.outreach.services import record_activity
 from apps.research.models import (
     AIRecommendation,
     Fit,
@@ -57,6 +60,7 @@ from apps.research.models import (
     Signal,
     SignalType,
 )
+from apps.research.services import record_human_decision
 
 from .pipeline import approved_accounts_csv, stages_for
 
@@ -146,6 +150,30 @@ class BulkAnalyzeRequestSerializer(serializers.Serializer[Any]):
     company_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, max_length=MAX_BULK
     )
+
+
+MAX_BULK_DECISIONS = 200
+
+
+class BulkDecisionRequestSerializer(serializers.Serializer[Any]):
+    company_ids = serializers.ListField(
+        child=serializers.UUIDField(), min_length=1, max_length=MAX_BULK_DECISIONS
+    )
+    decision = serializers.ChoiceField(choices=["add", "hold", "skip"])
+    note = serializers.CharField(required=False, allow_blank=True, max_length=2000, default="")
+
+
+class BulkDecisionItemSerializer(serializers.Serializer[Any]):
+    company_id = serializers.UUIDField()
+    result = serializers.ChoiceField(choices=["saved", "unchanged", "error"])
+    error = serializers.CharField(allow_blank=True)
+
+
+class BulkDecisionResultSerializer(serializers.Serializer[Any]):
+    saved = serializers.IntegerField()
+    unchanged = serializers.IntegerField()
+    failed = serializers.IntegerField()
+    results = BulkDecisionItemSerializer(many=True)
 
 
 class BulkAnalyzeResultSerializer(serializers.Serializer[Any]):
@@ -346,6 +374,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "analyze": Level.EDIT,
         "export": Level.EDIT,
         "push_to_crm": Level.EDIT,
+        "decide": Level.DECIDE,
     }
 
     def _campaign(self, level: Level) -> Campaign:
@@ -484,6 +513,82 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         return Response(
             {"requested": len(picked), "queued": queued, "already_running": running},
             status=status.HTTP_202_ACCEPTED,
+        )
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_decide",
+        summary="Decide on many accounts",
+        description=f"Records the same human decision (add, hold or skip) with an optional note "
+        f"for up to {MAX_BULK_DECISIONS} accounts of this campaign. Each account is handled on its "
+        "own: the answer lists `saved`, `unchanged` (it already had this decision and no new "
+        "note) or `error` per account, so one problem never blocks the rest. Repeating a request "
+        "changes nothing. Deciding never starts outreach, enrichment or an export. Needs the "
+        "DECIDE level.",
+        request=BulkDecisionRequestSerializer,
+        responses={
+            200: BulkDecisionResultSerializer,
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["post"])
+    def decide(self, request: Request, campaign_pk: str | None = None) -> Response:
+        body = BulkDecisionRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        decision = body.validated_data["decision"]
+        note = body.validated_data["note"]
+        ids = list(dict.fromkeys(body.validated_data["company_ids"]))
+        user = request.user
+        if not isinstance(user, User):
+            raise PermissionDenied()
+        companies = {
+            c.pk: c for c in self._campaign_companies(Level.DECIDE, "all").filter(pk__in=ids)
+        }
+        results: list[dict[str, Any]] = []
+        for company_id in ids:
+            company = companies.get(company_id)
+            if company is None:
+                results.append({"company_id": company_id, "result": "error", "error": "Not found."})
+                continue
+            if company.is_archived:
+                results.append({"company_id": company_id, "result": "error", "error": "Archived."})
+                continue
+            current = HumanDecision.objects.latest_for(company)
+            if current is not None and current.decision == decision and not note:
+                results.append({"company_id": company_id, "result": "unchanged", "error": ""})
+                continue
+            recommendation = AIRecommendation.objects.latest_for(company)
+            try:
+                with transaction.atomic():
+                    record = record_human_decision(
+                        company, decision, user, ai_recommendation=recommendation, note=note
+                    )
+                    record_activity(
+                        company,
+                        ActivityType.DECIDED,
+                        user,
+                        decision=record.decision,
+                        note=record.note,
+                        agrees_with_ai=(
+                            None if recommendation is None else recommendation.status == decision
+                        ),
+                    )
+            except DjangoValidationError as exc:
+                results.append(
+                    {"company_id": company_id, "result": "error", "error": " ".join(exc.messages)}
+                )
+                continue
+            results.append({"company_id": company_id, "result": "saved", "error": ""})
+        counts = {"saved": 0, "unchanged": 0, "error": 0}
+        for row in results:
+            counts[row["result"]] += 1
+        return Response(
+            {
+                "saved": counts["saved"],
+                "unchanged": counts["unchanged"],
+                "failed": counts["error"],
+                "results": results,
+            }
         )
 
     @extend_schema(
