@@ -36,6 +36,16 @@ urlpatterns = [
         name="campaign-accounts-decide",
     ),
     path(
+        "campaigns/<uuid:campaign_pk>/accounts/agreement/",
+        AccountViewSet.as_view({"get": "agreement"}),
+        name="campaign-accounts-agreement",
+    ),
+    path(
+        "campaigns/<uuid:campaign_pk>/accounts/feedback-export/",
+        AccountViewSet.as_view({"get": "feedback_export"}),
+        name="campaign-accounts-feedback-export",
+    ),
+    path(
         "campaigns/<uuid:campaign_pk>/accounts/export/",
         AccountViewSet.as_view({"get": "export"}),
         name="campaign-accounts-export",

@@ -230,6 +230,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/agreement/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * AI versus human agreement and feedback counts
+     * @description How often the latest human decision matched the AI recommendation it answered, the AI-versus-human table, and the flags people raised, optionally between two dates. Decisions made without a recommendation are counted apart. Needs the EDIT level.
+     */
+    get: operations["campaign_accounts_agreement"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/analyze/": {
     parameters: {
       query?: never;
@@ -282,6 +302,26 @@ export interface paths {
      * @description One row per account you decided ADD: research, primary person, outreach angle and approved messages, for the tool that sends them (Brief section 22). Cells are protected against spreadsheet formulas. Contains contact details, so it needs the EDIT level.
      */
     get: operations["campaign_accounts_export"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{campaign_pk}/accounts/feedback-export/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Export feedback (CSV)
+     * @description Every flag people raised, with the assessment text, the AI recommendation and the prompt version that produced it, to improve prompts and rules. Cells are protected against spreadsheet formulas. Needs the EDIT level.
+     */
+    get: operations["campaign_accounts_feedback_export"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1686,6 +1726,21 @@ export interface components {
       /** @description Only for a person who has no account yet. They can change it after signing in. */
       password?: string;
     };
+    AgreementReport: {
+      /** @description Decisions made against an AI recommendation. */
+      compared: number;
+      agreed: number;
+      disagreed: number;
+      /** @description Decisions with no recommendation; not in rate. */
+      without_ai: number;
+      /**
+       * Format: double
+       * @description agreed / compared, null if none.
+       */
+      rate: number | null;
+      matrix: components["schemas"]["MatrixCell"][];
+      feedback: components["schemas"]["FeedbackCount"][];
+    };
     /** @description The background job behind an "Analyze Company" request (see `GET` job status in M4). */
     AnalysisJob: {
       /** Format: uuid */
@@ -2530,6 +2585,10 @@ export interface components {
       /** Format: date */
       event_date: string;
     };
+    FeedbackCount: {
+      kind: string;
+      count: number;
+    };
     FeedbackRequestRequest: {
       kind: components["schemas"]["KindEnum"];
       /** @default  */
@@ -2878,6 +2937,11 @@ export interface components {
       website: string;
       country: string;
       archived: boolean;
+    };
+    MatrixCell: {
+      ai: string;
+      human: string;
+      count: number;
     };
     Member: {
       /** Format: uuid */
@@ -4610,6 +4674,86 @@ export interface operations {
       };
     };
   };
+  campaign_accounts_agreement: {
+    parameters: {
+      query?: {
+        /** @description Last day (inclusive). */
+        end?: string;
+        /** @description First day (inclusive). */
+        start?: string;
+      };
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgreementReport"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   campaign_accounts_analyze: {
     parameters: {
       query?: never;
@@ -4785,6 +4929,86 @@ export interface operations {
         };
         content: {
           "text/csv": string;
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_feedback_export: {
+    parameters: {
+      query?: {
+        /** @description Last day (inclusive). */
+        end?: string;
+        /** @description First day (inclusive). */
+        start?: string;
+      };
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "text/csv": string;
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */

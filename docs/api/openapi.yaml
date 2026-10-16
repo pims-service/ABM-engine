@@ -1002,6 +1002,81 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/agreement/:
+    get:
+      operationId: campaign_accounts_agreement
+      description: How often the latest human decision matched the AI recommendation
+        it answered, the AI-versus-human table, and the flags people raised, optionally
+        between two dates. Decisions made without a recommendation are counted apart.
+        Needs the EDIT level.
+      summary: AI versus human agreement and feedback counts
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: end
+        schema:
+          type: string
+          format: date
+        description: Last day (inclusive).
+      - in: query
+        name: start
+        schema:
+          type: string
+          format: date
+        description: First day (inclusive).
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgreementReport'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/analyze/:
     post:
       operationId: campaign_accounts_analyze
@@ -1170,6 +1245,81 @@ paths:
                 type: string
                 format: binary
           description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/feedback-export/:
+    get:
+      operationId: campaign_accounts_feedback_export
+      description: Every flag people raised, with the assessment text, the AI recommendation
+        and the prompt version that produced it, to improve prompts and rules. Cells
+        are protected against spreadsheet formulas. Needs the EDIT level.
+      summary: Export feedback (CSV)
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: end
+        schema:
+          type: string
+          format: date
+        description: Last day (inclusive).
+      - in: query
+        name: start
+        schema:
+          type: string
+          format: date
+        description: First day (inclusive).
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
         '401':
           content:
             application/json:
@@ -6785,6 +6935,40 @@ components:
       required:
       - email
       - role
+    AgreementReport:
+      type: object
+      properties:
+        compared:
+          type: integer
+          description: Decisions made against an AI recommendation.
+        agreed:
+          type: integer
+        disagreed:
+          type: integer
+        without_ai:
+          type: integer
+          description: Decisions with no recommendation; not in rate.
+        rate:
+          type: number
+          format: double
+          nullable: true
+          description: agreed / compared, null if none.
+        matrix:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatrixCell'
+        feedback:
+          type: array
+          items:
+            $ref: '#/components/schemas/FeedbackCount'
+      required:
+      - agreed
+      - compared
+      - disagreed
+      - feedback
+      - matrix
+      - rate
+      - without_ai
     AnalysisJob:
       type: object
       description: The background job behind an "Analyze Company" request (see `GET`
@@ -8747,6 +8931,16 @@ components:
       required:
       - event_date
       - type_label
+    FeedbackCount:
+      type: object
+      properties:
+        kind:
+          type: string
+        count:
+          type: integer
+      required:
+      - count
+      - kind
     FeedbackRequestRequest:
       type: object
       properties:
@@ -9486,6 +9680,19 @@ components:
       - id
       - name
       - website
+    MatrixCell:
+      type: object
+      properties:
+        ai:
+          type: string
+        human:
+          type: string
+        count:
+          type: integer
+      required:
+      - ai
+      - count
+      - human
     Member:
       type: object
       properties:

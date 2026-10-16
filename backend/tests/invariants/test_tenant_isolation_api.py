@@ -405,6 +405,16 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"company_ids": [str(uuid.uuid4())], "decision": "hold"},
         ),
         Scenario(
+            "GET /api/v1/campaigns/{campaign_pk}/accounts/agreement/",
+            "campaign_nested",
+            Level.EDIT,
+        ),
+        Scenario(
+            "GET /api/v1/campaigns/{campaign_pk}/accounts/feedback-export/",
+            "campaign_nested",
+            Level.EDIT,
+        ),
+        Scenario(
             "POST /api/v1/campaigns/{campaign_pk}/companies/",
             "campaign_nested",
             Level.EDIT,
