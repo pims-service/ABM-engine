@@ -4833,6 +4833,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/research-history/:
+    get:
+      operationId: companies_research_history
+      description: 'Every research snapshot of this company, newest first (the latest
+        20), each with the fields that changed against the snapshot before it (Brief
+        section 19). Older snapshots are never altered by a new run. Needs the `READ`
+        level: any member. Others get 403; companies of clients you are not a member
+        of give 404.'
+      summary: Research history and what changed
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Snapshot'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/restore/:
     post:
       operationId: companies_restore
@@ -8957,6 +9018,27 @@ components:
           format: uuid
       required:
       - kind
+    FieldChange:
+      type: object
+      properties:
+        field:
+          type: string
+        name:
+          type: string
+          description: What changed, in words.
+        old:
+          type: string
+          nullable: true
+          description: 'Null: it was not found before.'
+        new:
+          type: string
+          nullable: true
+          description: 'Null: it is no longer found.'
+      required:
+      - field
+      - name
+      - new
+      - old
     GenerateRequestRequest:
       type: object
       properties:
@@ -11150,6 +11232,30 @@ components:
       - code
       - kind
       - url
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        researched_at:
+          type: string
+          format: date-time
+        source_name:
+          type: string
+        first:
+          type: boolean
+          description: 'The oldest snapshot: nothing to compare with.'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldChange'
+      required:
+      - changes
+      - first
+      - id
+      - researched_at
+      - source_name
     SortEnum:
       enum:
       - relevance

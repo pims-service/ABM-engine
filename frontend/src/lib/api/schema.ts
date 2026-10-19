@@ -1198,6 +1198,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/research-history/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Research history and what changed
+     * @description Every research snapshot of this company, newest first (the latest 20), each with the fields that changed against the snapshot before it (Brief section 19). Older snapshots are never altered by a new run. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_research_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/restore/": {
     parameters: {
       query?: never;
@@ -2597,6 +2617,15 @@ export interface components {
       /** Format: uuid */
       target_id?: string;
     };
+    FieldChange: {
+      field: string;
+      /** @description What changed, in words. */
+      name: string;
+      /** @description Null: it was not found before. */
+      old: string | null;
+      /** @description Null: it is no longer found. */
+      new: string | null;
+    };
     GenerateRequestRequest: {
       /**
        * Format: uuid
@@ -3579,6 +3608,16 @@ export interface components {
       kind: string;
       /** @description A fetch error code, or `budget`. */
       code: string;
+    };
+    Snapshot: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      researched_at: string;
+      source_name: string;
+      /** @description The oldest snapshot: nothing to compare with. */
+      first: boolean;
+      changes: components["schemas"]["FieldChange"][];
     };
     /**
      * @description * `relevance` - relevance
@@ -8817,6 +8856,73 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_research_history: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Snapshot"][];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
