@@ -111,7 +111,7 @@ const SELECTS = [
   },
 ] as const;
 
-function Tile({
+function Tab({
   label,
   value,
   active,
@@ -122,20 +122,28 @@ function Tile({
   active?: boolean;
   onClick?: () => void;
 }) {
+  const body = (
+    <>
+      {label} <span className="text-fg-muted">{value}</span>
+    </>
+  );
+  const base = "-mb-px whitespace-nowrap border-b-2 px-1 pb-2 text-sm";
+  if (!onClick) {
+    return <span className={cn(base, "border-transparent")}>{body}</span>;
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "rounded-lg border bg-surface-raised p-4 text-left transition-colors hover:bg-surface-muted",
-        active ? "border-accent" : "border-line",
+        base,
+        active
+          ? "border-fg font-medium"
+          : "border-transparent text-fg-muted hover:text-fg",
       )}
     >
-      <span className="block text-xs font-medium text-fg-muted">{label}</span>
-      <span className="mt-1 block text-xl font-semibold tracking-tight">
-        {value}
-      </span>
+      {body}
     </button>
   );
 }
@@ -369,9 +377,12 @@ export function CompaniesPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Tile
-          label="All companies"
+      <nav
+        aria-label="Quick filters"
+        className="mb-5 flex flex-wrap gap-x-5 gap-y-1 border-b border-line"
+      >
+        <Tab
+          label="All"
           value={counts?.total ?? "…"}
           active={!filtered}
           onClick={() => {
@@ -379,53 +390,52 @@ export function CompaniesPage() {
             setFilters(EMPTY_FILTERS);
           }}
         />
-        <Tile
+        <Tab
           label="Needs review"
           value={counts?.needs_review ?? "…"}
           active={filters.review === "needs_review"}
           onClick={() => set("review", "needs_review")}
         />
-        <Tile
+        <Tab
           label="Strong fit"
           value={counts?.strong ?? "…"}
           active={filters.icp_fit === "strong"}
           onClick={() => set("icp_fit", "strong")}
         />
-        <Tile
-          label="With a trigger"
+        <Tab
+          label="Trigger"
           value={counts?.trigger_yes ?? "…"}
           active={filters.trigger === "yes"}
           onClick={() => set("trigger", "yes")}
         />
-        <Tile
+        <Tab
           label="Not analyzed"
           value={counts?.not_assessed ?? "…"}
           active={filters.icp_fit === "unassessed"}
           onClick={() => set("icp_fit", "unassessed")}
         />
-        <Tile label="Analyzing now" value={counts?.analyzing ?? "…"} />
-      </div>
-
-      <div className="mb-6 grid grid-cols-3 gap-3 sm:max-w-md">
-        <Tile
+        <Tab
           label="Contacted"
           value={counts?.contacted ?? "…"}
           active={filters.outreach === "contacted"}
           onClick={() => set("outreach", "contacted")}
         />
-        <Tile
+        <Tab
           label="Replied"
           value={counts?.replied ?? "…"}
           active={filters.outreach === "replied"}
           onClick={() => set("outreach", "replied")}
         />
-        <Tile
+        <Tab
           label="Meetings"
           value={counts?.meetings ?? "…"}
           active={filters.outreach === "meeting_booked"}
           onClick={() => set("outreach", "meeting_booked")}
         />
-      </div>
+        {(counts?.analyzing ?? 0) > 0 ? (
+          <Tab label="Analyzing" value={counts?.analyzing ?? 0} />
+        ) : null}
+      </nav>
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="min-w-40 flex-1">
