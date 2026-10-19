@@ -73,6 +73,7 @@ from apps.research.card import (
     build_card,
 )
 from apps.research.commercial import CommercialTeamRequestSerializer, record_commercial_team
+from apps.research.history import SnapshotSerializer, history_for
 from apps.research.models import AIRecommendation
 from apps.research.services import record_human_decision
 
@@ -331,6 +332,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "card": Level.READ,
         "decision": Level.DECIDE,
         "activity": Level.READ,
+        "research_history": Level.READ,
         "contacts": Level.READ,
         "add_contact": Level.EDIT,
         "update_contact": Level.EDIT,
@@ -472,6 +474,23 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
     def activity(self, request: Request, pk: str | None = None) -> Response:
         company = self.get_object()
         return Response(ActivityItemSerializer(build_activity(company), many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_research_history",
+        summary="Research history and what changed",
+        description="Every research snapshot of this company, newest first (the latest 20), each "
+        "with the fields that changed against the snapshot before it (Brief section 19). Older "
+        "snapshots are never altered by a new run. " + _levels("READ", "any member"),
+        responses={
+            200: SnapshotSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="research-history", pagination_class=None)
+    def research_history(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(SnapshotSerializer(history_for(company), many=True).data)
 
     @extend_schema(
         tags=TAGS,

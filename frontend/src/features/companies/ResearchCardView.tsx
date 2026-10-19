@@ -27,6 +27,7 @@ import { type OutreachMessage } from "./messagesApi";
 import { OutreachCard } from "./OutreachCard";
 import { type Contact } from "./peopleApi";
 import { PeopleCard } from "./PeopleCard";
+import { ResearchHistoryCard } from "./ResearchHistoryCard";
 
 const POLL_MS = 3000;
 
@@ -305,6 +306,11 @@ export function ResearchCardView({
             companyId={company.id}
             contacts={contacts}
             onChange={onPeople}
+          />
+
+          <ResearchHistoryCard
+            companyId={company.id}
+            latestId={card.research?.researched_at ?? null}
           />
 
           <ActivityCard items={activity} />
