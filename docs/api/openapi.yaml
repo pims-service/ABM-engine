@@ -9023,8 +9023,9 @@ components:
       properties:
         field:
           type: string
-        label:
+        name:
           type: string
+          description: What changed, in words.
         old:
           type: string
           nullable: true
@@ -9035,7 +9036,7 @@ components:
           description: 'Null: it is no longer found.'
       required:
       - field
-      - label
+      - name
       - new
       - old
     GenerateRequestRequest:
@@ -11240,7 +11241,7 @@ components:
         researched_at:
           type: string
           format: date-time
-        source:
+        source_name:
           type: string
         first:
           type: boolean
@@ -11254,7 +11255,7 @@ components:
       - first
       - id
       - researched_at
-      - source
+      - source_name
     SortEnum:
       enum:
       - relevance

@@ -46,7 +46,7 @@ def diff(old: CompanyResearch | None, new: CompanyResearch) -> list[dict[str, An
         before = _text(getattr(old, field)) if old is not None else None
         after = _text(getattr(new, field))
         if before != after:
-            changes.append({"field": field, "label": label, "old": before, "new": after})
+            changes.append({"field": field, "name": label, "old": before, "new": after})
     return changes
 
 
@@ -64,7 +64,7 @@ def history_for(company: Company) -> list[dict[str, Any]]:
             {
                 "id": row.pk,
                 "researched_at": row.researched_at,
-                "source": row.data_source.name,
+                "source_name": row.data_source.name,
                 "first": older is None,
                 "changes": diff(older, row),
             }
@@ -74,7 +74,7 @@ def history_for(company: Company) -> list[dict[str, Any]]:
 
 class FieldChangeSerializer(serializers.Serializer[Any]):
     field = serializers.CharField()
-    label = serializers.CharField()
+    name = serializers.CharField(help_text="What changed, in words.")
     old = serializers.CharField(allow_null=True, help_text="Null: it was not found before.")
     new = serializers.CharField(allow_null=True, help_text="Null: it is no longer found.")
 
@@ -82,6 +82,6 @@ class FieldChangeSerializer(serializers.Serializer[Any]):
 class SnapshotSerializer(serializers.Serializer[Any]):
     id = serializers.UUIDField()
     researched_at = serializers.DateTimeField()
-    source = serializers.CharField()
+    source_name = serializers.CharField()
     first = serializers.BooleanField(help_text="The oldest snapshot: nothing to compare with.")
     changes = FieldChangeSerializer(many=True)

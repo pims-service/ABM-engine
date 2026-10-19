@@ -33,7 +33,7 @@ export function ResearchHistoryCard({
               <p className="font-medium">
                 {formatDateTime(row.researched_at)}{" "}
                 <span className="font-normal text-fg-muted">
-                  · {row.source}
+                  · {row.source_name}
                 </span>
               </p>
               {row.first ? (
@@ -44,7 +44,7 @@ export function ResearchHistoryCard({
                 <ul className="mt-1 flex flex-col gap-0.5">
                   {row.changes.map((change) => (
                     <li key={change.field}>
-                      {change.label}:{" "}
+                      {change.name}:{" "}
                       <span className="text-fg-muted">
                         {change.old ?? "not found"}
                       </span>{" "}

@@ -2619,7 +2619,8 @@ export interface components {
     };
     FieldChange: {
       field: string;
-      label: string;
+      /** @description What changed, in words. */
+      name: string;
       /** @description Null: it was not found before. */
       old: string | null;
       /** @description Null: it is no longer found. */
@@ -3613,7 +3614,7 @@ export interface components {
       id: string;
       /** Format: date-time */
       researched_at: string;
-      source: string;
+      source_name: string;
       /** @description The oldest snapshot: nothing to compare with. */
       first: boolean;
       changes: components["schemas"]["FieldChange"][];
