@@ -65,8 +65,8 @@ export function categoryLabel(value: string): string {
 export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
   llm: ["anthropic", "fake"],
   company_data: ["fake"],
-  people_data: ["fake"],
-  email_enrichment: ["fake"],
+  people_data: ["signalhire", "mowsol", "fake"],
+  email_enrichment: ["signalhire", "mowsol", "fake"],
   email_verification: ["fake"],
   crm: ["gohighlevel", "fake"],
   outreach: ["fake"],
@@ -94,6 +94,16 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
     credentialNames: ["api_key"],
     configHint:
       'Required: {"location_id": "your HighLevel location id"}. The credential is a Private Integration token with contact permissions. Optional: "tag" and "source".',
+  },
+  signalhire: {
+    credentialNames: ["api_key"],
+    configHint:
+      "Placeholder: you can save the key now, but the SignalHire adapter is not built yet, so nothing is looked up and Test connection says so.",
+  },
+  mowsol: {
+    credentialNames: ["api_key"],
+    configHint:
+      "Placeholder: you can save the key now, but the Mowsol adapter is not built yet, so nothing is looked up and Test connection says so.",
   },
   fake: {
     credentialNames: ["api_key"],
