@@ -23,6 +23,20 @@ checked against SignalHire's documentation and fake responses only. SignalHire's
 reveal mode (used here, no public callback URL needed) has less current data and lower contact
 coverage than their callback mode. Check coverage on a few Saudi and Gulf companies first.
 
+## ZeroBounce (built): verify an email
+
+Settings, Integrations: add a connection under **Email verification**, provider `zerobounce`, with
+your API key (optional setting `region`: `default`, `us` or `eu`). "Test connection" asks for your
+credit balance, which costs nothing.
+
+* **Verify email** (per person, approved accounts only): ZeroBounce answers valid, invalid,
+  catch-all, unknown, spam trap, abuse or do-not-mail. Only a clean *valid* marks the email
+  verified; invalid marks it invalid; everything uncertain (risky, catch-all, unknown) leaves it
+  unverified. An unknown result costs no credit.
+* The key is sent in the request body, never in the URL.
+
+Not verified against a live account.
+
 ## Mawsool (placeholder)
 
 Selectable in the same categories. You can save a connection, but there is no adapter: Mawsool

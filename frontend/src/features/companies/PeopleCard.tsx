@@ -17,12 +17,21 @@ import {
   findEmail,
   findPeople,
   setContactRole,
+  verifyEmail,
 } from "./peopleApi";
 import { RankingPanel } from "./RankingPanel";
 
 const ROLE_LABEL: Record<string, string> = {
   primary: "Primary target",
   secondary: "Secondary target",
+};
+
+const EMAIL_LABEL: Record<string, string> = {
+  verified: "verified",
+  unverified: "not verified",
+  invalid: "invalid",
+  not_found: "not found",
+  unknown: "unknown",
 };
 
 /** Potential decision-makers (Brief sections 8 and 14). Added by hand or found through the connected provider. */
@@ -74,6 +83,9 @@ export function PeopleCard({
               <p className="text-fg-muted">
                 {contact.title || "No title"}
                 {contact.email ? ` · ${contact.email}` : ""}
+                {contact.email
+                  ? ` (${EMAIL_LABEL[contact.email_status] ?? contact.email_status})`
+                  : ""}
               </p>
               {contact.relevance_reason ? (
                 <p className="mt-0.5 text-xs text-fg-muted">
@@ -112,6 +124,18 @@ export function PeopleCard({
                     </button>
                   ),
                 )}
+                {contact.email && contact.email_status !== "verified" ? (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    className="text-accent underline-offset-2 hover:underline"
+                    onClick={() =>
+                      run(contact.id, () => verifyEmail(companyId, contact.id))
+                    }
+                  >
+                    Verify email
+                  </button>
+                ) : null}
                 {contact.email ? null : (
                   <button
                     type="button"

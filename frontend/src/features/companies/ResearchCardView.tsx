@@ -28,6 +28,7 @@ import { OutreachCard } from "./OutreachCard";
 import { type Contact } from "./peopleApi";
 import { PeopleCard } from "./PeopleCard";
 import { ResearchHistoryCard } from "./ResearchHistoryCard";
+import { WorkflowCard } from "./WorkflowCard";
 
 const POLL_MS = 3000;
 
@@ -299,6 +300,8 @@ export function ResearchCardView({
               </p>
             )}
           </Card>
+
+          <WorkflowCard card={card} />
 
           <CommercialTeamCard card={card} onChange={onChange} />
 

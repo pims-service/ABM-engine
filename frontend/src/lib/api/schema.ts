@@ -1298,6 +1298,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/verify-email/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Verify one person's email
+     * @description Checks the person's email with the connected verification provider (ZeroBounce). Only for a company you decided ADD on. A clean valid answer marks the email verified, an undeliverable one marks it invalid, anything uncertain (risky, catch-all, unknown) leaves it unverified. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_verify_email"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/website-research/": {
     parameters: {
       query?: never;
@@ -3511,6 +3531,8 @@ export interface components {
       exported_at: string | null;
       /** @description True when an outreach angle exists, so messages can be written. */
       has_angle: boolean;
+      /** @description The steps after ADD (find contact, email, verify, messages, approve, export); empty until the account is decided ADD. */
+      workflow: components["schemas"]["WorkflowStep"][];
     };
     /** @description The current (latest) research snapshot of a company. Null facts mean "not found". */
     ResearchSummary: {
@@ -3786,6 +3808,12 @@ export interface components {
     WebsiteResearchError: {
       code: string;
       message: string;
+    };
+    WorkflowStep: {
+      key: string;
+      title: string;
+      done: boolean;
+      detail: string;
     };
   };
   responses: never;
@@ -9263,6 +9291,86 @@ export interface operations {
     requestBody: {
       content: {
         "application/json": components["schemas"]["ContactPatchRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Contact"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_verify_email: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ContactRefRequest"];
       };
     };
     responses: {

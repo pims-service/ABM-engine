@@ -26,6 +26,7 @@ from apps.integrations.framework.operations import MAX_ROLES
 from apps.integrations.people_connection import (
     EMAIL,
     PEOPLE,
+    VERIFY,
     PeopleUnavailable,
     get_adapter,
 )
@@ -38,7 +39,7 @@ MAX_FOUND = 10
 
 def _fail(error: ProviderError) -> ValidationError:
     text = str(getattr(error, "message", "") or "The provider could not answer.")
-    return ValidationError(f"{PROVIDER_LABEL}: {text}")
+    return ValidationError(f"{text}")
 
 
 def _known_ids(company: Company) -> tuple[set[str], set[str]]:
@@ -139,3 +140,33 @@ def find_email_for(contact: Contact, user: User) -> Contact:
     if email:
         return services.update_contact(contact, email=email, email_status=EmailStatus.UNVERIFIED)
     return services.update_contact(contact, email_status=EmailStatus.NOT_FOUND)
+
+
+#: How a verifier's answer is stored on the person. Only a clean ``valid`` becomes verified.
+_VERIFIED = {"valid": EmailStatus.VERIFIED, "invalid": EmailStatus.INVALID}
+
+
+def verify_email_for(contact: Contact, user: User) -> Contact:
+    """Check one contact's email with the connected verifier (approved accounts only)."""
+    company = contact.company
+    if company.is_archived or contact.is_archived:
+        raise ValidationError("Archived records are read-only.")
+    if latest_human_decision(company) != ADD:
+        raise ValidationError(
+            "Emails are verified only for approved accounts: decide ADD on this company first."
+        )
+    if not contact.email:
+        raise ValidationError("This person has no email to verify. Find or add one first.")
+    campaign = company.campaign
+    try:
+        adapter = get_adapter(VERIFY, campaign.client_id, campaign=campaign, user=user)
+    except PeopleUnavailable as error:
+        raise ValidationError(str(error)) from None
+    try:
+        result = adapter.verify(contact.email)
+    except ProviderError as error:
+        raise _fail(error) from None
+    status = result.data.status if result.data else "unknown"
+    return services.update_contact(
+        contact, email_status=_VERIFIED.get(status, EmailStatus.UNVERIFIED)
+    )
