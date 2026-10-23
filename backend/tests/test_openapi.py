@@ -93,6 +93,7 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
         "companies_research_history": ("GET", "/api/v1/companies/{id}/research-history/"),
         "companies_find_people": ("POST", "/api/v1/companies/{id}/find-people/"),
         "companies_find_email": ("POST", "/api/v1/companies/{id}/find-email/"),
+        "companies_verify_email": ("POST", "/api/v1/companies/{id}/verify-email/"),
         "companies_activity": ("GET", "/api/v1/companies/{id}/activity/"),
         "companies_contacts": ("GET", "/api/v1/companies/{id}/contacts/"),
         "companies_messages": ("GET", "/api/v1/companies/{id}/messages/"),

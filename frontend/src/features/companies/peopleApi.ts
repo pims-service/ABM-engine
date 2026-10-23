@@ -85,6 +85,21 @@ export async function findPeople(companyId: string): Promise<FoundPeople> {
   return data as FoundPeople;
 }
 
+/** Check one person's email with the connected verifier; approved accounts only. */
+export async function verifyEmail(
+  companyId: string,
+  contactId: string,
+): Promise<Contact> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/companies/{id}/verify-email/",
+    {
+      params: { path: { id: companyId } },
+      body: { contact_id: contactId },
+    },
+  );
+  return data as Contact;
+}
+
 /** Look up one person's email; only for an approved (ADD) account (manager level). */
 export async function findEmail(
   companyId: string,

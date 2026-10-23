@@ -26,7 +26,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.companies import services
 from apps.companies.analysis import latest_analysis_jobs, request_analysis
-from apps.companies.lookup import find_email_for, find_people_for
+from apps.companies.lookup import find_email_for, find_people_for, verify_email_for
 from apps.companies.models import Company
 from apps.core.models import Job
 from apps.core.permissions import ClientScopedViewSet, request_roles
@@ -341,6 +341,7 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "archive_contact": Level.EDIT,
         "find_people": Level.EDIT,
         "find_email": Level.EDIT,
+        "verify_email": Level.EDIT,
         "messages": Level.READ,
         "generate_messages": Level.EDIT,
         "approve_message": Level.DECIDE,
@@ -636,6 +637,27 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         contact = find_contact(company, body.validated_data["contact_id"])
         with api_validation():
             contact = find_email_for(contact, self._user())
+        return Response(ContactSerializer(contact_body(contact)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_verify_email",
+        summary="Verify one person's email",
+        description="Checks the person's email with the connected verification provider "
+        "(ZeroBounce). Only for a company you decided ADD on. A clean valid answer marks the "
+        "email verified, an undeliverable one marks it invalid, anything uncertain (risky, "
+        "catch-all, unknown) leaves it unverified. " + _levels("EDIT", "manager and admin"),
+        request=ContactRefSerializer,
+        responses={200: ContactSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="verify-email")
+    def verify_email(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = ContactRefSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        contact = find_contact(company, body.validated_data["contact_id"])
+        with api_validation():
+            contact = verify_email_for(contact, self._user())
         return Response(ContactSerializer(contact_body(contact)).data)
 
     @extend_schema(

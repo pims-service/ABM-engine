@@ -21,12 +21,11 @@ tested against fakes and, for GoHighLevel, checked against the official API docu
 | 5 Source and date on evidence | Done | Enforced: no source or no date means the signal is dropped. |
 | 6 ICP qualification | Done | Structured output, hard rules after the model, reasons and concerns, no numeric score. |
 | 7 Trigger detection | Partly | Yes or no with type, evidence, date and source; several triggers; each type expires after a fixed window. The windows are the same for every campaign (changing them per campaign is not built). |
-| 8 Decision-maker finder | Partly | Ranking by size and the campaign's titles, with reasons and a primary and secondary target. The people are entered by hand because no people-data provider is connected. |
+| 8 Decision-maker finder | Done with SignalHire | Find people by the campaign's titles through SignalHire, or add them by hand; ranking by size and titles with reasons and a primary and secondary target. SignalHire gives no LinkedIn URL in its search results. Not tried with a live key. |
 | 9 Outreach angle | Done | Stored apart from messages. |
 | 10 Research card | Done | |
 | 11 Human approval | Done | Add, hold or skip; mandatory; stored apart from the AI's advice; nothing starts by itself. |
-| 12 Approved workflow: find contact | Needs a provider | Add contacts by hand for now. |
-| 12 Email enrichment and verification | Needs a provider | Not built. Email status is a field you set. |
+| 12 Approved workflow: find contact, enrich, verify | Done with SignalHire and ZeroBounce | Find email (SignalHire, approved accounts only), Verify email (ZeroBounce), and a Next steps list on the card that ticks off contact, email, verify, messages, approve, export. Neither provider has been tried with a live key. |
 | 12 Messages | Done | LinkedIn message, email with subject and follow-up, campaign languages, Saudi Arabic. Drafts that invent facts or numbers are refused. Human approval before export. |
 | 12 Export or push | Done | CSV export; GoHighLevel push (not tried with a live account). No separate outreach-platform adapter. |
 | 13 Dashboard columns and filters | Done | Every column and filter in the brief, plus quick filters with counts. |
@@ -36,7 +35,7 @@ tested against fakes and, for GoHighLevel, checked against the official API docu
 | 17 Integrations, replaceable | Partly | Category catalogue, encrypted connections, test button, metering and budget. Real adapters: Anthropic and GoHighLevel. Others need a provider choice. |
 | 18 Architecture | Done | Next.js and Django REST on PostgreSQL, structured LLM output, background workers. Authentication is Django JWT instead of Supabase. |
 | 19 Data objects and history | Done | Every object in the list. Research, assessments, recommendations, decisions and messages are never overwritten. |
-| 20 User flow | Done up to Add | After Add, the contact lookup, enrichment and verification steps are manual until providers exist. |
+| 20 User flow | Done | Every step, including the steps after Add, with the Next steps list. |
 | 21 Out of scope | Respected | No CRM, sending, LinkedIn automation, dialer, analytics suite or website visitor tracking. |
 | 22 Success criteria | Partly | Bulk analysis, separate fit and trigger, visible evidence, ranked buyers, grounded angles, quick decisions, export and no invented facts are in. "Provider parts replaceable" is true of the design but only two adapters exist. |
 
@@ -45,9 +44,9 @@ Team roles and passwords, monthly AI budget and usage page, import history, arch
 bulk decisions, recovery when a worker dies, and an AI-versus-human agreement report.
 
 ## What is left
-1. **Needs your choice of provider:** company data, people data, email enrichment and verification,
-   and an import-from-provider screen. Everything else in the brief depends on these for automatic
-   data.
+1. **Still needs a provider:** company data (automatic headcount by department, growth, funding and
+   job signals) and a provider import screen. SignalHire's company API only returns basic company
+   details and is off by default. Mawsool has no adapter until its API documentation is available.
 2. **Not built:** trigger windows per campaign, a retention setting for old research, a golden
    evaluation set for the prompts, a model tie-break step, hardening and launch work (load test at
    500 companies, security and privacy reviews, production deployment, backups).

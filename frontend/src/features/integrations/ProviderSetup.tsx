@@ -25,6 +25,7 @@ interface ContactProvider {
   keyHelp: string;
   /** False while the adapter is not built: the key can be saved, but nothing uses it. */
   built: boolean;
+  categories: readonly ConnectionCategory[];
 }
 
 const PROVIDERS: readonly ContactProvider[] = [
@@ -35,6 +36,16 @@ const PROVIDERS: readonly ContactProvider[] = [
       "Finds the people at a company by title (no credits, a daily search quota) and reveals an approved person's work email (one credit each).",
     keyHelp: "Your API key from Integrations & API in your SignalHire account.",
     built: true,
+    categories: ["people_data", "email_enrichment"],
+  },
+  {
+    key: "zerobounce",
+    name: "ZeroBounce",
+    summary:
+      "Checks that an approved person's email can receive mail before you write to them (one credit per known result).",
+    keyHelp: "Your API key from the API page of your ZeroBounce account.",
+    built: true,
+    categories: ["email_verification"],
   },
   {
     key: "mawsool",
@@ -43,12 +54,8 @@ const PROVIDERS: readonly ContactProvider[] = [
       "B2B contacts for the Middle East. The connection is not built yet: you can save the key now, but nothing is looked up until its API documentation is added.",
     keyHelp: "Your Mawsool API key.",
     built: false,
+    categories: ["people_data", "email_enrichment"],
   },
-];
-
-const CATEGORIES: readonly ConnectionCategory[] = [
-  "people_data",
-  "email_enrichment",
 ];
 
 /** Connect SignalHire (or Mawsool) once and use it for finding people and emails. */
@@ -64,12 +71,12 @@ export function ProviderSetup({
   return (
     <section aria-labelledby="contact-providers" className="mb-6">
       <h2 id="contact-providers" className="text-lg font-semibold">
-        Find people and emails
+        Find people, emails and verify them
       </h2>
       <p className="mb-3 text-sm text-fg-muted">
-        Connect a provider once. It is used for &ldquo;Find people&rdquo; and
-        &ldquo;Find email&rdquo; on a company. Emails are only looked up for
-        accounts you approved.
+        Connect a provider once. It is used for &ldquo;Find people&rdquo;,
+        &ldquo;Find email&rdquo; and &ldquo;Verify email&rdquo; on a company.
+        Emails are only looked up and verified for accounts you approved.
       </p>
       <div className="grid gap-3 md:grid-cols-2">
         {PROVIDERS.map((provider) => (
@@ -107,13 +114,13 @@ function ProviderCard({
   } | null>(null);
 
   const have = new Set(connections.map((c) => c.category));
-  const connected = CATEGORIES.every((c) => have.has(c));
+  const connected = provider.categories.every((c) => have.has(c));
 
   async function save() {
     setBusy("save");
     setMessage(null);
     try {
-      for (const category of CATEGORIES) {
+      for (const category of provider.categories) {
         const existing = connections.find((c) => c.category === category);
         if (existing) {
           await updateConnection(existing.id, {

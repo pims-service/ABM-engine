@@ -12,9 +12,10 @@ from typing import Any
 from rest_framework import serializers
 
 from apps.companies.analysis import latest_analysis_jobs
-from apps.companies.models import Company, CompanyResearch
+from apps.companies.models import Company, CompanyResearch, Contact
 from apps.integrations.crm_connection import crm_provider
-from apps.outreach.models import Activity, ActivityType, OutreachAngle
+from apps.integrations.services import resolve_connection
+from apps.outreach.models import Activity, ActivityType, Message, MessageStatus, OutreachAngle
 from apps.outreach.services import FeedbackKind, FeedbackTargetType
 from apps.research.models import (
     AIRecommendation,
@@ -28,7 +29,7 @@ GAP_HEADCOUNT = (
     "Sales, business development and marketing headcount, and 3, 6 and 12 month growth, need a "
     "licensed company-data provider. None is connected yet."
 )
-GAP_BUYERS = "Buyer ranking needs a people-data provider. None is connected yet."
+GAP_BUYERS = "No people are listed yet. Connect a people-data provider or add them by hand."
 
 
 class SourceSerializer(serializers.Serializer[Any]):
@@ -123,6 +124,13 @@ class CardAnalysisSerializer(serializers.Serializer[Any]):
     error_summary = serializers.CharField(allow_blank=True)
 
 
+class WorkflowStepSerializer(serializers.Serializer[Any]):
+    key = serializers.CharField()
+    title = serializers.CharField()
+    done = serializers.BooleanField()
+    detail = serializers.CharField(allow_blank=True)
+
+
 class ResearchCardSerializer(serializers.Serializer[Any]):
     company = CardCompanySerializer()
     research = CardResearchSerializer(allow_null=True)
@@ -142,6 +150,11 @@ class ResearchCardSerializer(serializers.Serializer[Any]):
     )
     has_angle = serializers.BooleanField(
         help_text="True when an outreach angle exists, so messages can be written."
+    )
+    workflow = WorkflowStepSerializer(
+        many=True,
+        help_text="The steps after ADD (find contact, email, verify, messages, approve, export); "
+        "empty until the account is decided ADD.",
     )
 
 
@@ -251,6 +264,58 @@ def _outreach_stage(company: Company) -> str:
     return outreach_stage(company)
 
 
+def _workflow(company: Company, decision: Any, contacts: list[Contact]) -> list[dict[str, Any]]:
+    """Brief section 12: what is done and what is next for an approved account."""
+    if decision is None or decision.decision != "add":
+        return []
+    primary = next((c for c in contacts if c.role == "primary"), None)
+    messages = list(Message.objects.filter(company=company))
+    approved = [m for m in messages if m.status in (MessageStatus.APPROVED, MessageStatus.EXPORTED)]
+    exported = any(m.status == MessageStatus.EXPORTED for m in messages)
+    email_status = primary.email_status if primary else ""
+    return [
+        {
+            "key": "contact",
+            "title": "Choose the person to contact",
+            "done": primary is not None,
+            "detail": primary.name if primary else "Mark a primary target in People.",
+        },
+        {
+            "key": "email",
+            "title": "Find their email",
+            "done": bool(primary and primary.email),
+            "detail": primary.email if primary and primary.email else "Use Find email in People.",
+        },
+        {
+            "key": "verify",
+            "title": "Verify the email",
+            "done": email_status in ("verified", "invalid"),
+            "detail": {
+                "verified": "Deliverable.",
+                "invalid": "Not deliverable: find another address.",
+            }.get(email_status, "Use Verify in People."),
+        },
+        {
+            "key": "messages",
+            "title": "Write the messages",
+            "done": bool(messages),
+            "detail": f"{len(messages)} drafted." if messages else "Generate them in Outreach.",
+        },
+        {
+            "key": "approve",
+            "title": "Approve a message",
+            "done": bool(approved),
+            "detail": f"{len(approved)} approved." if approved else "Review and approve a draft.",
+        },
+        {
+            "key": "export",
+            "title": "Export or push",
+            "done": exported,
+            "detail": "Sent downstream." if exported else "Export it or push it to the CRM.",
+        },
+    ]
+
+
 def build_card(company: Company) -> dict[str, Any]:
     """The card of ``company``: latest research, trigger state, ICP, recommendation, decision."""
     research = (
@@ -277,7 +342,9 @@ def build_card(company: Company) -> dict[str, Any]:
     gaps: list[str] = []
     if research is None or research.sales_headcount is None:
         gaps.append(GAP_HEADCOUNT)
-    gaps.append(GAP_BUYERS)
+    contacts = list(Contact.objects.active().filter(company=company))
+    if not contacts and resolve_connection(company.client_id, "people_data") is None:
+        gaps.append(GAP_BUYERS)
     return {
         "company": {
             "id": company.pk,
@@ -306,6 +373,7 @@ def build_card(company: Company) -> dict[str, Any]:
         "outreach_status": _outreach_stage(company),
         "crm_provider": crm_provider(company.client_id),
         "exported_at": _exported_at(company),
+        "workflow": _workflow(company, decision, contacts),
     }
 
 

@@ -2,7 +2,8 @@
 
 Same rules as ``crm_connection``: this module is the only place that knows the concrete adapters,
 every call is logged as one ``ProviderCall`` and checked against the connection's budget, and a
-missing or unusable connection is a clear, safe message. "Test connection" works for SignalHire.
+missing or unusable connection is a clear, safe message. "Test connection" works for both
+SignalHire and ZeroBounce.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import functools
 from typing import Any
 
 from apps.integrations.adapters.signalhire import SignalHireEmailAdapter, SignalHirePeopleAdapter
+from apps.integrations.adapters.zerobounce import ZeroBounceAdapter
 from apps.integrations.crypto import (
     Credentials,
     CredentialsNotSetError,
@@ -31,7 +33,11 @@ from apps.integrations.usage import tracked_execute
 
 PEOPLE = "people_data"
 EMAIL = "email_enrichment"
-_WHAT = {PEOPLE: "people data", EMAIL: "email enrichment"}
+VERIFY = "email_verification"
+#: The provider each category supports so far.
+PROVIDER = {PEOPLE: "signalhire", EMAIL: "signalhire", VERIFY: "zerobounce"}
+LABEL = {"signalhire": "SignalHire", "zerobounce": "ZeroBounce"}
+_WHAT = {PEOPLE: "people data", EMAIL: "email enrichment", VERIFY: "email verification"}
 
 
 class PeopleUnavailable(Exception):
@@ -42,12 +48,14 @@ def _registry() -> AdapterRegistry:
     registry = AdapterRegistry()
     registry.register(SignalHirePeopleAdapter)
     registry.register(SignalHireEmailAdapter)
+    registry.register(ZeroBounceAdapter)
     return registry
 
 
 def _message_missing(category: str) -> str:
     return (
-        f"No {_WHAT[category]} provider is connected for this client. Add a SignalHire "
+        f"No {_WHAT[category]} provider is connected for this client. Add a "
+        f"{LABEL[PROVIDER[category]]} "
         f"connection under Settings > Integrations (category "
         f"{category.replace('_', ' ').title()}, with your API key), then try again."
     )
@@ -58,9 +66,9 @@ def get_adapter(category: str, client_id: Any, *, campaign: Any = None, user: An
     connection = resolve_connection(client_id, category)
     if connection is None:
         raise PeopleUnavailable(_message_missing(category))
-    if connection.provider != SignalHirePeopleAdapter.key:
+    if connection.provider != PROVIDER[category]:
         raise PeopleUnavailable(
-            f"The provider '{connection.provider}' is not supported yet. Use SignalHire."
+            f"The provider '{connection.provider}' is not supported yet for {_WHAT[category]}."
         )
     try:
         credentials = get_credentials(connection, purpose=f"{category}_lookup")
@@ -78,7 +86,11 @@ def get_adapter(category: str, client_id: Any, *, campaign: Any = None, user: An
         raise PeopleUnavailable(
             "The connection is not set up correctly (check the API key)."
         ) from error
-    names = ("find_people",) if category == PEOPLE else ("find_email", "find_email_by_uid")
+    names = {
+        PEOPLE: ("find_people",),
+        EMAIL: ("find_email", "find_email_by_uid"),
+        VERIFY: ("verify",),
+    }[category]
     for name in names:
         setattr(
             adapter, name, _metered(connection, adapter, getattr(adapter, name), campaign, user)
@@ -107,12 +119,12 @@ def _test(category: str) -> Any:
             return False, "The settings are not complete: add the API key."
         result = adapter.test_connection()
         if result.ok:
-            return True, "SignalHire accepted the API key."
+            return True, "The provider accepted the API key."
         return False, result.message
 
     return tester
 
 
 def register_testers() -> None:
-    for category in (PEOPLE, EMAIL):
-        register_tester(category, SignalHirePeopleAdapter.key, _test(category), replace=True)
+    for category, provider in PROVIDER.items():
+        register_tester(category, provider, _test(category), replace=True)

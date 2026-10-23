@@ -5163,6 +5163,78 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/verify-email/:
+    post:
+      operationId: companies_verify_email
+      description: 'Checks the person''s email with the connected verification provider
+        (ZeroBounce). Only for a company you decided ADD on. A clean valid answer
+        marks the email verified, an undeliverable one marks it invalid, anything
+        uncertain (risky, catch-all, unknown) leaves it unverified. Needs the `EDIT`
+        level: manager and admin. Others get 403; companies of clients you are not
+        a member of give 404.'
+      summary: Verify one person's email
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRefRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/website-research/:
     post:
       operationId: companies_website_research
@@ -10996,6 +11068,12 @@ components:
         has_angle:
           type: boolean
           description: True when an outreach angle exists, so messages can be written.
+        workflow:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+          description: The steps after ADD (find contact, email, verify, messages,
+            approve, export); empty until the account is decided ADD.
       required:
       - analysis
       - company
@@ -11010,6 +11088,7 @@ components:
       - recommendation
       - research
       - trigger
+      - workflow
     ResearchSummary:
       type: object
       description: The current (latest) research snapshot of a company. Null facts
@@ -11669,6 +11748,22 @@ components:
       required:
       - code
       - message
+    WorkflowStep:
+      type: object
+      properties:
+        key:
+          type: string
+        title:
+          type: string
+        done:
+          type: boolean
+        detail:
+          type: string
+      required:
+      - detail
+      - done
+      - key
+      - title
   securitySchemes:
     jwtAuth:
       type: http

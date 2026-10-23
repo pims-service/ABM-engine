@@ -67,7 +67,7 @@ export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
   company_data: ["fake"],
   people_data: ["signalhire", "mawsool", "fake"],
   email_enrichment: ["signalhire", "mawsool", "fake"],
-  email_verification: ["fake"],
+  email_verification: ["zerobounce", "fake"],
   crm: ["gohighlevel", "fake"],
   outreach: ["fake"],
   storage: ["fake"],
@@ -99,6 +99,11 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
     credentialNames: ["api_key"],
     configHint:
       "Needs only your SignalHire API key (Integrations & API in your SignalHire account). Add it under People data to find people, and under Email enrichment to find emails (one credit each).",
+  },
+  zerobounce: {
+    credentialNames: ["api_key"],
+    configHint:
+      'Needs only your ZeroBounce API key. Optional: {"region": "default" | "us" | "eu"} picks the server.',
   },
   mawsool: {
     credentialNames: ["api_key"],
