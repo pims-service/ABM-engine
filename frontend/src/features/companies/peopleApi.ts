@@ -73,3 +73,29 @@ export async function archiveContact(
     body: { contact_id: contactId },
   });
 }
+
+export type FoundPeople = components["schemas"]["FoundPeople"];
+
+/** Search the connected people-data provider for the campaign's buyer titles (manager level). */
+export async function findPeople(companyId: string): Promise<FoundPeople> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/companies/{id}/find-people/",
+    { params: { path: { id: companyId } } },
+  );
+  return data as FoundPeople;
+}
+
+/** Look up one person's email; only for an approved (ADD) account (manager level). */
+export async function findEmail(
+  companyId: string,
+  contactId: string,
+): Promise<Contact> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/companies/{id}/find-email/",
+    {
+      params: { path: { id: companyId } },
+      body: { contact_id: contactId },
+    },
+  );
+  return data as Contact;
+}
