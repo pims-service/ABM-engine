@@ -20,6 +20,7 @@ import { type Connection, useConnections } from "./api";
 import { CATEGORIES } from "./categories";
 import { ConnectionStatusBadge, LastTest } from "./ConnectionBadges";
 import { HintList } from "./CredentialsDialog";
+import { ProviderSetup } from "./ProviderSetup";
 import { type TestState, useConnectionActions } from "./useConnectionActions";
 
 /** `/settings/integrations`: the selected client's provider connections. */
@@ -152,6 +153,13 @@ export function ClientIntegrations({
             <Alert tone="info">
               Showing the first {connections.length} connections.
             </Alert>
+          ) : null}
+          {canManage ? (
+            <ProviderSetup
+              clientId={clientId}
+              connections={connections}
+              onChanged={reload}
+            />
           ) : null}
           {CATEGORIES.map((category) => {
             const items = connections.filter(
