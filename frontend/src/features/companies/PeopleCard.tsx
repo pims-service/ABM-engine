@@ -14,6 +14,8 @@ import {
   archiveContact,
   type Contact,
   type ContactRole,
+  findEmail,
+  findPeople,
   setContactRole,
 } from "./peopleApi";
 import { RankingPanel } from "./RankingPanel";
@@ -23,7 +25,7 @@ const ROLE_LABEL: Record<string, string> = {
   secondary: "Secondary target",
 };
 
-/** Potential decision-makers (Brief sections 8 and 14). Entered by hand until a provider is set. */
+/** Potential decision-makers (Brief sections 8 and 14). Added by hand or found through the connected provider. */
 export function PeopleCard({
   companyId,
   contacts,
@@ -36,6 +38,7 @@ export function PeopleCard({
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [found, setFound] = useState<string | null>(null);
 
   async function run(key: string, action: () => Promise<unknown>) {
     setBusy(key);
@@ -109,6 +112,18 @@ export function PeopleCard({
                     </button>
                   ),
                 )}
+                {contact.email ? null : (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    className="text-accent underline-offset-2 hover:underline"
+                    onClick={() =>
+                      run(contact.id, () => findEmail(companyId, contact.id))
+                    }
+                  >
+                    Find email
+                  </button>
+                )}
                 <button
                   type="button"
                   disabled={busy !== null}
@@ -129,6 +144,9 @@ export function PeopleCard({
           {error}
         </Alert>
       ) : null}
+      {found && !error ? (
+        <p className="mt-3 text-sm text-fg-muted">{found}</p>
+      ) : null}
       {contacts.length > 0 ? (
         <div className="mt-4">
           <RankingPanel companyId={companyId} onApplied={onChange} />
@@ -145,9 +163,30 @@ export function PeopleCard({
             onCancel={() => setAdding(false)}
           />
         ) : (
-          <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-            Add a person
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setAdding(true)}
+            >
+              Add a person
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() =>
+                run("find", async () => {
+                  const result = await findPeople(companyId);
+                  setFound(
+                    `${result.added.length} added, ${result.skipped} already listed. ${result.note}`.trim(),
+                  );
+                })
+              }
+            >
+              {busy === "find" ? "Searching…" : "Find people"}
+            </Button>
+          </div>
         )}
       </div>
     </Card>

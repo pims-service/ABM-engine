@@ -26,6 +26,7 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.companies import services
 from apps.companies.analysis import latest_analysis_jobs, request_analysis
+from apps.companies.lookup import find_email_for, find_people_for
 from apps.companies.models import Company
 from apps.core.models import Job
 from apps.core.permissions import ClientScopedViewSet, request_roles
@@ -82,6 +83,7 @@ from .contacts import (
     ContactPatchSerializer,
     ContactRefSerializer,
     ContactSerializer,
+    FoundPeopleSerializer,
     add_contact_to,
     company_contacts,
     contact_body,
@@ -337,6 +339,8 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "add_contact": Level.EDIT,
         "update_contact": Level.EDIT,
         "archive_contact": Level.EDIT,
+        "find_people": Level.EDIT,
+        "find_email": Level.EDIT,
         "messages": Level.READ,
         "generate_messages": Level.EDIT,
         "approve_message": Level.DECIDE,
@@ -589,6 +593,50 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         body.is_valid(raise_exception=True)
         find_contact(company, body.validated_data["contact_id"]).archive()
         return Response(status=204)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_find_people",
+        summary="Find people at this company",
+        description="Searches the client's connected people-data provider (SignalHire) for the "
+        "campaign's preferred buyer titles and saves the matches as contacts, each with its "
+        "provider as the source. People already on the company are not added again. Searching "
+        "uses the provider's daily quota, not credits. Ranking stays a separate step. "
+        + _levels("EDIT", "manager and admin"),
+        request=None,
+        responses={200: FoundPeopleSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="find-people")
+    def find_people(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        with api_validation():
+            found = find_people_for(company, self._user())
+        body = {
+            "added": [contact_body(c) for c in found["added"]],
+            "skipped": found["skipped"],
+            "note": found["note"],
+        }
+        return Response(FoundPeopleSerializer(body).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_find_email",
+        summary="Find one person's email",
+        description="Reveals the work email of one contact through the connected email provider. "
+        "Only for a company you decided ADD on, because it can cost a credit. The email is saved "
+        "as unverified; a miss is saved as not found. " + _levels("EDIT", "manager and admin"),
+        request=ContactRefSerializer,
+        responses={200: ContactSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="find-email")
+    def find_email(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = ContactRefSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        contact = find_contact(company, body.validated_data["contact_id"])
+        with api_validation():
+            contact = find_email_for(contact, self._user())
+        return Response(ContactSerializer(contact_body(contact)).data)
 
     @extend_schema(
         tags=TAGS,

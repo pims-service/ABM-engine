@@ -131,3 +131,9 @@ def update_contact_of(company: Company, data: dict[str, Any]) -> Contact:
         raise ValidationError({"non_field_errors": exc.messages}) from exc
     contact.refresh_from_db()
     return contact
+
+
+class FoundPeopleSerializer(serializers.Serializer[Any]):
+    added = ContactSerializer(many=True)
+    skipped = serializers.IntegerField(help_text="Already on the company, so not added again.")
+    note = serializers.CharField(allow_blank=True)

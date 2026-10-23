@@ -98,7 +98,7 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
   signalhire: {
     credentialNames: ["api_key"],
     configHint:
-      "Placeholder: you can save the key now, but the SignalHire adapter is not built yet, so nothing is looked up and Test connection says so.",
+      "Needs only your SignalHire API key (Integrations & API in your SignalHire account). Add it under People data to find people, and under Email enrichment to find emails (one credit each).",
   },
   mawsool: {
     credentialNames: ["api_key"],
