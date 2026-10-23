@@ -1,4 +1,4 @@
-# People and email providers: SignalHire and Mowsol (placeholders)
+# People and email providers: SignalHire and Mawsool (placeholders)
 
 Both names are selectable under Settings, Integrations, in the **People data** and **Email
 enrichment** categories. You can save a connection with its API key (stored encrypted). Test

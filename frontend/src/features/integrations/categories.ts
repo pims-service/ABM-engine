@@ -65,8 +65,8 @@ export function categoryLabel(value: string): string {
 export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
   llm: ["anthropic", "fake"],
   company_data: ["fake"],
-  people_data: ["signalhire", "mowsol", "fake"],
-  email_enrichment: ["signalhire", "mowsol", "fake"],
+  people_data: ["signalhire", "mawsool", "fake"],
+  email_enrichment: ["signalhire", "mawsool", "fake"],
   email_verification: ["fake"],
   crm: ["gohighlevel", "fake"],
   outreach: ["fake"],
@@ -100,10 +100,10 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
     configHint:
       "Placeholder: you can save the key now, but the SignalHire adapter is not built yet, so nothing is looked up and Test connection says so.",
   },
-  mowsol: {
+  mawsool: {
     credentialNames: ["api_key"],
     configHint:
-      "Placeholder: you can save the key now, but the Mowsol adapter is not built yet, so nothing is looked up and Test connection says so.",
+      "Placeholder: you can save the key now, but the Mawsool adapter is not built yet, so nothing is looked up and Test connection says so.",
   },
   fake: {
     credentialNames: ["api_key"],
