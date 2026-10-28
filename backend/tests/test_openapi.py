@@ -107,6 +107,14 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "POST",
             "/api/v1/campaigns/{campaign_pk}/accounts/push-to-crm/",
         ),
+        "campaign_accounts_queue_push_to_crm": (
+            "POST",
+            "/api/v1/campaigns/{campaign_pk}/accounts/queue-push-to-crm/",
+        ),
+        "campaign_accounts_enrich_contacts": (
+            "POST",
+            "/api/v1/campaigns/{campaign_pk}/accounts/enrich-contacts/",
+        ),
         "companies_commercial_team": ("POST", "/api/v1/companies/{id}/commercial-team/"),
         "companies_outreach_status": ("POST", "/api/v1/companies/{id}/outreach-status/"),
         "campaign_accounts_export": ("GET", "/api/v1/campaigns/{campaign_pk}/accounts/export/"),

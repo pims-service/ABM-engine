@@ -112,6 +112,25 @@ export async function analyzeUnassessed(
   return data as BulkResult;
 }
 
+export type EnrichResult = components["schemas"]["EnrichContactsResult"];
+
+/**
+ * Queue the email lookup and check for the primary and secondary people of every approved
+ * account (manager level). Runs in the background; the answer only counts who was queued.
+ */
+export async function findAndVerifyEmails(
+  campaignId: string,
+): Promise<EnrichResult> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/campaigns/{campaign_pk}/accounts/enrich-contacts/",
+    {
+      params: { path: { campaign_pk: campaignId } },
+      body: { step: "find_and_verify" },
+    },
+  );
+  return data as EnrichResult;
+}
+
 /** Download the approved accounts (those you decided ADD) as a CSV file (manager level). */
 export async function exportApproved(campaignId: string): Promise<void> {
   const { data } = await getApiClient().GET(

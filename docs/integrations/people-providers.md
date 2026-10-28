@@ -37,6 +37,29 @@ credit balance, which costs nothing.
 
 Not verified against a live account.
 
+## Many people at once: the background workers
+
+Find email and Verify email also run as background jobs, so a slow, rate-limited or empty provider
+never holds up a web request. `POST /campaigns/{id}/accounts/enrich-contacts/` takes a `step`
+(`find_emails`, `verify_emails` or `find_and_verify`) and optionally `company_ids`, and answers at
+once with how many people were queued, were already waiting, or were not ready.
+
+* **Who:** the primary and secondary people of accounts decided ADD, at most 300 per request.
+  Other people found by the search are never looked up in bulk.
+* **Checked twice:** when queued and again just before each call, because a decision, an email or
+  an archive can change while a job waits. A person who no longer qualifies is skipped, with the
+  reason kept on the job item. An email that is already verified or invalid is not checked again.
+* **Same rules as the buttons:** every call is metered and counted against the connection's monthly
+  budget. A rate limit or provider outage re-queues the job after the wait the provider asked for;
+  a rejected key, a missing configuration or an used-up quota ends the job at once without
+  touching anyone.
+* **Find then verify:** `find_and_verify` queues a verify job for each email the find job
+  reveals, and verifies at once the people who already have an unverified email.
+* **Where it lives:** `apps/companies/enrichment.py` (who and queueing) and the tasks
+  `find_contact_emails` and `verify_contact_emails` in `apps/companies/tasks.py`, built on
+  `provider_task` (`docs/integrations/resilience.md`). Progress is on the `Job` rows (type
+  `find_contact_emails` or `verify_contact_emails`, one item per person).
+
 ## Mawsool (placeholder)
 
 Selectable in the same categories. You can save a connection, but there is no adapter: Mawsool

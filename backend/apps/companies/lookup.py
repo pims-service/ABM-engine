@@ -146,6 +146,11 @@ def find_email_for(contact: Contact, user: User) -> Contact:
 _VERIFIED = {"valid": EmailStatus.VERIFIED, "invalid": EmailStatus.INVALID}
 
 
+def email_status_for(verdict: str) -> str:
+    """The status to store for a verifier's ``verdict``; anything uncertain stays unverified."""
+    return _VERIFIED.get(verdict, EmailStatus.UNVERIFIED)
+
+
 def verify_email_for(contact: Contact, user: User) -> Contact:
     """Check one contact's email with the connected verifier (approved accounts only)."""
     company = contact.company
@@ -167,6 +172,4 @@ def verify_email_for(contact: Contact, user: User) -> Contact:
     except ProviderError as error:
         raise _fail(error) from None
     status = result.data.status if result.data else "unknown"
-    return services.update_contact(
-        contact, email_status=_VERIFIED.get(status, EmailStatus.UNVERIFIED)
-    )
+    return services.update_contact(contact, email_status=email_status_for(status))

@@ -31,6 +31,11 @@ urlpatterns = [
         name="campaign-accounts-analyze",
     ),
     path(
+        "campaigns/<uuid:campaign_pk>/accounts/enrich-contacts/",
+        AccountViewSet.as_view({"post": "enrich_contacts"}),
+        name="campaign-accounts-enrich-contacts",
+    ),
+    path(
         "campaigns/<uuid:campaign_pk>/accounts/decide/",
         AccountViewSet.as_view({"post": "decide"}),
         name="campaign-accounts-decide",
@@ -54,6 +59,11 @@ urlpatterns = [
         "campaigns/<uuid:campaign_pk>/accounts/push-to-crm/",
         AccountViewSet.as_view({"post": "push_to_crm"}),
         name="campaign-accounts-push-to-crm",
+    ),
+    path(
+        "campaigns/<uuid:campaign_pk>/accounts/queue-push-to-crm/",
+        AccountViewSet.as_view({"post": "queue_push_to_crm"}),
+        name="campaign-accounts-queue-push-to-crm",
     ),
     path("", include(router.urls)),
 ]

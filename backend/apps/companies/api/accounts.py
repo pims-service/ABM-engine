@@ -40,6 +40,14 @@ from rest_framework.response import Response
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.companies.analysis import latest_analysis_jobs, request_analysis
+from apps.companies.enrichment import (
+    FIND_AND_VERIFY,
+    FIND_EMAILS,
+    MAX_CONTACTS,
+    STEP_CHOICES,
+    VERIFY_EMAILS,
+    request_contact_enrichment,
+)
 from apps.companies.models import Company, CompanyResearch, CompanyStatus, Contact
 from apps.companies.tasks import ANALYSIS_JOB_TYPE
 from apps.core.jobs import reap_stale_jobs
@@ -48,6 +56,7 @@ from apps.core.permissions import ClientScopedViewSet, request_roles
 from apps.core.roles import Level, role_allows
 from apps.core.schema import error_responses
 from apps.core.tenancy import is_global_admin
+from apps.outreach.crm_jobs import MAX_ACCOUNTS, request_crm_push
 from apps.outreach.messages_api import BulkCrmResultSerializer, bulk_push
 from apps.outreach.models import Activity, ActivityType
 from apps.outreach.services import record_activity
@@ -157,6 +166,54 @@ class BulkAnalyzeRequestSerializer(serializers.Serializer[Any]):
     company_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, max_length=MAX_BULK
     )
+
+
+class EnrichContactsRequestSerializer(serializers.Serializer[Any]):
+    step = serializers.ChoiceField(
+        choices=STEP_CHOICES,
+        help_text=f"`{FIND_EMAILS}`: look up the email of people who have none; "
+        f"`{VERIFY_EMAILS}`: check the emails people already have; `{FIND_AND_VERIFY}`: both, "
+        "checking each email as soon as it is found.",
+    )
+    company_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=MAX_BULK,
+        help_text="Limit this to these companies. Leave out for every approved company.",
+    )
+
+
+class EnrichContactsResultSerializer(serializers.Serializer[Any]):
+    queued = serializers.IntegerField(help_text="People handed to the worker.")
+    already_running = serializers.IntegerField(
+        help_text="People already waiting in a queued or running job of the same kind."
+    )
+    not_ready = serializers.IntegerField(
+        help_text="People who can take no step yet (no email to check, no profile link or "
+        "provider id to look them up with)."
+    )
+    job_ids = serializers.ListField(child=serializers.UUIDField())
+
+
+class QueuePushRequestSerializer(serializers.Serializer[Any]):
+    company_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        required=False,
+        max_length=MAX_BULK,
+        help_text="Limit this to these companies. Leave out for every approved company.",
+    )
+
+
+class QueuePushResultSerializer(serializers.Serializer[Any]):
+    queued = serializers.IntegerField(help_text="Accounts handed to the worker.")
+    already_running = serializers.IntegerField(
+        help_text="Accounts already waiting in a queued or running push."
+    )
+    not_ready = serializers.IntegerField(
+        help_text="Accounts that cannot be pushed yet (no primary person, no email or no "
+        "approved message)."
+    )
+    job_id = serializers.UUIDField(allow_null=True, help_text="Null when nothing was queued.")
 
 
 MAX_BULK_DECISIONS = 200
@@ -379,8 +436,10 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "list": Level.READ,
         "summary": Level.READ,
         "analyze": Level.EDIT,
+        "enrich_contacts": Level.EDIT,
         "export": Level.EDIT,
         "push_to_crm": Level.EDIT,
+        "queue_push_to_crm": Level.EDIT,
         "decide": Level.DECIDE,
         "agreement": Level.EDIT,
         "feedback_export": Level.EDIT,
@@ -521,6 +580,50 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
                 running += 1
         return Response(
             {"requested": len(picked), "queued": queued, "already_running": running},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_enrich_contacts",
+        summary="Find and verify emails in the background",
+        description="Queues the email steps for the primary and secondary people of accounts you "
+        f"decided ADD (up to {MAX_CONTACTS} people per request, by company name): look up the "
+        "email, check it, or both. The work runs in the background, so a provider that is slow, "
+        "rate limited or out of budget never blocks this request; the answer says how many people "
+        "were queued, were already waiting, or were not ready. Lookups and checks can cost "
+        "provider credits and count against the connection's monthly budget. Refused with a "
+        "message when no usable provider is connected. Needs the EDIT level.",
+        request=EnrichContactsRequestSerializer,
+        responses={
+            202: EnrichContactsResultSerializer,
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["post"], url_path="enrich-contacts")
+    def enrich_contacts(self, request: Request, campaign_pk: str | None = None) -> Response:
+        body = EnrichContactsRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        campaign = self._campaign(Level.EDIT)
+        companies = self._campaign_companies(Level.EDIT).filter(
+            _latest(HumanDecision, decision="add")
+        )
+        if ids := body.validated_data.get("company_ids"):
+            companies = companies.filter(pk__in=ids)
+        user = request.user if isinstance(request.user, User) else None
+        try:
+            outcome = request_contact_enrichment(
+                campaign, list(companies), body.validated_data["step"], user
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"detail": exc.messages}) from exc
+        return Response(
+            {
+                "queued": outcome.queued,
+                "already_running": outcome.already_running,
+                "not_ready": outcome.not_ready,
+                "job_ids": outcome.job_ids,
+            },
             status=status.HTTP_202_ACCEPTED,
         )
 
@@ -690,3 +793,48 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         )
         user = request.user if isinstance(request.user, User) else None
         return Response(BulkCrmResultSerializer(bulk_push(companies, campaign, user)).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_queue_push_to_crm",
+        summary="Push approved accounts to the CRM in the background",
+        description=f"Like push-to-crm, but the push runs as a background job, so a slow or rate "
+        f"limited CRM never blocks this request. Looks at up to {MAX_ACCOUNTS} accounts you "
+        "decided ADD (by company name); accounts that are not ready are counted in `not_ready` "
+        "and accounts already waiting in a push in `already_running`. Each push is metered and "
+        "counts against the CRM connection's budget. Refused with a message when no usable CRM "
+        "is connected. Needs the EDIT level.",
+        request=QueuePushRequestSerializer,
+        responses={
+            202: QueuePushResultSerializer,
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["post"], url_path="queue-push-to-crm")
+    def queue_push_to_crm(self, request: Request, campaign_pk: str | None = None) -> Response:
+        body = QueuePushRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        campaign = self._campaign(Level.EDIT)
+        companies = (
+            self._campaign_companies(Level.EDIT)
+            .filter(_latest(HumanDecision, decision="add"))
+            .select_related("campaign")
+        )
+        if ids := body.validated_data.get("company_ids"):
+            companies = companies.filter(pk__in=ids)
+        user = request.user if isinstance(request.user, User) else None
+        try:
+            outcome = request_crm_push(
+                campaign, list(companies.order_by("name", "id")[:MAX_ACCOUNTS]), user
+            )
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"detail": exc.messages}) from exc
+        return Response(
+            {
+                "queued": outcome.queued,
+                "already_running": outcome.already_running,
+                "not_ready": outcome.not_ready,
+                "job_id": outcome.job_id,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )

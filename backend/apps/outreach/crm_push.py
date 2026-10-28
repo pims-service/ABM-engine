@@ -60,6 +60,15 @@ def _ready(company: Company) -> tuple[Contact, list[Message]]:
     return contact, messages
 
 
+def not_ready_reason(company: Company) -> str | None:
+    """Why ``company`` cannot be pushed yet (a plain message), or ``None`` when it can."""
+    try:
+        _ready(company)
+    except PushBlocked as exc:
+        return "; ".join(exc.messages)
+    return None
+
+
 def _summary(company: Company) -> list[str]:
     assessment = ICPAssessment.objects.latest_for(company)
     recommendation = AIRecommendation.objects.latest_for(company)
