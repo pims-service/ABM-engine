@@ -15,7 +15,6 @@ from apps.companies.models import Company
 from apps.core.models import JobItem
 from apps.integrations.crm_connection import crm_registry
 from apps.integrations.framework import CRMContact
-from apps.integrations.people_connection import metered_operation
 from apps.integrations.tasks import ProviderJobContext, provider_task
 
 from .crm_jobs import JOB_TYPE, SUBJECT_TYPE
@@ -34,15 +33,7 @@ class _ResilientCrm:
 
     def push_contact(self, contact: CRMContact) -> Any:
         ctx = self._ctx
-        operation = metered_operation(
-            ctx.connection,
-            ctx.adapter,
-            ctx.adapter.push_contact,  # type: ignore[attr-defined]
-            job=ctx.job,
-            campaign=ctx.job.campaign,
-            user=ctx.job.created_by,
-        )
-        return ctx.call(operation, contact)
+        return ctx.call_metered(ctx.adapter.push_contact, contact)  # type: ignore[attr-defined]
 
 
 @provider_task(

@@ -374,7 +374,9 @@ describe("CampaignForm (edit)", () => {
     await user.type(screen.getByLabelText(/^Campaign name/), "d");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     expect(
-      await screen.findByText(/the rules are unchanged \(still version 2\)/),
+      await screen.findByText(
+        /The rules did not change, so this is still version 2/,
+      ),
     ).toBeInTheDocument();
     expect(api.updateCampaign).toHaveBeenCalledWith("camp-1", {
       name: "KSA pushd",

@@ -27,7 +27,6 @@ from apps.integrations.people_connection import (
     EMAIL,
     PROVIDER,
     VERIFY,
-    metered_operation,
     people_registry,
 )
 from apps.integrations.tasks import ProviderJobContext, provider_task
@@ -96,18 +95,6 @@ def _load_contact(item: JobItem) -> Contact | None:
     )
 
 
-def _metered(ctx: ProviderJobContext, operation: Any) -> Any:
-    """``operation`` with usage logging and the budget check, ready for ``ctx.call``."""
-    return metered_operation(
-        ctx.connection,
-        ctx.adapter,
-        operation,
-        job=ctx.job,
-        campaign=ctx.job.campaign,
-        user=ctx.job.created_by,
-    )
-
-
 @provider_task(
     job_type=enrichment.FIND_JOB_TYPE,
     category=EMAIL,
@@ -142,14 +129,14 @@ def find_contact_emails(
             ref = PersonRef(
                 contact.name, title=contact.title or None, profile_url=contact.profile_url
             )
-            result = ctx.call(
-                _metered(ctx, ctx.adapter.find_email),  # type: ignore[attr-defined]
+            result = ctx.call_metered(
+                ctx.adapter.find_email,  # type: ignore[attr-defined]
                 ref,
                 company.domain or "",
             )
         else:
-            result = ctx.call(
-                _metered(ctx, ctx.adapter.find_email_by_uid),  # type: ignore[attr-defined]
+            result = ctx.call_metered(
+                ctx.adapter.find_email_by_uid,  # type: ignore[attr-defined]
                 reference[len(prefix) :],
             )
         email = result.data.email if result.data else None
@@ -206,8 +193,8 @@ def verify_contact_emails(ctx: ProviderJobContext, contact_ids: list[str]) -> di
         )
         if contact is None or reason:
             return {"skipped": reason}
-        result = ctx.call(
-            _metered(ctx, ctx.adapter.verify),  # type: ignore[attr-defined]
+        result = ctx.call_metered(
+            ctx.adapter.verify,  # type: ignore[attr-defined]
             contact.email,
         )
         verdict = result.data.status if result.data else "unknown"

@@ -85,6 +85,7 @@ from .models import IntegrationConnection
 from .resilience import Resilience, RetryPolicy, TimeoutPolicy, process_status, resilient_execute
 from .resilience.store import SharedState
 from .services import ConnectionUnavailableError, get_credentials, resolve_connection
+from .usage import tracked_execute
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,30 @@ class ProviderJobContext:
             limiter=self.resilience.limiter,
             breaker=self.resilience.breaker,
             timeouts=self.resilience.timeouts,
+            **kwargs,
+        )
+
+    def call_metered(
+        self, operation: Callable[..., AdapterResult[Any]], /, *args: Any, **kwargs: Any
+    ) -> AdapterResult[Any]:
+        """``call`` with usage logging and the budget check: one ``ProviderCall`` per call.
+
+        The metering wraps the resilient call, not the other way round: ``call`` runs the
+        operation on a deadline thread, which has its own database connection, so a usage row
+        written there would live outside the job's connection and transaction."""
+
+        def resilient(*a: Any, **k: Any) -> AdapterResult[Any]:
+            return self.call(operation, *a, **k)
+
+        functools.update_wrapper(resilient, operation)  # keeps the operation's name
+        return tracked_execute(
+            self.connection,
+            self.adapter,
+            resilient,
+            *args,
+            job=self.job,
+            campaign=self.job.campaign,
+            user=self.job.created_by,
             **kwargs,
         )
 
