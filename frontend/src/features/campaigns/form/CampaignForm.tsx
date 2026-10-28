@@ -225,7 +225,7 @@ export function CampaignForm({
           : renamed
             ? {
                 tone: "success",
-                text: `Saved. The name was updated; the rules are unchanged (still version ${after}).`,
+                text: `Name saved. The rules did not change, so this is still version ${after}.`,
               }
             : {
                 tone: "info",
@@ -387,8 +387,8 @@ export function CampaignForm({
               )}
             </p>
             <p className="mt-2 text-xs text-fg-muted">
-              Saving a change to the rules creates a new immutable version;
-              older versions stay available.
+              Each change to the rules is saved as a new version. Older versions
+              are kept.
             </p>
             {versions.length > 1 ? (
               <details className="mt-3 text-sm">
@@ -425,7 +425,7 @@ export function CampaignForm({
                     setErrors({});
                   }}
                 >
-                  Fill in the example from the brief
+                  Fill in an example campaign
                 </Button>
                 <span>You can change every field afterwards.</span>
               </div>

@@ -92,7 +92,7 @@ export function ClientsPage() {
             title="No clients yet"
             description={
               canCreate
-                ? "A client is the company you run campaigns for. Create your first one to get started."
+                ? "A client is a company you run campaigns for. There are none yet."
                 : "You are not a member of any client yet. Ask an admin to add you."
             }
             action={

@@ -218,7 +218,7 @@ function ConnectionForm({
               value={provider}
               list={providerListId}
               error={errors.provider}
-              hint="Lower-case letters, digits and underscores, for example fake."
+              hint="Lower-case letters, digits and underscores, for example anthropic."
               maxLength={64}
               required
               markRequired

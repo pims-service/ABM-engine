@@ -96,7 +96,7 @@ export function ClientIntegrations({
     <>
       <PageHeader
         title="Integrations"
-        description={`Provider connections for ${clientName}. Secrets are write-only: they are never shown after saving.`}
+        description={`Provider connections for ${clientName}. Keys are never shown again after they are saved.`}
         actions={
           <>
             <Link

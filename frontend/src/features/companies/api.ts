@@ -5,20 +5,8 @@ import { type components, getApiClient } from "@/lib/api";
 
 export type Company = components["schemas"]["Company"];
 export type CompanyDetail = components["schemas"]["CompanyDetail"];
-export type CompanyPage = components["schemas"]["PaginatedCompanyList"];
 export type WebsiteResearch = components["schemas"]["WebsiteResearch"];
 export type ResearchedPage = components["schemas"]["ResearchedPage"];
-
-export async function listCampaignCompanies(
-  campaignId: string,
-  signal?: AbortSignal,
-): Promise<CompanyPage> {
-  const { data } = await getApiClient().GET(
-    "/api/v1/campaigns/{campaign_pk}/companies/",
-    { params: { path: { campaign_pk: campaignId } }, signal },
-  );
-  return data as CompanyPage;
-}
 
 export async function getCompany(
   id: string,

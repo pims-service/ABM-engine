@@ -64,7 +64,7 @@ const TRANSITION_COPY: Record<
   enable: {
     title: (name) => `Enable ${name}?`,
     description:
-      "Adapters can use it again. A connection in the error state returns to active.",
+      "It will be used again. A connection that was in an error state goes back to active.",
     confirm: "Enable connection",
     done: "Enabled",
     tone: "primary",
@@ -72,7 +72,7 @@ const TRANSITION_COPY: Record<
   disable: {
     title: (name) => `Disable ${name}?`,
     description:
-      "Adapters stop using it. Its settings and credentials are kept, and you can enable it again.",
+      "It stops being used. Its settings and credentials are kept, so you can turn it back on later.",
     confirm: "Disable connection",
     done: "Disabled",
     tone: "danger",
@@ -80,7 +80,7 @@ const TRANSITION_COPY: Record<
   archive: {
     title: (name) => `Archive ${name}?`,
     description:
-      "It leaves the default list and adapters stop using it. Nothing is deleted, and an admin can restore it.",
+      "It is hidden from the list and no longer used. Nothing is deleted, and an admin can restore it.",
     confirm: "Archive connection",
     done: "Archived",
     tone: "danger",

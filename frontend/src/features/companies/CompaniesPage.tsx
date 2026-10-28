@@ -35,6 +35,31 @@ import {
 import { addCompany } from "./api";
 import { pushApprovedToCrm, queueApprovedToCrm } from "./crmApi";
 
+/** The message after queueing background work: what started, then what was left out and why. */
+function queuedNotice(
+  result: { queued: number; already_running: number; not_ready: number },
+  [verb, one, many, tail = ""]: [string, string, string, string?],
+  after: string,
+  whySkipped: string,
+): string {
+  const parts: string[] = [];
+  if (result.queued > 0) {
+    const noun = result.queued === 1 ? one : many;
+    parts.push(`${verb} ${result.queued} ${noun}${tail ? ` ${tail}` : ""}.`);
+    if (after) parts.push(after);
+  } else {
+    parts.push("Nothing new to do.");
+  }
+  if (result.already_running > 0) {
+    const verbIs = result.already_running === 1 ? "was" : "were";
+    parts.push(`${result.already_running} ${verbIs} already in progress.`);
+  }
+  if (result.not_ready > 0) {
+    parts.push(`${result.not_ready} skipped because ${whySkipped}.`);
+  }
+  return parts.join(" ");
+}
+
 const POLL_MS = 4000;
 const PAGE_SIZE = 50;
 
@@ -244,13 +269,10 @@ export function CompaniesPage() {
   if (!campaign) {
     return (
       <>
-        <PageHeader
-          title="Companies"
-          description="Pick a client and a campaign in the header to see its companies."
-        />
+        <PageHeader title="Companies" />
         <EmptyState
           title="No campaign selected"
-          description="Choose a client and a campaign from the switcher in the header."
+          description="Choose a client and a campaign in the switcher at the top."
         />
       </>
     );
@@ -299,7 +321,7 @@ export function CompaniesPage() {
                     .map((s) => `${s.company} (${s.reason})`)
                     .join("; ");
                   setNotice(
-                    `Pushed ${result.pushed} to the CRM.${skipped ? ` Skipped: ${skipped}` : ""}`,
+                    `Sent ${result.pushed} to the CRM.${skipped ? ` Skipped: ${skipped}` : ""}`,
                   );
                   refresh();
                 } catch (cause) {
@@ -314,14 +336,19 @@ export function CompaniesPage() {
               onClick={async () => {
                 if (
                   !window.confirm(
-                    "Find and check the emails of the main contacts of every account you decided ADD? This runs in the background and can use provider credits.",
+                    "Look up and check the emails of the primary and secondary contacts of every approved account? It runs in the background and uses provider credits.",
                   )
                 )
                   return;
                 try {
                   const result = await findAndVerifyEmails(campaign.id);
                   setNotice(
-                    `Queued ${result.queued} ${result.queued === 1 ? "person" : "people"} for an email lookup and check. ${result.already_running} already waiting, ${result.not_ready} not ready (no profile link or provider id). Results appear on each account as they finish.`,
+                    queuedNotice(
+                      result,
+                      ["Checking emails for", "person", "people"],
+                      "Results show up on each account as they come in.",
+                      "there was nothing to look up or check",
+                    ),
                   );
                 } catch (cause) {
                   setNotice(`Could not queue. ${errorMessage(cause)}`);
@@ -335,21 +362,26 @@ export function CompaniesPage() {
               onClick={async () => {
                 if (
                   !window.confirm(
-                    "Push every account you decided ADD to the CRM in the background? Accounts that are not ready are skipped.",
+                    "Send every approved account to the CRM in the background? Accounts that are not ready yet are skipped.",
                   )
                 )
                   return;
                 try {
                   const result = await queueApprovedToCrm(campaign.id);
                   setNotice(
-                    `Queued ${result.queued} ${result.queued === 1 ? "account" : "accounts"} for the CRM. ${result.already_running} already waiting, ${result.not_ready} not ready (no primary person, email or approved message).`,
+                    queuedNotice(
+                      result,
+                      ["Sending", "account", "accounts", "to the CRM"],
+                      "",
+                      "they still need a primary contact with an email and an approved message",
+                    ),
                   );
                 } catch (cause) {
                   setNotice(`Could not queue. ${errorMessage(cause)}`);
                 }
               }}
             >
-              Push to CRM in background
+              Queue CRM push
             </Button>
             <Button
               variant="secondary"
