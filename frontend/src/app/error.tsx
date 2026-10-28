@@ -20,7 +20,7 @@ export default function Error({
     <div role="alert">
       <PageHeader
         title="Something went wrong"
-        description="An unexpected error occurred. You can try again."
+        description="Something went wrong while loading this page. Try again, and if it keeps happening, tell your admin."
         actions={<Button onClick={reset}>Try again</Button>}
       />
     </div>

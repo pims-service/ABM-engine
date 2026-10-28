@@ -21,6 +21,22 @@ export async function pushToCrm(
   return data as PushResult;
 }
 
+export type QueuedPushResult = components["schemas"]["QueuePushResult"];
+
+/** Queue the push of every ADD account that is ready (up to 100); runs in the background. */
+export async function queueApprovedToCrm(
+  campaignId: string,
+): Promise<QueuedPushResult> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/campaigns/{campaign_pk}/accounts/queue-push-to-crm/",
+    {
+      params: { path: { campaign_pk: campaignId } },
+      body: {},
+    },
+  );
+  return data as QueuedPushResult;
+}
+
 /** Push every ADD account that is ready (up to 100); the others come back with a reason. */
 export async function pushApprovedToCrm(
   campaignId: string,

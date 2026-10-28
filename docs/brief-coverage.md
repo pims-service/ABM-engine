@@ -25,7 +25,7 @@ tested against fakes and, for GoHighLevel, checked against the official API docu
 | 9 Outreach angle | Done | Stored apart from messages. |
 | 10 Research card | Done | |
 | 11 Human approval | Done | Add, hold or skip; mandatory; stored apart from the AI's advice; nothing starts by itself. |
-| 12 Approved workflow: find contact, enrich, verify | Done with SignalHire and ZeroBounce | Find email (SignalHire, approved accounts only), Verify email (ZeroBounce), and a Next steps list on the card that ticks off contact, email, verify, messages, approve, export. Neither provider has been tried with a live key. |
+| 12 Approved workflow: find contact, enrich, verify | Done with SignalHire and ZeroBounce | Find email (SignalHire, approved accounts only), Verify email (ZeroBounce), and a Next steps list on the card that ticks off contact, email, verify, messages, approve, export. Both also run for many people at once as background jobs (`enrich-contacts`), and the CRM push has a background version (`queue-push-to-crm`), each with a button on the Companies page. Neither provider has been tried with a live key. |
 | 12 Messages | Done | LinkedIn message, email with subject and follow-up, campaign languages, Saudi Arabic. Drafts that invent facts or numbers are refused. Human approval before export. |
 | 12 Export or push | Done | CSV export; GoHighLevel push (not tried with a live account). No separate outreach-platform adapter. |
 | 13 Dashboard columns and filters | Done | Every column and filter in the brief, plus quick filters with counts. |

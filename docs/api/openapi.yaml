@@ -1218,6 +1218,79 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/enrich-contacts/:
+    post:
+      operationId: campaign_accounts_enrich_contacts
+      description: 'Queues the email steps for the primary and secondary people of
+        accounts you decided ADD (up to 300 people per request, by company name):
+        look up the email, check it, or both. The work runs in the background, so
+        a provider that is slow, rate limited or out of budget never blocks this request;
+        the answer says how many people were queued, were already waiting, or were
+        not ready. Lookups and checks can cost provider credits and count against
+        the connection''s monthly budget. Refused with a message when no usable provider
+        is connected. Needs the EDIT level.'
+      summary: Find and verify emails in the background
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrichContactsRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrichContactsResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/campaigns/{campaign_pk}/accounts/export/:
     get:
       operationId: campaign_accounts_export
@@ -1376,6 +1449,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BulkCrmResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{campaign_pk}/accounts/queue-push-to-crm/:
+    post:
+      operationId: campaign_accounts_queue_push_to_crm
+      description: Like push-to-crm, but the push runs as a background job, so a slow
+        or rate limited CRM never blocks this request. Looks at up to 100 accounts
+        you decided ADD (by company name); accounts that are not ready are counted
+        in `not_ready` and accounts already waiting in a push in `already_running`.
+        Each push is metered and counts against the CRM connection's budget. Refused
+        with a message when no usable CRM is connected. Needs the EDIT level.
+      summary: Push approved accounts to the CRM in the background
+      parameters:
+      - in: path
+        name: campaign_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueuePushRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuePushResult'
           description: ''
         '400':
           content:
@@ -9148,6 +9291,52 @@ components:
         * `possible_duplicate` - possible_duplicate
         * `already_imported` - already_imported
         * `invalid` - invalid
+    EnrichContactsRequestRequest:
+      type: object
+      properties:
+        step:
+          allOf:
+          - $ref: '#/components/schemas/StepEnum'
+          description: |-
+            `find_emails`: look up the email of people who have none; `verify_emails`: check the emails people already have; `find_and_verify`: both, checking each email as soon as it is found.
+
+            * `find_emails` - find_emails
+            * `verify_emails` - verify_emails
+            * `find_and_verify` - find_and_verify
+        company_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Limit this to these companies. Leave out for every approved
+            company.
+          maxItems: 500
+      required:
+      - step
+    EnrichContactsResult:
+      type: object
+      properties:
+        queued:
+          type: integer
+          description: People handed to the worker.
+        already_running:
+          type: integer
+          description: People already waiting in a queued or running job of the same
+            kind.
+        not_ready:
+          type: integer
+          description: People who can take no step yet (no email to check, no profile
+            link or provider id to look them up with).
+        job_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - already_running
+      - job_ids
+      - not_ready
+      - queued
     ErrorBody:
       type: object
       description: The `error` object of the standard envelope (apps/core/exceptions.py).
@@ -10953,6 +11142,40 @@ components:
       - search
       - total_estimate
       - warnings
+    QueuePushRequestRequest:
+      type: object
+      properties:
+        company_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Limit this to these companies. Leave out for every approved
+            company.
+          maxItems: 500
+    QueuePushResult:
+      type: object
+      properties:
+        queued:
+          type: integer
+          description: Accounts handed to the worker.
+        already_running:
+          type: integer
+          description: Accounts already waiting in a queued or running push.
+        not_ready:
+          type: integer
+          description: Accounts that cannot be pushed yet (no primary person, no email
+            or no approved message).
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null when nothing was queued.
+      required:
+      - already_running
+      - job_id
+      - not_ready
+      - queued
     RankedPerson:
       type: object
       properties:
@@ -11534,6 +11757,16 @@ components:
         * `allow` - allow
         * `warn` - warn
         * `deny` - deny
+    StepEnum:
+      enum:
+      - find_emails
+      - verify_emails
+      - find_and_verify
+      type: string
+      description: |-
+        * `find_emails` - find_emails
+        * `verify_emails` - verify_emails
+        * `find_and_verify` - find_and_verify
     TargetTypeEnum:
       enum:
       - company

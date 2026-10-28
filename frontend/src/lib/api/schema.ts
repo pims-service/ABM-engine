@@ -290,6 +290,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/enrich-contacts/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Find and verify emails in the background
+     * @description Queues the email steps for the primary and secondary people of accounts you decided ADD (up to 300 people per request, by company name): look up the email, check it, or both. The work runs in the background, so a provider that is slow, rate limited or out of budget never blocks this request; the answer says how many people were queued, were already waiting, or were not ready. Lookups and checks can cost provider credits and count against the connection's monthly budget. Refused with a message when no usable provider is connected. Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_enrich_contacts"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/export/": {
     parameters: {
       query?: never;
@@ -344,6 +364,26 @@ export interface paths {
      * @description Pushes up to 100 accounts you decided ADD (the primary person, a tag and a note with the approved messages) to the client's CRM. Accounts that are not ready (no primary person, no email, no approved message) are skipped and listed with the reason. Needs the EDIT level.
      */
     post: operations["campaign_accounts_push_to_crm"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/campaigns/{campaign_pk}/accounts/queue-push-to-crm/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Push approved accounts to the CRM in the background
+     * @description Like push-to-crm, but the push runs as a background job, so a slow or rate limited CRM never blocks this request. Looks at up to 100 accounts you decided ADD (by company name); accounts that are not ready are counted in `not_ready` and accounts already waiting in a push in `already_running`. Each push is metered and counts against the CRM connection's budget. Refused with a message when no usable CRM is connected. Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_queue_push_to_crm"];
     delete?: never;
     options?: never;
     head?: never;
@@ -2640,6 +2680,27 @@ export interface components {
       | "possible_duplicate"
       | "already_imported"
       | "invalid";
+    EnrichContactsRequestRequest: {
+      /**
+       * @description `find_emails`: look up the email of people who have none; `verify_emails`: check the emails people already have; `find_and_verify`: both, checking each email as soon as it is found.
+       *
+       *     * `find_emails` - find_emails
+       *     * `verify_emails` - verify_emails
+       *     * `find_and_verify` - find_and_verify
+       */
+      step: components["schemas"]["StepEnum"];
+      /** @description Limit this to these companies. Leave out for every approved company. */
+      company_ids?: string[];
+    };
+    EnrichContactsResult: {
+      /** @description People handed to the worker. */
+      queued: number;
+      /** @description People already waiting in a queued or running job of the same kind. */
+      already_running: number;
+      /** @description People who can take no step yet (no email to check, no profile link or provider id to look them up with). */
+      not_ready: number;
+      job_ids: string[];
+    };
     /** @description The `error` object of the standard envelope (apps/core/exceptions.py). */
     ErrorBody: {
       /** @description Stable machine-readable code, e.g. `validation_error`. */
@@ -3477,6 +3538,23 @@ export interface components {
       total_estimate: number | null;
       warnings: string[];
     };
+    QueuePushRequestRequest: {
+      /** @description Limit this to these companies. Leave out for every approved company. */
+      company_ids?: string[];
+    };
+    QueuePushResult: {
+      /** @description Accounts handed to the worker. */
+      queued: number;
+      /** @description Accounts already waiting in a queued or running push. */
+      already_running: number;
+      /** @description Accounts that cannot be pushed yet (no primary person, no email or no approved message). */
+      not_ready: number;
+      /**
+       * Format: uuid
+       * @description Null when nothing was queued.
+       */
+      job_id: string | null;
+    };
     RankedPerson: {
       /** Format: uuid */
       contact_id: string;
@@ -3716,6 +3794,13 @@ export interface components {
      * @enum {string}
      */
     StateEnum: "allow" | "warn" | "deny";
+    /**
+     * @description * `find_emails` - find_emails
+     *     * `verify_emails` - verify_emails
+     *     * `find_and_verify` - find_and_verify
+     * @enum {string}
+     */
+    StepEnum: "find_emails" | "verify_emails" | "find_and_verify";
     /**
      * @description * `company` - Company
      *     * `signal` - Signal
@@ -5025,6 +5110,85 @@ export interface operations {
       };
     };
   };
+  campaign_accounts_enrich_contacts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EnrichContactsRequestRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EnrichContactsResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   campaign_accounts_export: {
     parameters: {
       query?: never;
@@ -5188,6 +5352,85 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["BulkCrmResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_queue_push_to_crm: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QueuePushRequestRequest"];
+      };
+    };
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["QueuePushResult"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

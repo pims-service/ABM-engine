@@ -71,7 +71,7 @@ export function ProviderSetup({
   return (
     <section aria-labelledby="contact-providers" className="mb-6">
       <h2 id="contact-providers" className="text-lg font-semibold">
-        Find people, emails and verify them
+        Finding people and checking emails
       </h2>
       <p className="mb-3 text-sm text-fg-muted">
         Connect a provider once. It is used for &ldquo;Find people&rdquo;,

@@ -37,3 +37,16 @@ Every call is recorded as a provider call and is subject to the connection's bud
 The endpoints, headers and fields above were read from HighLevel's API reference (version
 `2021-07-28`). It has not been run against a live account: the first push may reveal a missing
 permission or a location setting (for example a location that needs a phone number).
+
+## Pushing many accounts in the background
+
+`POST /campaigns/{id}/accounts/queue-push-to-crm/` does the same push as `push-to-crm`, but as a
+background job (`push_accounts_to_crm`, built on `provider_task`), so a slow or rate-limited CRM
+never holds up a web request. It looks at up to 100 approved accounts and answers at once with
+how many were queued, were already waiting in a push, or were not ready (no primary person, no
+email, no approved message). The worker checks each account again before pushing, meters every
+call against the connection's budget, waits out a rate limit, and ends the job at once on a
+rejected token. An account that changed while waiting is skipped, with the reason on the job
+item. The Companies page has a button for it ("Push to CRM in background") next to the immediate
+one, and a "Find and verify emails" button for the email workers
+(`docs/integrations/people-providers.md`).

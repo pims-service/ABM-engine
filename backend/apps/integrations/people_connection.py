@@ -93,16 +93,57 @@ def get_adapter(category: str, client_id: Any, *, campaign: Any = None, user: An
     }[category]
     for name in names:
         setattr(
-            adapter, name, _metered(connection, adapter, getattr(adapter, name), campaign, user)
+            adapter,
+            name,
+            metered_operation(
+                connection, adapter, getattr(adapter, name), campaign=campaign, user=user
+            ),
         )
     return adapter
 
 
-def _metered(connection: Any, adapter: Any, original: Any, campaign: Any, user: Any) -> Any:
-    @functools.wraps(original)
+def people_registry() -> AdapterRegistry:
+    """The registry of the people, email and verification adapters (for ``provider_task``)."""
+    return _registry()
+
+
+def connection_problem(category: str, client_id: Any) -> str | None:
+    """Why ``category`` cannot be used for this client (a safe message), or ``None`` when a
+    usable connection of the supported provider exists. Reads no credentials: used to refuse a
+    background job at once instead of queueing one that is certain to fail."""
+    connection = resolve_connection(client_id, category)
+    if connection is None:
+        return _message_missing(category)
+    if connection.provider != PROVIDER[category]:
+        return f"The provider '{connection.provider}' is not supported yet for {_WHAT[category]}."
+    return None
+
+
+def metered_operation(
+    connection: Any,
+    adapter: Any,
+    operation: Any,
+    *,
+    job: Any = None,
+    campaign: Any = None,
+    user: Any = None,
+) -> Any:
+    """``operation`` wrapped so each call logs one ``ProviderCall`` and respects the budget.
+
+    The wrapper keeps the operation's name, so it can go through ``ProviderJobContext.call``
+    (retries, rate limit, circuit breaker) and still be metered."""
+
+    @functools.wraps(operation)
     def call(*args: Any, **kwargs: Any) -> Any:
         return tracked_execute(
-            connection, adapter, original, *args, campaign=campaign, user=user, **kwargs
+            connection,
+            adapter,
+            operation,
+            *args,
+            job=job,
+            campaign=campaign,
+            user=user,
+            **kwargs,
         )
 
     return call

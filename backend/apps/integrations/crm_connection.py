@@ -47,6 +47,22 @@ def _registry() -> AdapterRegistry:
     return registry
 
 
+def crm_registry() -> AdapterRegistry:
+    """The registry of the CRM adapters (for ``provider_task``)."""
+    return _registry()
+
+
+def crm_problem(client_id: Any) -> str | None:
+    """Why no CRM can be used for this client (a safe message), or ``None``. Reads no
+    credentials: used to refuse a background push at once instead of queueing a sure failure."""
+    connection = resolve_connection(client_id, "crm")
+    if connection is None:
+        return NOT_CONFIGURED
+    if connection.provider != GoHighLevelAdapter.key:
+        return f"The CRM '{connection.provider}' is not supported yet. Use GoHighLevel."
+    return None
+
+
 def crm_provider(client_id: Any) -> str | None:
     """The provider of the client's active CRM connection, or ``None``."""
     connection = resolve_connection(client_id, "crm")

@@ -399,6 +399,18 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"scope": "unassessed"},
         ),
         Scenario(
+            "POST /api/v1/campaigns/{campaign_pk}/accounts/enrich-contacts/",
+            "campaign_nested",
+            Level.EDIT,
+            body=lambda: {"step": "find_emails"},
+        ),
+        Scenario(
+            "POST /api/v1/campaigns/{campaign_pk}/accounts/queue-push-to-crm/",
+            "campaign_nested",
+            Level.EDIT,
+            body=lambda: {},
+        ),
+        Scenario(
             "POST /api/v1/campaigns/{campaign_pk}/accounts/decide/",
             "campaign_nested",
             Level.DECIDE,

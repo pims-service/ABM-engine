@@ -1,118 +1,152 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 
+import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { listCampaignCompanies } from "@/features/companies/api";
+import {
+  type AccountSummary,
+  getAccountSummary,
+} from "@/features/companies/accountsApi";
 import { useOptionalSelection } from "@/features/selection/SelectionProvider";
-import { useOptionalAuth } from "@/lib/auth/AuthProvider";
+import { errorMessage } from "@/lib/format";
 import { useApiQuery } from "@/lib/hooks/useApiQuery";
 
-function Stat({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: ReactNode;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-line bg-surface-raised p-5">
-      <p className="text-xs font-medium text-fg-muted">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-fg-muted">{hint}</p> : null}
-    </div>
-  );
+interface Todo {
+  text: string;
+  href?: string;
+  link?: string;
 }
 
-const STEPS = [
-  {
-    title: "Pick a client and campaign",
-    body: "Use the switcher at the top. Everything you see belongs to that campaign.",
-    href: "/campaigns",
-    cta: "Pick a campaign",
-  },
-  {
-    title: "Add target companies",
-    body: "Enter a name and website, or import a list.",
-    href: "/companies",
-    cta: "Add a company",
-  },
-  {
-    title: "Research a company",
-    body: "Read its public website and see what it says, with the source and time of each page.",
-    href: "/companies",
-    cta: "Open a company",
-  },
-] as const;
-
-function greeting(name: string, rest: string): string {
-  const hour = new Date().getHours();
-  const part =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  return `${part}${name ? `, ${name}` : ""}. ${rest}`;
+function count(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
-/** `/dashboard`: real counts for the current selection, and the three steps to get going. */
+/** What is worth doing next in this campaign, most urgent first. Only what applies is listed. */
+function todos(s: AccountSummary): Todo[] {
+  if (s.total === 0) {
+    return [
+      {
+        text: "Add the companies you want to qualify.",
+        href: "/companies/import",
+        link: "Import a CSV",
+      },
+    ];
+  }
+  const list: Todo[] = [];
+  if (s.needs_review > 0) {
+    list.push({
+      text: `${count(s.needs_review, "account is", "accounts are")} waiting for your decision.`,
+      href: "/companies/review",
+      link: "Review",
+    });
+  }
+  if (s.failed > 0) {
+    list.push({
+      text: `${count(s.failed, "analysis", "analyses")} failed.`,
+      href: "/companies",
+      link: "See which",
+    });
+  }
+  if (s.not_assessed > 0) {
+    list.push({
+      text: `${count(s.not_assessed, "company has", "companies have")} not been analyzed.`,
+      href: "/companies",
+      link: "Analyze",
+    });
+  }
+  if (s.analyzing > 0) {
+    list.push({
+      text: `${count(s.analyzing, "analysis is", "analyses are")} running.`,
+    });
+  }
+  if (s.human_add > 0) {
+    list.push({
+      text: `${count(s.human_add, "approved account", "approved accounts")}: find the right person, write the messages, then export or push to the CRM.`,
+      href: "/companies",
+      link: "Open companies",
+    });
+  }
+  return list;
+}
+
+/** One line on where the campaign stands. */
+function standing(s: AccountSummary): string {
+  if (s.total === 0) return "No companies yet.";
+  return [
+    count(s.total, "company", "companies"),
+    `${s.strong} strong fit`,
+    `${s.trigger_yes} with a trigger`,
+    `${s.human_add} approved`,
+    count(s.meetings, "meeting", "meetings"),
+  ].join(" · ");
+}
+
+/** `/dashboard`: where the current campaign stands and what to do next. */
 export function Dashboard() {
   const selection = useOptionalSelection();
-  const user = useOptionalAuth()?.user;
-  const name = (user?.name || user?.email || "").split(/[\s@]/)[0] ?? "";
   const campaign = selection?.campaign ?? null;
-  const companies = useApiQuery(
-    `dashboard-companies:${campaign?.id ?? "none"}`,
-    (signal) => listCampaignCompanies(campaign!.id, signal),
+  const summary = useApiQuery(
+    `dashboard-summary:${campaign?.id ?? "none"}`,
+    (signal) => getAccountSummary(campaign!.id, signal),
     { enabled: campaign !== null },
   );
 
+  if (!campaign) {
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <EmptyState
+          title="No campaign selected"
+          description="Choose a client and a campaign in the switcher at the top. Every page follows that choice."
+        />
+      </>
+    );
+  }
+
+  const s = summary.data;
   return (
     <>
       <PageHeader
         title="Dashboard"
-        description={greeting(
-          name,
-          campaign
-            ? `${selection?.client?.name ?? "Client"} · ${campaign.name}`
-            : "Pick a client and a campaign to get started.",
-        )}
+        description={`${selection?.client?.name ?? "Client"} · ${campaign.name}`}
       />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Clients" value={selection?.clients.length ?? "—"} />
-        <Stat
-          label="Campaigns"
-          value={selection?.clientId ? selection.campaigns.length : "—"}
-          hint={selection?.client ? `for ${selection.client.name}` : undefined}
-        />
-        <Stat
-          label="Companies"
-          value={campaign ? (companies.data?.count ?? "…") : "—"}
-          hint={campaign ? `in ${campaign.name}` : undefined}
-        />
-      </div>
-
-      <h2 className="mb-3 mt-10 text-sm font-semibold">Get started</h2>
-      <ol className="grid gap-4 sm:grid-cols-3">
-        {STEPS.map((step, index) => (
-          <li
-            key={step.title}
-            className="flex flex-col rounded-lg border border-line bg-surface-raised p-5"
-          >
-            <span className="text-xs font-medium text-fg-muted">
-              Step {index + 1}
-            </span>
-            <p className="mt-2 text-sm font-semibold">{step.title}</p>
-            <p className="mt-1 flex-1 text-sm text-fg-muted">{step.body}</p>
-            <Link
-              href={step.href}
-              className="mt-4 text-sm font-medium text-accent underline-offset-2 hover:underline"
-            >
-              {step.cta} &rarr;
-            </Link>
-          </li>
-        ))}
-      </ol>
+      {summary.error ? (
+        <p className="text-sm text-danger-fg">
+          Could not load the numbers. {errorMessage(summary.error)}
+        </p>
+      ) : !s ? (
+        <p className="text-sm text-fg-muted">Loading…</p>
+      ) : (
+        <>
+          <p className="text-sm">{standing(s)}</p>
+          <h2 className="mb-2 mt-8 text-sm font-semibold">To do</h2>
+          {todos(s).length === 0 ? (
+            <p className="text-sm text-fg-muted">
+              Nothing waiting. Every analyzed account has a decision.
+            </p>
+          ) : (
+            <ul className="divide-y divide-line rounded-lg border border-line bg-surface-raised">
+              {todos(s).map((todo) => (
+                <li
+                  key={todo.text}
+                  className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
+                >
+                  <span>{todo.text}</span>
+                  {todo.href ? (
+                    <Link
+                      href={todo.href}
+                      className="shrink-0 font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      {todo.link}
+                    </Link>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </>
   );
 }

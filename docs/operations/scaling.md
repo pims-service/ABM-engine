@@ -1,6 +1,6 @@
 # Scaling the background work
 
-Analyses, imports and CRM pushes run as background jobs in the Django-Q2 cluster (`qcluster`),
+Analyses, imports, CRM pushes and the email find and verify steps run as background jobs in the Django-Q2 cluster (`qcluster`),
 which keeps its queue in Postgres. There is no Redis.
 
 ## What limits throughput

@@ -207,8 +207,7 @@ export function ResearchCardView({
           <Card title="Signals">
             {trigger.signals.length === 0 ? (
               <p className="text-sm text-fg-muted">
-                No current signals. That is fine: a trigger is not required to
-                qualify.
+                No current signals. A company can still qualify without one.
               </p>
             ) : (
               <ul className="flex flex-col gap-4 text-sm">
