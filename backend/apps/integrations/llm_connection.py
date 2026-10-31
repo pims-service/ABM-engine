@@ -15,6 +15,8 @@ import functools
 from typing import Any
 
 from apps.integrations.adapters.anthropic import AnthropicAdapter
+from apps.integrations.adapters.gemini import GeminiAdapter
+from apps.integrations.adapters.openai import OpenAIAdapter
 from apps.integrations.crypto import (
     Credentials,
     CredentialsNotSetError,
@@ -34,9 +36,9 @@ from apps.integrations.testing import register_tester
 from apps.integrations.usage import tracked_execute
 
 NOT_CONFIGURED = (
-    "No AI provider is connected for this client. Add an Anthropic connection under "
-    "Settings > Integrations (category LLM, with a model and an API key), then run the "
-    "analysis again."
+    "No AI provider is connected for this client. Add an Anthropic, Gemini or OpenAI "
+    "connection under Settings > Integrations (category LLM, with a model and an API key), "
+    "then run the analysis again."
 )
 SETTINGS_INCOMPLETE = "The settings are not complete: add a model and an API key."
 
@@ -45,9 +47,14 @@ class LLMUnavailable(Exception):
     """No usable LLM connection (for example none is set up). The message is safe to show."""
 
 
+LLM_ADAPTERS = (AnthropicAdapter, GeminiAdapter, OpenAIAdapter)
+SUPPORTED_PROVIDERS = tuple(adapter.key for adapter in LLM_ADAPTERS)
+
+
 def _registry() -> AdapterRegistry:
     registry = AdapterRegistry()
-    registry.register(AnthropicAdapter)
+    for adapter in LLM_ADAPTERS:
+        registry.register(adapter)
     return registry
 
 
@@ -96,9 +103,10 @@ def get_llm_adapter(
     connection = resolve_connection(client_id, "llm")
     if connection is None:
         raise LLMUnavailable(NOT_CONFIGURED)
-    if connection.provider != AnthropicAdapter.key:
+    if connection.provider not in SUPPORTED_PROVIDERS:
         raise LLMUnavailable(
-            f"The LLM provider '{connection.provider}' is not supported yet. Use Anthropic."
+            f"The LLM provider '{connection.provider}' is not supported yet. "
+            "Use Anthropic, Gemini or OpenAI."
         )
     try:
         credentials = get_credentials(connection, purpose="company_analysis")
@@ -117,11 +125,10 @@ def get_llm_adapter(
     return _meter(adapter, connection, job=job, campaign=campaign, user=user)
 
 
-def _test_anthropic(
-    connection: IntegrationConnection, credentials: Credentials
-) -> tuple[bool, str]:
+def _test_llm(connection: IntegrationConnection, credentials: Credentials) -> tuple[bool, str]:
     """Settings > Integrations "Test connection": asks the provider to authenticate the key
-    (no tokens are generated). It does not check that the configured model exists."""
+    (no tokens are generated). Anthropic does not check that the configured model exists;
+    Gemini and OpenAI do."""
     try:
         spec = ConnectionSpec("llm", connection.provider, connection.config, credentials.reveal())
         adapter = _registry().resolve(spec)
@@ -135,4 +142,5 @@ def _test_anthropic(
 
 def register_testers() -> None:
     """Make "Test connection" work for the providers that have an adapter."""
-    register_tester("llm", AnthropicAdapter.key, _test_anthropic, replace=True)
+    for key in SUPPORTED_PROVIDERS:
+        register_tester("llm", key, _test_llm, replace=True)

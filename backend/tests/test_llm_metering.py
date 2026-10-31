@@ -117,7 +117,7 @@ def test_the_monthly_budget_stops_calls_before_the_provider_is_contacted(transpo
 
 def test_no_connection_or_no_key_is_a_clear_error() -> None:
     client = make_client()
-    with pytest.raises(LLMUnavailable, match="Add an Anthropic connection"):
+    with pytest.raises(LLMUnavailable, match="Add an Anthropic, Gemini or OpenAI connection"):
         get_llm_adapter(client.pk)
 
 

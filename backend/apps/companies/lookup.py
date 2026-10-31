@@ -20,6 +20,7 @@ from django.core.exceptions import ValidationError
 
 from apps.accounts.models import User
 from apps.companies import services
+from apps.companies.enrichment import lookup_blocker
 from apps.companies.models import Company, Contact, DataSourceType, EmailStatus
 from apps.integrations.framework import CompanyRef, PersonRef, ProviderError
 from apps.integrations.framework.operations import MAX_ROLES
@@ -122,18 +123,18 @@ def find_email_for(contact: Contact, user: User) -> Contact:
         raise ValidationError(str(error)) from None
     reference = contact.data_source.provider_reference
     prefix = f"{adapter.key}:"
+    uid = reference[len(prefix) :] if reference.startswith(prefix) else ""
+    by_id = bool(uid) and hasattr(adapter, "find_email_by_uid")
+    if problem := lookup_blocker(contact, adapter.key):
+        raise ValidationError(problem)
     try:
-        if contact.profile_url:
+        if contact.profile_url or not by_id:
             ref = PersonRef(
-                contact.name, title=contact.title or None, profile_url=contact.profile_url
+                contact.name, title=contact.title or None, profile_url=contact.profile_url or None
             )
             result = adapter.find_email(ref, company.domain or "")
-        elif reference.startswith(prefix):
-            result = adapter.find_email_by_uid(reference[len(prefix) :])
         else:
-            raise ValidationError(
-                "There is no profile link or provider id for this person; add the profile URL."
-            )
+            result = adapter.find_email_by_uid(uid)
     except ProviderError as error:
         raise _fail(error) from None
     email = result.data.email if result.data else None
