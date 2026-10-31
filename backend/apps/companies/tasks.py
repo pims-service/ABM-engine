@@ -98,7 +98,7 @@ def _load_contact(item: JobItem) -> Contact | None:
 @provider_task(
     job_type=enrichment.FIND_JOB_TYPE,
     category=EMAIL,
-    provider=PROVIDER[EMAIL],
+    provider=None,
     registry=people_registry(),
     soft_time_limit=SOFT_LIMIT,
 )
@@ -118,16 +118,18 @@ def find_contact_emails(
         reason = (
             "This person no longer exists."
             if contact is None
-            else enrichment.blocker(contact, "find")
+            else enrichment.blocker(contact, "find", provider=ctx.adapter.key)
         )
         if contact is None or reason:
             return {"skipped": reason}
         company = contact.company
         reference = contact.data_source.provider_reference
         prefix = f"{ctx.adapter.key}:"
-        if contact.profile_url:
+        uid = reference[len(prefix) :] if reference.startswith(prefix) else ""
+        by_id = bool(uid) and hasattr(ctx.adapter, "find_email_by_uid")
+        if contact.profile_url or not by_id:
             ref = PersonRef(
-                contact.name, title=contact.title or None, profile_url=contact.profile_url
+                contact.name, title=contact.title or None, profile_url=contact.profile_url or None
             )
             result = ctx.call_metered(
                 ctx.adapter.find_email,  # type: ignore[attr-defined]
@@ -137,7 +139,7 @@ def find_contact_emails(
         else:
             result = ctx.call_metered(
                 ctx.adapter.find_email_by_uid,  # type: ignore[attr-defined]
-                reference[len(prefix) :],
+                uid,
             )
         email = result.data.email if result.data else None
         if email:

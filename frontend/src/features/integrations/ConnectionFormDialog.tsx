@@ -21,6 +21,8 @@ import {
 import { CATEGORIES, hintsFor, KNOWN_PROVIDERS } from "./categories";
 import { CredentialsEditor, newCredentialRow } from "./CredentialsEditor";
 import { mapApiError } from "./formErrors";
+import { GuidedConnectionForm } from "./GuidedConnectionForm";
+import { providerPreset } from "./presets";
 import {
   configToText,
   type CredentialRow,
@@ -40,32 +42,51 @@ export function ConnectionFormDialog({
   open,
   clientId,
   connection,
-  defaultCategory,
+  providerKey,
+  connectedCategories = [],
   onClose,
   onSaved,
 }: {
   open: boolean;
   clientId: string;
   connection?: Connection | null;
-  defaultCategory?: ConnectionCategory;
+  /** A provider with a ready-made form; without it the custom (raw) form opens. */
+  providerKey?: string;
+  connectedCategories?: readonly ConnectionCategory[];
   onClose: () => void;
   onSaved: (connection: Connection) => void;
 }) {
+  const preset = providerKey ? providerPreset(providerKey) : undefined;
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={connection ? "Edit connection" : "Add connection"}
+      title={
+        connection
+          ? "Edit connection"
+          : preset
+            ? `Connect ${preset.label}`
+            : "Custom connection"
+      }
       className="max-w-xl"
     >
       {/* Mounted only while open, so every field (and any secret) starts empty each time. */}
-      <ConnectionForm
-        clientId={clientId}
-        connection={connection}
-        defaultCategory={defaultCategory}
-        onClose={onClose}
-        onSaved={onSaved}
-      />
+      {!connection && preset ? (
+        <GuidedConnectionForm
+          clientId={clientId}
+          provider={preset}
+          connectedCategories={connectedCategories}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      ) : (
+        <ConnectionForm
+          clientId={clientId}
+          connection={connection}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      )}
     </Modal>
   );
 }
@@ -73,13 +94,11 @@ export function ConnectionFormDialog({
 function ConnectionForm({
   clientId,
   connection,
-  defaultCategory,
   onClose,
   onSaved,
 }: {
   clientId: string;
   connection?: Connection | null;
-  defaultCategory?: ConnectionCategory;
   onClose: () => void;
   onSaved: (connection: Connection) => void;
 }) {
@@ -88,7 +107,7 @@ function ConnectionForm({
   const editing = Boolean(connection);
 
   const [category, setCategory] = useState<ConnectionCategory>(
-    connection?.category ?? defaultCategory ?? "llm",
+    connection?.category ?? "llm",
   );
   const [provider, setProvider] = useState(connection?.provider ?? "");
   const [name, setName] = useState(connection?.name ?? "");
@@ -218,7 +237,7 @@ function ConnectionForm({
               value={provider}
               list={providerListId}
               error={errors.provider}
-              hint="Lower-case letters, digits and underscores, for example anthropic."
+              hint="Lower-case letters, digits and underscores, for example anthropic or gemini."
               maxLength={64}
               required
               markRequired
@@ -286,13 +305,15 @@ function ConnectionForm({
         ) : null}
         {formError ? <Alert tone="danger">{formError}</Alert> : null}
       </div>
-      <div className="mt-5 flex flex-wrap justify-end gap-2">
-        <Button variant="secondary" disabled={pending} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : editing ? "Save changes" : "Add connection"}
-        </Button>
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+        <div className="flex gap-2">
+          <Button variant="secondary" disabled={pending} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving…" : editing ? "Save changes" : "Add connection"}
+          </Button>
+        </div>
       </div>
     </form>
   );

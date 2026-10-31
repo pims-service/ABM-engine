@@ -53,9 +53,8 @@ describe("IntegrationsPage", () => {
         <IntegrationsPage />
       </AccessProvider>,
     );
-    expect(await screen.findByText("Primary LLM")).toBeInTheDocument();
     expect(
-      screen.getByText(/Provider connections for Acme Corp/),
+      await screen.findByRole("button", { name: "Manage fake" }),
     ).toBeInTheDocument();
   });
 });

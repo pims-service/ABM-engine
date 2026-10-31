@@ -49,6 +49,7 @@ describe("AuthFrame", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: "Your profile" }));
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     expect(auth.logout).toHaveBeenCalledTimes(1);
   });

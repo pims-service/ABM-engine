@@ -28,7 +28,13 @@ from apps.accounts.models import User
 from apps.campaigns.models import Campaign
 from apps.core.jobs import add_items, create_job, func_path, reap_stale_jobs
 from apps.core.models import Job, JobItem, JobStatus
-from apps.integrations.people_connection import EMAIL, PROVIDER, VERIFY, connection_problem
+from apps.integrations.people_connection import (
+    EMAIL,
+    PROVIDER,
+    VERIFY,
+    active_provider,
+    connection_problem,
+)
 from apps.outreach.decisions import ADD, latest_human_decision
 
 from .models import Company, Contact, ContactRole, EmailStatus
@@ -68,10 +74,17 @@ class EnrichmentRequest:
     job_ids: list[str]
 
 
-def blocker(contact: Contact, step: str, *, approved: bool | None = None) -> str | None:
+def blocker(
+    contact: Contact,
+    step: str,
+    *,
+    approved: bool | None = None,
+    provider: str | None = None,
+) -> str | None:
     """Why ``contact`` cannot take ``step`` (``"find"`` or ``"verify"``), or ``None``.
 
-    ``approved`` skips the decision lookup when the caller already knows the account is ADD."""
+    ``approved`` skips the decision lookup when the caller already knows the account is ADD;
+    ``provider`` is the email provider in use (looked up when not given)."""
     company = contact.company
     if company.is_archived or contact.is_archived:
         return "Archived records are read-only."
@@ -82,16 +95,29 @@ def blocker(contact: Contact, step: str, *, approved: bool | None = None) -> str
     if step == _FIND:
         if contact.email:
             return "This person already has an email."
-        prefix = f"{PROVIDER[EMAIL]}:"
-        if not contact.profile_url and not contact.data_source.provider_reference.startswith(
-            prefix
-        ):
-            return "There is no profile link or provider id to look this person up with."
-        return None
+        provider = provider or active_provider(EMAIL, company.campaign.client_id) or PROVIDER[EMAIL]
+        return lookup_blocker(contact, provider)
     if not contact.email:
         return "This person has no email to verify."
     if contact.email_status in _CHECKED:
         return "The email was already checked."
+    return None
+
+
+def lookup_blocker(contact: Contact, provider: str) -> str | None:
+    """Why ``provider`` cannot look up this person's email, or ``None``.
+
+    Hunter works from the full name and the company's domain; SignalHire needs a profile link or
+    one of its own ids."""
+    if provider == "hunter":
+        if len(contact.name.split()) < 2:
+            return "Hunter needs the person's first and last name."
+        if not contact.company.domain:
+            return "Hunter needs the company's website to look this person up."
+        return None
+    prefix = f"{provider}:"
+    if not contact.profile_url and not contact.data_source.provider_reference.startswith(prefix):
+        return "There is no profile link or provider id to look this person up with."
     return None
 
 
@@ -149,8 +175,11 @@ def request_contact_enrichment(
         .select_related("company", "data_source")
         .order_by("company__name", "role", "id")[:MAX_CONTACTS]
     )
+    provider = active_provider(EMAIL, campaign.client_id) or PROVIDER[EMAIL]
     ready = {
-        single: [c for c in contacts if blocker(c, single, approved=True) is None]
+        single: [
+            c for c in contacts if blocker(c, single, approved=True, provider=provider) is None
+        ]
         for single in steps
     }
     served = {c.pk for people in ready.values() for c in people}
