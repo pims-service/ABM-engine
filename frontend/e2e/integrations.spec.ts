@@ -105,8 +105,10 @@ test("shows provider tiles from the sidebar link and opens a provider's connecti
   await expect(page.getByText("Retired Mailer")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Close" }).click();
 
+  // The archived mailer uses another provider, so it only gets its own tile once archived
+  // connections are shown.
   await page.getByRole("checkbox", { name: "Show archived" }).check();
-  const again = await openManage(page);
+  const again = await openManage(page, "legacy_mailer");
   await expect(
     again.getByRole("row", { name: /Retired Mailer/ }),
   ).toContainText("Archived");
