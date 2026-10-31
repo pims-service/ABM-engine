@@ -1,10 +1,10 @@
 import type { Ref } from "react";
 
 import { ContextSwitcher } from "@/components/ContextSwitcher";
+import { ProfileMenu } from "@/components/ProfileMenu";
 import { SIDEBAR_ID } from "@/components/Sidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/Button";
-import { UserMenu } from "@/components/UserMenu";
 
 export function Header({
   menuOpen = false,
@@ -33,7 +33,7 @@ export function Header({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <ThemeToggle />
-        <UserMenu />
+        <ProfileMenu />
       </div>
     </header>
   );
