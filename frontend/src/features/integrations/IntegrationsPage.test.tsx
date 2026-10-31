@@ -186,7 +186,8 @@ describe("listing", () => {
     });
     const { container } = renderPage();
     expect(await screen.findByText(evil)).toBeInTheDocument();
-    expect(container.querySelector("img")).toBeNull();
+    // The tile logos are images; the message must not add one of its own.
+    expect(container.querySelector('img[src="x"]')).toBeNull();
     // The page has its own links (for example to AI usage); the message adds none.
     expect(container.querySelector('a[href="https://evil.test"]')).toBeNull();
   });

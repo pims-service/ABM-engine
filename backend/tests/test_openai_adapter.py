@@ -86,7 +86,8 @@ def adapter_with(transport: FakeTransport, **config: Any) -> OpenAIAdapter:
 
 
 def body_of(transport: FakeTransport, index: int = 0) -> dict[str, Any]:
-    return json.loads(transport.requests[index].body or b"")
+    body: dict[str, Any] = json.loads(transport.requests[index].body or b"")
+    return body
 
 
 ECHO = StructuredSchema("echo", {"type": "object"}, lambda raw: dict(raw))

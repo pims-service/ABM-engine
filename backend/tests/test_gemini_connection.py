@@ -91,6 +91,7 @@ def test_a_gemini_connection_is_used_and_every_call_is_logged(transport, setup) 
     assert (call.input_tokens, call.output_tokens) == (1500, 500)  # thinking counts as output
     assert call.model == MODEL
     assert call.campaign_id == setup["campaign"].pk
+    assert call.credits is not None
     assert float(call.credits) == 2.0  # thousand tokens
     assert transport.requests[0].headers["x-goog-api-key"] == KEY
 

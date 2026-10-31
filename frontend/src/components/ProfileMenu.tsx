@@ -54,7 +54,7 @@ export function ProfileMenu() {
     >
       <button
         type="button"
-        aria-label="Profile menu"
+        aria-label="Your profile"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen(!open)}

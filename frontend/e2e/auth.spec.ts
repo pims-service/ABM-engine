@@ -153,7 +153,7 @@ test.describe("logout", () => {
     )?.value as string;
     expect((await mockState()).validRefresh).toContain(held);
 
-    await page.getByRole("button", { name: "Profile menu" }).click();
+    await page.getByRole("button", { name: "Your profile" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
 
     await expect(page).toHaveURL(/\/login$/);

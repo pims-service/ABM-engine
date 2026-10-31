@@ -82,7 +82,8 @@ def adapter_with(transport: FakeTransport, **config: Any) -> GeminiAdapter:
 
 
 def body_of(transport: FakeTransport, index: int = 0) -> dict[str, Any]:
-    return json.loads(transport.requests[index].body or b"")
+    body: dict[str, Any] = json.loads(transport.requests[index].body or b"")
+    return body
 
 
 ECHO = StructuredSchema("echo", {"type": "object"}, lambda raw: dict(raw))
@@ -361,7 +362,10 @@ class TestPrepareSchema:
         }
 
     def test_the_input_is_not_changed(self) -> None:
-        schema = {"type": "object", "properties": {"a": {"type": "string", "maxLength": 2}}}
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"a": {"type": "string", "maxLength": 2}},
+        }
         prepare_schema(schema)
         assert schema["properties"]["a"]["maxLength"] == 2
 
