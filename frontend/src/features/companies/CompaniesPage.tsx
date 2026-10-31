@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 import { Alert } from "@/components/ui/Alert";
 import { Badge } from "@/components/ui/Badge";
@@ -9,6 +9,7 @@ import { Button, buttonStyles } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Menu } from "@/components/ui/Menu";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pagination } from "@/components/ui/Pagination";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -24,7 +25,10 @@ import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import {
   type AccountFilters,
   type AccountRow,
+  type AccountSummary,
+  analyzeSelected,
   analyzeUnassessed,
+  decideMany,
   EMPTY_FILTERS,
   exportApproved,
   findAndVerifyEmails,
@@ -79,97 +83,211 @@ const TRIGGER_TYPES = [
   ["other", "Other"],
 ] as const;
 
-const SELECTS = [
-  {
-    key: "icp_fit",
-    label: "ICP fit",
-    options: [
-      ["strong", "Strong"],
-      ["medium", "Medium"],
-      ["weak", "Weak"],
-      ["unassessed", "Not analyzed"],
-    ],
-  },
-  {
-    key: "trigger",
-    label: "Trigger",
-    options: [
-      ["yes", "Yes"],
-      ["no", "No"],
-    ],
-  },
-  {
-    key: "ai",
-    label: "AI says",
-    options: [
-      ["add", "Add"],
-      ["hold", "Hold"],
-      ["skip", "Skip"],
-    ],
-  },
-  {
-    key: "human",
-    label: "Your decision",
-    options: [
-      ["add", "Add"],
-      ["hold", "Hold"],
-      ["skip", "Skip"],
-      ["undecided", "Undecided"],
-    ],
-  },
-  {
-    key: "outreach",
-    label: "Outreach",
-    options: [
-      ["none", "Not started"],
-      ["contacted", "Contacted"],
-      ["replied", "Replied"],
-      ["meeting_booked", "Meeting booked"],
-    ],
-  },
-  {
-    key: "review",
-    label: "Review",
-    options: [
-      ["needs_review", "Needs review"],
-      ["decided", "Decided"],
-    ],
-  },
-] as const;
+type SelectKey = "icp_fit" | "trigger" | "ai" | "human" | "outreach" | "review";
 
-function Tab({
+/** The dropdown filters, grouped the way people think about an account. */
+const FILTER_GROUPS: {
+  heading: string;
+  selects: { key: SelectKey; label: string; options: [string, string][] }[];
+}[] = [
+  {
+    heading: "Fit",
+    selects: [
+      {
+        key: "icp_fit",
+        label: "ICP fit",
+        options: [
+          ["strong", "Strong"],
+          ["medium", "Medium"],
+          ["weak", "Weak"],
+          ["unassessed", "Not analyzed"],
+        ],
+      },
+      {
+        key: "trigger",
+        label: "Trigger",
+        options: [
+          ["yes", "Yes"],
+          ["no", "No"],
+        ],
+      },
+    ],
+  },
+  {
+    heading: "Decision",
+    selects: [
+      {
+        key: "ai",
+        label: "AI says",
+        options: [
+          ["add", "Add"],
+          ["hold", "Hold"],
+          ["skip", "Skip"],
+        ],
+      },
+      {
+        key: "human",
+        label: "Your decision",
+        options: [
+          ["add", "Add"],
+          ["hold", "Hold"],
+          ["skip", "Skip"],
+          ["undecided", "Undecided"],
+        ],
+      },
+      {
+        key: "review",
+        label: "Review",
+        options: [
+          ["needs_review", "Needs review"],
+          ["decided", "Decided"],
+        ],
+      },
+    ],
+  },
+  {
+    heading: "Outreach",
+    selects: [
+      {
+        key: "outreach",
+        label: "Outreach",
+        options: [
+          ["none", "Not started"],
+          ["contacted", "Contacted"],
+          ["replied", "Replied"],
+          ["meeting_booked", "Meeting booked"],
+        ],
+      },
+    ],
+  },
+];
+
+/** Every filter that can show as a removable chip, with the text to show for its value. */
+function activeChips(
+  filters: AccountFilters,
+): { key: keyof AccountFilters; text: string }[] {
+  const chips: { key: keyof AccountFilters; text: string }[] = [];
+  for (const group of FILTER_GROUPS) {
+    for (const { key, label, options } of group.selects) {
+      const value = filters[key];
+      if (!value) continue;
+      const text = options.find(([v]) => v === value)?.[1] ?? value;
+      chips.push({ key, text: `${label}: ${text}` });
+    }
+  }
+  const trigger = TRIGGER_TYPES.find(([v]) => v === filters.trigger_type);
+  if (filters.trigger_type) {
+    chips.push({
+      key: "trigger_type",
+      text: `Trigger type: ${trigger?.[1] ?? filters.trigger_type}`,
+    });
+  }
+  if (filters.industry)
+    chips.push({ key: "industry", text: `Industry: ${filters.industry}` });
+  if (filters.country)
+    chips.push({ key: "country", text: `Country: ${filters.country}` });
+  if (filters.size_min || filters.size_max) {
+    chips.push({
+      key: filters.size_min ? "size_min" : "size_max",
+      text: `Size: ${filters.size_min || "0"}–${filters.size_max || "any"}`,
+    });
+  }
+  if (filters.buyer_title)
+    chips.push({ key: "buyer_title", text: `Buyer: ${filters.buyer_title}` });
+  return chips;
+}
+
+/** A saved view: a named set of filters. Picking one replaces the current filters. */
+const VIEWS: {
+  label: string;
+  filters: Partial<AccountFilters>;
+  count?: (c: AccountSummary) => number;
+}[] = [
+  { label: "All", filters: {}, count: (c) => c.total },
+  {
+    label: "Needs review",
+    filters: { review: "needs_review" },
+    count: (c) => c.needs_review,
+  },
+  {
+    label: "Strong fit",
+    filters: { icp_fit: "strong" },
+    count: (c) => c.strong,
+  },
+  {
+    label: "Has trigger",
+    filters: { trigger: "yes" },
+    count: (c) => c.trigger_yes,
+  },
+  {
+    label: "Not analyzed",
+    filters: { icp_fit: "unassessed" },
+    count: (c) => c.not_assessed,
+  },
+];
+
+const FILTER_KEYS = Object.keys(EMPTY_FILTERS).filter(
+  (k) => k !== "page" && k !== "ordering" && k !== "search",
+) as (keyof AccountFilters)[];
+
+function isView(
+  filters: AccountFilters,
+  view: Partial<AccountFilters>,
+): boolean {
+  return FILTER_KEYS.every((k) => filters[k] === (view[k] ?? ""));
+}
+
+/** One choice of a filter: click to pick it, click again to clear it. */
+function OptionPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-3 py-1 text-sm transition-colors",
+        active
+          ? "border-accent bg-accent text-accent-fg"
+          : "border-line bg-surface-raised text-fg hover:border-line-strong hover:bg-surface-muted",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ViewTab({
   label,
   value,
   active,
   onClick,
 }: {
   label: string;
-  value: number | string;
-  active?: boolean;
-  onClick?: () => void;
+  value?: number;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const body = (
-    <>
-      {label} <span className="text-fg-muted">{value}</span>
-    </>
-  );
-  const base = "-mb-px whitespace-nowrap border-b-2 px-1 pb-2 text-sm";
-  if (!onClick) {
-    return <span className={cn(base, "border-transparent")}>{body}</span>;
-  }
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        base,
+        "-mb-px whitespace-nowrap border-b-2 px-1 pb-2 text-sm",
         active
           ? "border-fg font-medium"
           : "border-transparent text-fg-muted hover:text-fg",
       )}
     >
-      {body}
+      {label} <span className="text-fg-muted">{value ?? "…"}</span>
     </button>
   );
 }
@@ -216,6 +334,9 @@ export function CompaniesPage() {
   const debounced = useDebouncedValue(typed, 300);
   const [adding, setAdding] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   // Typed text filters apply after a short pause, and always start at page 1.
@@ -229,6 +350,10 @@ export function CompaniesPage() {
   }, [debounced]);
 
   const campaignId = campaign?.id ?? "none";
+  const listKey = JSON.stringify({ ...filters, page: 0, campaignId });
+  useEffect(() => {
+    setSelected(new Set());
+  }, [listKey]);
   const key = `accounts:${campaignId}:${JSON.stringify(filters)}`;
   const rows = useApiQuery(
     key,
@@ -280,21 +405,160 @@ export function CompaniesPage() {
 
   const counts = summary.data;
   const unassessed = counts?.not_assessed ?? 0;
-  const filtered = [
-    filters.search,
-    filters.icp_fit,
-    filters.trigger,
-    filters.ai,
-    filters.review,
-    filters.industry,
-    filters.human,
-    filters.outreach,
-    filters.country,
-    filters.size_min,
-    filters.size_max,
-    filters.trigger_type,
-    filters.buyer_title,
-  ].some((value) => value !== "");
+  const chips = activeChips(filters);
+  const filtered = chips.length > 0 || filters.search !== "";
+
+  function openView(view: Partial<AccountFilters>) {
+    setTyped({ search: "", industry: "" });
+    setFilters({ ...EMPTY_FILTERS, ordering: filters.ordering, ...view });
+  }
+
+  function removeChip(name: keyof AccountFilters) {
+    if (name === "industry") setTyped({ ...typed, industry: "" });
+    if (name === "size_min" || name === "size_max") {
+      setFilters((current) => ({
+        ...current,
+        size_min: "",
+        size_max: "",
+        page: 1,
+      }));
+      return;
+    }
+    set(name, "" as never);
+  }
+
+  const pageIds = rows.data?.results.map((row) => row.id) ?? [];
+  const allOnPage =
+    pageIds.length > 0 && pageIds.every((rowId) => selected.has(rowId));
+  const someOnPage = pageIds.some((rowId) => selected.has(rowId));
+
+  function toggleRow(rowId: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (!next.delete(rowId)) next.add(rowId);
+      return next;
+    });
+  }
+
+  function togglePage() {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const rowId of pageIds) {
+        if (allOnPage) next.delete(rowId);
+        else next.add(rowId);
+      }
+      return next;
+    });
+  }
+
+  async function bulkDecide(choice: "add" | "hold" | "skip") {
+    setBulkBusy(true);
+    try {
+      const result = await decideMany(campaign!.id, [...selected], choice);
+      const parts = [`Marked ${result.saved} as ${choice.toUpperCase()}.`];
+      if (result.unchanged > 0) parts.push(`${result.unchanged} already were.`);
+      if (result.failed > 0) parts.push(`${result.failed} could not be saved.`);
+      setNotice(parts.join(" "));
+      setSelected(new Set());
+      refresh();
+    } catch (cause) {
+      setNotice(`Could not save the decisions. ${errorMessage(cause)}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkAnalyze() {
+    const count = selected.size;
+    if (
+      !window.confirm(
+        `Analyze ${count} selected ${count === 1 ? "company" : "companies"}? Each one is judged by the AI provider, which costs money per company.`,
+      )
+    )
+      return;
+    setBulkBusy(true);
+    try {
+      const result = await analyzeSelected(campaign!.id, [...selected]);
+      setNotice(
+        `Queued ${result.queued} ${result.queued === 1 ? "company" : "companies"}${
+          result.already_running
+            ? ` (${result.already_running} already running)`
+            : ""
+        }. Results appear here as they finish.`,
+      );
+      setSelected(new Set());
+      refresh();
+    } catch (cause) {
+      setNotice(`Could not queue the analysis. ${errorMessage(cause)}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function pushNow() {
+    if (
+      !window.confirm(
+        "Push every account you decided ADD to the CRM? Accounts that are not ready are skipped and listed.",
+      )
+    )
+      return;
+    try {
+      const result = await pushApprovedToCrm(campaign!.id);
+      const skipped = result.skipped
+        .map((s) => `${s.company} (${s.reason})`)
+        .join("; ");
+      setNotice(
+        `Sent ${result.pushed} to the CRM.${skipped ? ` Skipped: ${skipped}` : ""}`,
+      );
+      refresh();
+    } catch (cause) {
+      setNotice(`Could not push. ${errorMessage(cause)}`);
+    }
+  }
+
+  async function findEmails() {
+    if (
+      !window.confirm(
+        "Look up and check the emails of the primary and secondary contacts of every approved account? It runs in the background and uses provider credits.",
+      )
+    )
+      return;
+    try {
+      const result = await findAndVerifyEmails(campaign!.id);
+      setNotice(
+        queuedNotice(
+          result,
+          ["Checking emails for", "person", "people"],
+          "Results show up on each account as they come in.",
+          "there was nothing to look up or check",
+        ),
+      );
+    } catch (cause) {
+      setNotice(`Could not queue. ${errorMessage(cause)}`);
+    }
+  }
+
+  async function queuePush() {
+    if (
+      !window.confirm(
+        "Send every approved account to the CRM in the background? Accounts that are not ready yet are skipped.",
+      )
+    )
+      return;
+    try {
+      const result = await queueApprovedToCrm(campaign!.id);
+      setNotice(
+        queuedNotice(
+          result,
+          ["Sending", "account", "accounts", "to the CRM"],
+          "",
+          "they still need a primary contact with an email and an approved message",
+        ),
+      );
+    } catch (cause) {
+      setNotice(`Could not queue. ${errorMessage(cause)}`);
+    }
+  }
 
   return (
     <>
@@ -304,113 +568,55 @@ export function CompaniesPage() {
         actions={
           <>
             <Button variant="secondary" onClick={() => setAdding(!adding)}>
-              Add one
+              Add company
             </Button>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    "Push every account you decided ADD to the CRM? Accounts that are not ready are skipped and listed.",
-                  )
-                )
-                  return;
-                try {
-                  const result = await pushApprovedToCrm(campaign.id);
-                  const skipped = result.skipped
-                    .map((s) => `${s.company} (${s.reason})`)
-                    .join("; ");
-                  setNotice(
-                    `Sent ${result.pushed} to the CRM.${skipped ? ` Skipped: ${skipped}` : ""}`,
-                  );
-                  refresh();
-                } catch (cause) {
-                  setNotice(`Could not push. ${errorMessage(cause)}`);
-                }
-              }}
-            >
-              Push to CRM
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    "Look up and check the emails of the primary and secondary contacts of every approved account? It runs in the background and uses provider credits.",
-                  )
-                )
-                  return;
-                try {
-                  const result = await findAndVerifyEmails(campaign.id);
-                  setNotice(
-                    queuedNotice(
-                      result,
-                      ["Checking emails for", "person", "people"],
-                      "Results show up on each account as they come in.",
-                      "there was nothing to look up or check",
-                    ),
-                  );
-                } catch (cause) {
-                  setNotice(`Could not queue. ${errorMessage(cause)}`);
-                }
-              }}
-            >
-              Find and verify emails
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    "Send every approved account to the CRM in the background? Accounts that are not ready yet are skipped.",
-                  )
-                )
-                  return;
-                try {
-                  const result = await queueApprovedToCrm(campaign.id);
-                  setNotice(
-                    queuedNotice(
-                      result,
-                      ["Sending", "account", "accounts", "to the CRM"],
-                      "",
-                      "they still need a primary contact with an email and an approved message",
-                    ),
-                  );
-                } catch (cause) {
-                  setNotice(`Could not queue. ${errorMessage(cause)}`);
-                }
-              }}
-            >
-              Queue CRM push
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                exportApproved(campaign.id).catch((cause) =>
-                  setNotice(`Could not export. ${errorMessage(cause)}`),
-                )
-              }
-            >
-              Export approved
-            </Button>
-            <Link
-              href="/companies/agreement"
-              className={buttonStyles({ variant: "secondary" })}
-            >
-              AI vs you
-            </Link>
-            <Link
-              href="/companies/review"
-              className={buttonStyles({ variant: "secondary" })}
-            >
-              Review queue
-            </Link>
-            <Link
-              href="/companies/import"
-              className={buttonStyles({ variant: "secondary" })}
-            >
-              Import a CSV
-            </Link>
+            <Menu
+              label="More ▾"
+              groups={[
+                {
+                  heading: "Bring in",
+                  items: [{ label: "Import a CSV", href: "/companies/import" }],
+                },
+                {
+                  heading: "Review",
+                  items: [
+                    {
+                      label: "Review queue",
+                      description: "Decide on accounts one by one",
+                      href: "/companies/review",
+                    },
+                    {
+                      label: "AI vs you",
+                      description: "How often your decision matches the AI",
+                      href: "/companies/agreement",
+                    },
+                  ],
+                },
+                {
+                  heading: "Outreach and CRM",
+                  items: [
+                    {
+                      label: "Find and verify emails",
+                      description: "Approved accounts, uses provider credits",
+                      onSelect: findEmails,
+                    },
+                    { label: "Push to CRM now", onSelect: pushNow },
+                    {
+                      label: "Queue CRM push",
+                      description: "Runs in the background",
+                      onSelect: queuePush,
+                    },
+                    {
+                      label: "Export approved",
+                      onSelect: () =>
+                        exportApproved(campaign.id).catch((cause) =>
+                          setNotice(`Could not export. ${errorMessage(cause)}`),
+                        ),
+                    },
+                  ],
+                },
+              ]}
+            />
             <Button
               disabled={unassessed === 0}
               onClick={() => setConfirm(true)}
@@ -437,187 +643,204 @@ export function CompaniesPage() {
         />
       ) : null}
 
-      {!filtered && (counts?.needs_review ?? 0) > 0 ? (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface-raised px-4 py-3 text-sm">
-          <span>
-            <span className="font-medium">
-              {counts?.needs_review}{" "}
-              {counts?.needs_review === 1 ? "account is" : "accounts are"}
-            </span>{" "}
-            waiting for your decision.
-          </span>
-          <Button size="sm" onClick={() => set("review", "needs_review")}>
-            Start reviewing
-          </Button>
-        </div>
-      ) : null}
-
       <nav
-        aria-label="Quick filters"
-        className="mb-5 flex flex-wrap gap-x-5 gap-y-1 border-b border-line"
+        aria-label="Views"
+        className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-line"
       >
-        <Tab
-          label="All"
-          value={counts?.total ?? "…"}
-          active={!filtered}
-          onClick={() => {
-            setTyped({ search: "", industry: "" });
-            setFilters(EMPTY_FILTERS);
-          }}
-        />
-        <Tab
-          label="Needs review"
-          value={counts?.needs_review ?? "…"}
-          active={filters.review === "needs_review"}
-          onClick={() => set("review", "needs_review")}
-        />
-        <Tab
-          label="Strong fit"
-          value={counts?.strong ?? "…"}
-          active={filters.icp_fit === "strong"}
-          onClick={() => set("icp_fit", "strong")}
-        />
-        <Tab
-          label="Trigger"
-          value={counts?.trigger_yes ?? "…"}
-          active={filters.trigger === "yes"}
-          onClick={() => set("trigger", "yes")}
-        />
-        <Tab
-          label="Not analyzed"
-          value={counts?.not_assessed ?? "…"}
-          active={filters.icp_fit === "unassessed"}
-          onClick={() => set("icp_fit", "unassessed")}
-        />
-        <Tab
-          label="Contacted"
-          value={counts?.contacted ?? "…"}
-          active={filters.outreach === "contacted"}
-          onClick={() => set("outreach", "contacted")}
-        />
-        <Tab
-          label="Replied"
-          value={counts?.replied ?? "…"}
-          active={filters.outreach === "replied"}
-          onClick={() => set("outreach", "replied")}
-        />
-        <Tab
-          label="Meetings"
-          value={counts?.meetings ?? "…"}
-          active={filters.outreach === "meeting_booked"}
-          onClick={() => set("outreach", "meeting_booked")}
-        />
+        {VIEWS.map((view) => (
+          <ViewTab
+            key={view.label}
+            label={view.label}
+            value={counts ? view.count?.(counts) : undefined}
+            active={isView(filters, view.filters)}
+            onClick={() => openView(view.filters)}
+          />
+        ))}
         {(counts?.analyzing ?? 0) > 0 ? (
-          <Tab label="Analyzing" value={counts?.analyzing ?? 0} />
+          <span className="-mb-px pb-2 text-sm text-fg-muted">
+            Analyzing {counts?.analyzing}…
+          </span>
         ) : null}
       </nav>
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="min-w-40 flex-1">
-          <TextField
-            label="Search"
-            placeholder="Name or website"
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="min-w-56 flex-1">
+          <input
+            type="search"
+            aria-label="Search companies"
+            placeholder="Search by name or website"
             value={typed.search}
             onChange={(e) => setTyped({ ...typed, search: e.target.value })}
+            className="w-full rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm"
           />
         </div>
-        {SELECTS.map(({ key: name, label, options }) => (
-          <label
-            key={name}
-            className="flex flex-col gap-1.5 text-sm font-medium"
-          >
-            {label}
-            <select
-              value={filters[name]}
-              onChange={(e) => set(name, e.target.value)}
-              className="rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-normal"
-            >
-              <option value="">Any</option>
-              {options.map(([value, text]) => (
-                <option key={value} value={value}>
-                  {text}
-                </option>
-              ))}
-            </select>
-          </label>
-        ))}
-        <div className="w-32">
-          <TextField
-            label="Industry"
-            value={typed.industry}
-            onChange={(e) => setTyped({ ...typed, industry: e.target.value })}
-          />
-        </div>
-        <label className="flex flex-col gap-1.5 text-sm font-medium">
-          Sort
-          <select
-            value={filters.ordering}
-            onChange={(e) => set("ordering", e.target.value)}
-            className="rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-normal"
-          >
-            <option value="">Name</option>
-            <option value="-icp_fit">Best fit first</option>
-            <option value="-updated_at">Recently updated</option>
-          </select>
-        </label>
+        <Button
+          variant="secondary"
+          aria-expanded={showFilters}
+          onClick={() => setShowFilters(!showFilters)}
+        >
+          Filters{chips.length > 0 ? ` (${chips.length})` : ""}
+        </Button>
+        <select
+          aria-label="Sort"
+          value={filters.ordering}
+          onChange={(e) => set("ordering", e.target.value)}
+          className="rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm"
+        >
+          <option value="">Sort: Name</option>
+          <option value="-icp_fit">Sort: Best fit first</option>
+          <option value="-updated_at">Sort: Recently updated</option>
+        </select>
       </div>
 
-      <details className="mb-4 text-sm">
-        <summary className="cursor-pointer text-fg-muted">More filters</summary>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="w-28">
-            <TextField
-              label="Country"
-              placeholder="SA"
-              maxLength={2}
-              value={filters.country}
-              onChange={(e) => set("country", e.target.value.toUpperCase())}
-            />
+      {showFilters ? (
+        <Card className="mb-3">
+          <div className="grid gap-x-10 gap-y-6 lg:grid-cols-2">
+            {[
+              FILTER_GROUPS.filter((g) => g.heading !== "Decision"),
+              FILTER_GROUPS.filter((g) => g.heading === "Decision"),
+            ].map((column, index) => (
+              <div key={index} className="flex min-w-0 flex-col gap-6">
+                {column.map((group) => (
+                  <section key={group.heading} className="min-w-0">
+                    <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-fg-muted">
+                      {group.heading}
+                    </h3>
+                    <div className="flex flex-col gap-3">
+                      {group.selects.map(({ key: name, label, options }) => (
+                        <div
+                          key={name}
+                          role="group"
+                          aria-label={label}
+                          className="flex flex-wrap items-center gap-x-4 gap-y-1.5"
+                        >
+                          <span className="w-28 shrink-0 text-sm font-medium">
+                            {label}
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {options.map(([value, text]) => (
+                              <OptionPill
+                                key={value}
+                                active={filters[name] === value}
+                                onClick={() =>
+                                  set(
+                                    name,
+                                    filters[name] === value ? "" : value,
+                                  )
+                                }
+                              >
+                                {text}
+                              </OptionPill>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ))}
           </div>
-          <div className="w-28">
-            <TextField
-              label="Size from"
-              inputMode="numeric"
-              value={filters.size_min}
-              onChange={(e) =>
-                set("size_min", e.target.value.replace(/\D/g, ""))
-              }
-            />
-          </div>
-          <div className="w-28">
-            <TextField
-              label="Size to"
-              inputMode="numeric"
-              value={filters.size_max}
-              onChange={(e) =>
-                set("size_max", e.target.value.replace(/\D/g, ""))
-              }
-            />
-          </div>
-          <div className="w-48">
-            <TextField
-              label="Buyer title"
-              value={filters.buyer_title}
-              onChange={(e) => set("buyer_title", e.target.value)}
-            />
-          </div>
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
-            Trigger type
-            <select
-              value={filters.trigger_type}
-              onChange={(e) => set("trigger_type", e.target.value)}
-              className="rounded-md border border-line-strong bg-surface-raised px-3 py-1.5 text-sm font-normal"
+
+          <section className="mt-6 border-t border-line pt-5">
+            <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-fg-muted">
+              Company
+            </h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <TextField
+                label="Industry"
+                value={typed.industry}
+                onChange={(e) =>
+                  setTyped({ ...typed, industry: e.target.value })
+                }
+              />
+              <TextField
+                label="Country"
+                placeholder="SA"
+                maxLength={2}
+                value={filters.country}
+                onChange={(e) => set("country", e.target.value.toUpperCase())}
+              />
+              <TextField
+                label="Buyer title"
+                value={filters.buyer_title}
+                onChange={(e) => set("buyer_title", e.target.value)}
+              />
+              <TextField
+                label="Employees from"
+                inputMode="numeric"
+                value={filters.size_min}
+                onChange={(e) =>
+                  set("size_min", e.target.value.replace(/\D/g, ""))
+                }
+              />
+              <TextField
+                label="Employees to"
+                inputMode="numeric"
+                value={filters.size_max}
+                onChange={(e) =>
+                  set("size_max", e.target.value.replace(/\D/g, ""))
+                }
+              />
+              <label className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
+                Trigger type
+                <select
+                  value={filters.trigger_type}
+                  onChange={(e) => set("trigger_type", e.target.value)}
+                  className="w-full rounded-md border border-line-strong bg-surface-raised px-3 py-2 text-sm font-normal"
+                >
+                  <option value="">Any</option>
+                  {TRIGGER_TYPES.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4">
+            <button
+              type="button"
+              onClick={() => openView({})}
+              disabled={!filtered}
+              className="text-sm text-fg-muted underline-offset-2 hover:underline disabled:opacity-50 disabled:hover:no-underline"
             >
-              <option value="">Any</option>
-              {TRIGGER_TYPES.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
+              Clear all filters
+            </button>
+            <Button size="sm" onClick={() => setShowFilters(false)}>
+              Done
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
+      {filtered ? (
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2"
+          aria-label="Active filters"
+        >
+          {chips.map((chip) => (
+            <button
+              key={chip.text}
+              type="button"
+              onClick={() => removeChip(chip.key)}
+              aria-label={`Remove filter ${chip.text}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-muted px-2.5 py-1 text-xs hover:border-line-strong"
+            >
+              {chip.text} <span aria-hidden="true">×</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => openView({})}
+            className="text-xs text-fg-muted underline-offset-2 hover:underline"
+          >
+            Clear all
+          </button>
         </div>
-      </details>
+      ) : null}
 
       {rows.error ? (
         <Alert
@@ -662,75 +885,97 @@ export function CompaniesPage() {
           <Table caption="Companies">
             <thead>
               <tr>
+                <Th className="w-10">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all companies on this page"
+                    className="h-4 w-4 accent-accent"
+                    checked={allOnPage}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someOnPage && !allOnPage;
+                    }}
+                    onChange={togglePage}
+                  />
+                </Th>
                 <Th>Company</Th>
-                <Th>ICP fit</Th>
-                <Th>Trigger</Th>
-                <Th>AI</Th>
-                <Th>Decision</Th>
-                <Th>Industry</Th>
-                <Th>Size</Th>
+                <Th>Fit</Th>
+                <Th>AI / You</Th>
                 <Th>Primary buyer</Th>
                 <Th>Outreach</Th>
               </tr>
             </thead>
             <tbody>
-              {rows.data!.results.map((row) => (
-                <tr key={row.id}>
-                  <Td>
-                    <Link
-                      href={`/companies/${row.id}`}
-                      className="font-medium underline-offset-2 hover:underline"
-                    >
-                      {row.name}
-                    </Link>
-                    <span className="block text-xs text-fg-muted">
-                      {row.domain ?? "—"}
-                      {row.country ? ` · ${row.country}` : ""}
-                    </span>
-                  </Td>
-                  <Td>
-                    <Fit row={row} />
-                  </Td>
-                  <Td>
-                    {row.icp_fit ? (
-                      <>
-                        <StatusPill
-                          kind="trigger"
-                          value={row.trigger ? "yes" : "no"}
-                        />
-                        {row.trigger_types.length > 0 ? (
-                          <span className="mt-1 block text-xs text-fg-muted">
-                            {row.trigger_types.slice(0, 2).join(", ")}
-                          </span>
-                        ) : null}
-                      </>
-                    ) : (
-                      <span className="text-fg-muted">—</span>
-                    )}
-                  </Td>
-                  <Td>
-                    {row.ai_recommendation ? (
-                      <StatusPill
-                        kind="ai"
-                        value={row.ai_recommendation as "add" | "hold" | "skip"}
+              {rows.data!.results.map((row) => {
+                const details = [
+                  row.domain,
+                  row.country,
+                  row.industry,
+                  row.employee_count ? `${row.employee_count} people` : null,
+                ].filter(Boolean);
+                return (
+                  <tr
+                    key={row.id}
+                    className={selected.has(row.id) ? "bg-surface-muted" : ""}
+                  >
+                    <Td>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${row.name}`}
+                        className="h-4 w-4 accent-accent"
+                        checked={selected.has(row.id)}
+                        onChange={() => toggleRow(row.id)}
                       />
-                    ) : (
-                      <span className="text-fg-muted">—</span>
-                    )}
-                  </Td>
-                  <Td>
-                    <Decision row={row} />
-                  </Td>
-                  <Td className="text-fg-muted">{row.industry ?? "—"}</Td>
-                  <Td className="text-fg-muted">{row.employee_count ?? "—"}</Td>
-                  <Td className="text-fg-muted">{row.primary_buyer ?? "—"}</Td>
-                  <Td className="text-fg-muted">
-                    {row.outreach_status === "none"
-                      ? "—"
-                      : stageLabel(row.outreach_status)}
-                  </Td>
-                </tr>
-              ))}
+                    </Td>
+                    <Td>
+                      <Link
+                        href={`/companies/${row.id}`}
+                        className="font-medium underline-offset-2 hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                      <span className="block text-xs text-fg-muted">
+                        {details.length > 0 ? details.join(" · ") : "—"}
+                      </span>
+                    </Td>
+                    <Td>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Fit row={row} />
+                        {row.icp_fit && row.trigger ? (
+                          <StatusPill kind="trigger" value="yes" />
+                        ) : null}
+                      </div>
+                      {row.trigger_types.length > 0 ? (
+                        <span className="mt-1 block text-xs text-fg-muted">
+                          {row.trigger_types.slice(0, 2).join(", ")}
+                        </span>
+                      ) : null}
+                    </Td>
+                    <Td>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {row.ai_recommendation ? (
+                          <StatusPill
+                            kind="ai"
+                            value={
+                              row.ai_recommendation as "add" | "hold" | "skip"
+                            }
+                          />
+                        ) : (
+                          <span className="text-fg-muted">—</span>
+                        )}
+                        <Decision row={row} />
+                      </div>
+                    </Td>
+                    <Td className="text-fg-muted">
+                      {row.primary_buyer ?? "—"}
+                    </Td>
+                    <Td className="text-fg-muted">
+                      {row.outreach_status === "none"
+                        ? "—"
+                        : stageLabel(row.outreach_status)}
+                    </Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </Table>
           <Pagination
@@ -742,6 +987,43 @@ export function CompaniesPage() {
           />
         </>
       )}
+
+      {selected.size > 0 ? (
+        <div
+          role="region"
+          aria-label="Bulk actions"
+          className="fixed inset-x-4 bottom-4 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center gap-3 rounded-lg border border-line bg-surface-raised px-4 py-3 shadow-lg"
+        >
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          {(["add", "hold", "skip"] as const).map((choice) => (
+            <Button
+              key={choice}
+              size="sm"
+              variant={choice === "add" ? "primary" : "secondary"}
+              disabled={bulkBusy}
+              onClick={() => bulkDecide(choice)}
+            >
+              {choice.toUpperCase()}
+            </Button>
+          ))}
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={bulkBusy}
+            onClick={bulkAnalyze}
+          >
+            Analyze
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={bulkBusy}
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={confirm}

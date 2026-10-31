@@ -112,6 +112,21 @@ export async function analyzeUnassessed(
   return data as BulkResult;
 }
 
+/** Queue the analysis of the chosen companies (manager level). */
+export async function analyzeSelected(
+  campaignId: string,
+  companyIds: string[],
+): Promise<BulkResult> {
+  const { data } = await getApiClient().POST(
+    "/api/v1/campaigns/{campaign_pk}/accounts/analyze/",
+    {
+      params: { path: { campaign_pk: campaignId } },
+      body: { scope: "ids", company_ids: companyIds },
+    },
+  );
+  return data as BulkResult;
+}
+
 export type EnrichResult = components["schemas"]["EnrichContactsResult"];
 
 /**

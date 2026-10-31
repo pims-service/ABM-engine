@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Menu } from "@/components/ui/Menu";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api";
@@ -138,22 +139,31 @@ export function CompanyDetail({ id }: { id: string }) {
         actions={
           <>
             {card.company.archived ? null : (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Archive this company? It leaves the lists. Its research and history are kept and you can restore it.",
-                    )
-                  ) {
-                    archiveCompany(id).then(refresh, (c) =>
-                      setStartError(errorMessage(c)),
-                    );
-                  }
-                }}
-              >
-                Archive
-              </Button>
+              <Menu
+                label="More ▾"
+                groups={[
+                  {
+                    heading: "Account",
+                    items: [
+                      {
+                        label: "Archive",
+                        description: "Hides it from lists. Nothing is deleted.",
+                        onSelect: () => {
+                          if (
+                            window.confirm(
+                              "Archive this company? It leaves the lists. Its research and history are kept and you can restore it.",
+                            )
+                          ) {
+                            archiveCompany(id).then(refresh, (c) =>
+                              setStartError(errorMessage(c)),
+                            );
+                          }
+                        },
+                      },
+                    ],
+                  },
+                ]}
+              />
             )}
             <Button
               onClick={analyse}
@@ -207,8 +217,8 @@ export function CompanyDetail({ id }: { id: string }) {
         onChange={setUpdated}
         reload={refresh}
         onActivity={activity.reload}
+        historyExtra={<WebsitePreview id={id} />}
       />
-      <WebsitePreview id={id} />
     </>
   );
 }
@@ -232,7 +242,7 @@ function WebsitePreview({ id }: { id: string }) {
   }
 
   return (
-    <section className="mt-8" aria-labelledby="website-preview-heading">
+    <section aria-labelledby="website-preview-heading">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 id="website-preview-heading" className="text-sm font-semibold">
           Website preview

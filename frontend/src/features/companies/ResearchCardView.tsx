@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Textarea } from "@/components/ui/Textarea";
+import { cn } from "@/lib/cn";
 import { errorMessage, formatDate, formatDateTime } from "@/lib/format";
 
 import {
@@ -31,6 +32,8 @@ import { ResearchHistoryCard } from "./ResearchHistoryCard";
 import { WorkflowCard } from "./WorkflowCard";
 
 const POLL_MS = 3000;
+
+type TabKey = "overview" | "people" | "history";
 
 function Fact({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -73,6 +76,7 @@ export function ResearchCardView({
   onChange,
   reload,
   onActivity,
+  historyExtra,
 }: {
   card: ResearchCard;
   activity: ActivityItem[];
@@ -83,6 +87,7 @@ export function ResearchCardView({
   onChange: (card: ResearchCard) => void;
   reload: () => void;
   onActivity: () => void;
+  historyExtra?: ReactNode;
 }) {
   const { company, research, trigger, icp, recommendation, decision } = card;
   const running =
@@ -94,6 +99,14 @@ export function ResearchCardView({
     const timer = setInterval(reload, POLL_MS);
     return () => clearInterval(timer);
   }, [running, reload]);
+
+  const [tab, setTab] = useState<TabKey>("overview");
+  const nextStep = card.workflow.find((step) => !step.done);
+  const tabs: [TabKey, string, number | null][] = [
+    ["overview", "Overview", null],
+    ["people", "Contacts and outreach", contacts.length],
+    ["history", "History", activity.length],
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -148,6 +161,12 @@ export function ResearchCardView({
             Analysis running. This page updates by itself.
           </p>
         ) : null}
+        {nextStep ? (
+          <p className="mt-3 border-t border-line pt-3 text-sm">
+            <span className="font-medium">Next:</span> {nextStep.title}
+            <span className="text-fg-muted"> · {nextStep.detail}</span>
+          </p>
+        ) : null}
       </Card>
 
       <DecisionBar
@@ -158,176 +177,238 @@ export function ResearchCardView({
         }}
       />
 
-      <div className="grid items-start gap-5 lg:grid-cols-2">
-        <div className="flex flex-col gap-5">
-          <Card title="Why this fit">
-            {icp ? (
-              <div className="flex flex-col gap-4 text-sm">
-                <List items={icp.reasons} />
-                {icp.concerns.length > 0 ? (
-                  <div>
-                    <p className="mb-1.5 text-xs font-medium text-fg-muted">
-                      Concerns
-                    </p>
-                    <List items={icp.concerns} warn />
-                  </div>
-                ) : null}
-                <p className="text-xs text-fg-muted">
-                  Judged on {formatDateTime(icp.created_at)} against campaign
-                  rules version {icp.profile_version}.
+      <div
+        role="tablist"
+        aria-label="Account sections"
+        className="flex gap-6 border-b border-line"
+      >
+        {tabs.map(([key, label, count]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`tab-${key}`}
+            aria-selected={tab === key}
+            aria-controls={`panel-${key}`}
+            onClick={() => setTab(key)}
+            className={cn(
+              "-mb-px whitespace-nowrap border-b-2 px-1 pb-2 text-sm",
+              tab === key
+                ? "border-fg font-medium"
+                : "border-transparent text-fg-muted hover:text-fg",
+            )}
+          >
+            {label}
+            {count ? (
+              <span className="ml-1.5 text-fg-muted">{count}</span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+
+      {tab === "overview" ? (
+        <div
+          role="tabpanel"
+          id="panel-overview"
+          aria-labelledby="tab-overview"
+          className="grid items-start gap-5 lg:grid-cols-5"
+        >
+          <div className="flex flex-col gap-5 lg:col-span-3">
+            <Card title="Why this fit">
+              {icp ? (
+                <div className="flex flex-col gap-4 text-sm">
+                  <List items={icp.reasons} />
+                  {icp.concerns.length > 0 ? (
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium text-fg-muted">
+                        Concerns
+                      </p>
+                      <List items={icp.concerns} warn />
+                    </div>
+                  ) : null}
+                  <p className="text-xs text-fg-muted">
+                    Judged on {formatDateTime(icp.created_at)} against campaign
+                    rules version {icp.profile_version}.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-fg-muted">
+                  Run the analysis to see why this company fits or not.
                 </p>
-              </div>
-            ) : (
-              <p className="text-sm text-fg-muted">
-                Run the analysis to see why this company fits or not.
-              </p>
-            )}
-          </Card>
+              )}
+            </Card>
 
-          <Card title="Recommended angle">
-            {recommendation?.outreach_angle ? (
-              <p className="text-sm">{recommendation.outreach_angle}</p>
-            ) : (
-              <p className="text-sm text-fg-muted">
-                No angle yet. It is only suggested when the facts support one.
-              </p>
-            )}
-          </Card>
+            <Card title="Recommended angle">
+              {recommendation?.outreach_angle ? (
+                <p className="text-sm">{recommendation.outreach_angle}</p>
+              ) : (
+                <p className="text-sm text-fg-muted">
+                  No angle yet. It is only suggested when the facts support one.
+                </p>
+              )}
+            </Card>
 
-          <OutreachCard
-            card={card}
-            contacts={contacts}
-            messages={messages}
-            onChange={() => {
-              onMessages();
-              onActivity();
-            }}
-          />
-
-          <Card title="Signals">
-            {trigger.signals.length === 0 ? (
-              <p className="text-sm text-fg-muted">
-                No current signals. A company can still qualify without one.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-4 text-sm">
-                {trigger.signals.map((signal) => (
-                  <li key={signal.id}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="trigger-yes">{signal.type_label}</Badge>
-                      <span className="text-xs text-fg-muted">
-                        {formatDate(signal.event_date)}
-                        {signal.expires_at
-                          ? ` · current until ${formatDate(signal.expires_at)}`
-                          : ""}
-                      </span>
-                    </div>
-                    <p className="mt-1.5">{signal.evidence}</p>
-                    <div className="mt-1">
-                      <FlagSignalButton
-                        companyId={company.id}
-                        signalId={signal.id}
-                        onSent={onActivity}
-                      />
-                    </div>
-                    {signal.source.url ? (
+            <Card title="Signals">
+              {trigger.signals.length === 0 ? (
+                <p className="text-sm text-fg-muted">
+                  No current signals. A company can still qualify without one.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-4 text-sm">
+                  {trigger.signals.map((signal) => (
+                    <li key={signal.id}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone="trigger-yes">{signal.type_label}</Badge>
+                        <span className="text-xs text-fg-muted">
+                          {formatDate(signal.event_date)}
+                          {signal.expires_at
+                            ? ` · current until ${formatDate(signal.expires_at)}`
+                            : ""}
+                        </span>
+                      </div>
+                      <p className="mt-1.5">{signal.evidence}</p>
+                      <div className="mt-1">
+                        <FlagSignalButton
+                          companyId={company.id}
+                          signalId={signal.id}
+                          onSent={onActivity}
+                        />
+                      </div>
+                      {signal.source.url ? (
+                        <a
+                          href={signal.source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-block break-all text-xs text-accent underline-offset-2 hover:underline"
+                        >
+                          {signal.source.url}
+                        </a>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          </div>
+          <div className="flex flex-col gap-5 lg:col-span-2">
+            <Card title="Company">
+              {research ? (
+                <>
+                  {research.description ? (
+                    <p className="mb-3 text-sm">{research.description}</p>
+                  ) : null}
+                  <dl className="text-sm">
+                    <Fact label="Industry" value={research.industry} />
+                    <Fact label="Headquarters" value={research.headquarters} />
+                    <Fact label="Employees" value={research.employee_count} />
+                    <Fact
+                      label="Business model"
+                      value={
+                        research.classification &&
+                        research.classification !== "unknown"
+                          ? research.classification.toUpperCase()
+                          : research.business_model
+                      }
+                    />
+                    <Fact
+                      label="Products and services"
+                      value={research.products_services}
+                    />
+                    <Fact
+                      label="Target customers"
+                      value={research.target_customers}
+                    />
+                  </dl>
+                  <p className="mt-3 break-all text-xs text-fg-muted">
+                    Source:{" "}
+                    {research.source.url ? (
                       <a
-                        href={signal.source.url}
+                        href={research.source.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1 inline-block break-all text-xs text-accent underline-offset-2 hover:underline"
+                        className="text-accent underline-offset-2 hover:underline"
                       >
-                        {signal.source.url}
+                        {research.source.url}
                       </a>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-
-        <div className="flex flex-col gap-5">
-          <Card title="Company">
-            {research ? (
-              <>
-                {research.description ? (
-                  <p className="mb-3 text-sm">{research.description}</p>
-                ) : null}
-                <dl className="text-sm">
-                  <Fact label="Industry" value={research.industry} />
-                  <Fact label="Headquarters" value={research.headquarters} />
-                  <Fact label="Employees" value={research.employee_count} />
-                  <Fact
-                    label="Business model"
-                    value={
-                      research.classification &&
-                      research.classification !== "unknown"
-                        ? research.classification.toUpperCase()
-                        : research.business_model
-                    }
-                  />
-                  <Fact
-                    label="Products and services"
-                    value={research.products_services}
-                  />
-                  <Fact
-                    label="Target customers"
-                    value={research.target_customers}
-                  />
-                </dl>
-                <p className="mt-3 break-all text-xs text-fg-muted">
-                  Source:{" "}
-                  {research.source.url ? (
-                    <a
-                      href={research.source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent underline-offset-2 hover:underline"
-                    >
-                      {research.source.url}
-                    </a>
-                  ) : (
-                    research.source.name
-                  )}{" "}
-                  · read {formatDateTime(research.source.retrieved_at)}
+                    ) : (
+                      research.source.name
+                    )}{" "}
+                    · read {formatDateTime(research.source.retrieved_at)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-fg-muted">
+                  Nothing researched yet for {company.name}.
                 </p>
-              </>
-            ) : (
-              <p className="text-sm text-fg-muted">
-                Nothing researched yet for {company.name}.
-              </p>
-            )}
-          </Card>
-
-          <WorkflowCard card={card} />
-
-          <CommercialTeamCard card={card} onChange={onChange} />
-
-          <PeopleCard
-            companyId={company.id}
-            contacts={contacts}
-            onChange={onPeople}
-          />
-
-          <ResearchHistoryCard
-            companyId={company.id}
-            latestId={card.research?.researched_at ?? null}
-          />
-
-          <ActivityCard items={activity} />
-
-          <FeedbackCard companyId={company.id} onSent={onActivity} />
-
-          <Card title="Not available yet">
-            <ul className="flex flex-col gap-2 text-sm text-fg-muted">
-              {card.gaps.map((gap) => (
-                <li key={gap}>{gap}</li>
-              ))}
-            </ul>
-          </Card>
+              )}
+            </Card>
+          </div>
         </div>
-      </div>
+      ) : null}
+
+      {tab === "people" ? (
+        <div
+          role="tabpanel"
+          id="panel-people"
+          aria-labelledby="tab-people"
+          className="grid items-start gap-5 lg:grid-cols-2"
+        >
+          <div className="flex flex-col gap-5">
+            <OutreachCard
+              card={card}
+              contacts={contacts}
+              messages={messages}
+              onChange={() => {
+                onMessages();
+                onActivity();
+              }}
+            />
+
+            <WorkflowCard card={card} />
+          </div>
+          <div className="flex flex-col gap-5">
+            <CommercialTeamCard card={card} onChange={onChange} />
+
+            <PeopleCard
+              companyId={company.id}
+              contacts={contacts}
+              onChange={onPeople}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "history" ? (
+        <div
+          role="tabpanel"
+          id="panel-history"
+          aria-labelledby="tab-history"
+          className="flex flex-col gap-5"
+        >
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            <div className="flex flex-col gap-5">
+              <ResearchHistoryCard
+                companyId={company.id}
+                latestId={card.research?.researched_at ?? null}
+              />
+
+              <ActivityCard items={activity} />
+            </div>
+            <div className="flex flex-col gap-5">
+              <FeedbackCard companyId={company.id} onSent={onActivity} />
+
+              <Card title="Not available yet">
+                <ul className="flex flex-col gap-2 text-sm text-fg-muted">
+                  {card.gaps.map((gap) => (
+                    <li key={gap}>{gap}</li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
+          </div>
+          {historyExtra}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -340,6 +421,7 @@ function DecisionBar({
   onChange: (card: ResearchCard) => void;
 }) {
   const [note, setNote] = useState("");
+  const [showNote, setShowNote] = useState(false);
   const [saving, setSaving] = useState<DecisionChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { decision, recommendation } = card;
@@ -372,16 +454,29 @@ function DecisionBar({
             {saving === choice ? "Saving…" : choice.toUpperCase()}
           </Button>
         ))}
+        <button
+          type="button"
+          aria-expanded={showNote}
+          onClick={() => setShowNote(!showNote)}
+          className="text-sm text-fg-muted underline-offset-2 hover:underline"
+        >
+          {showNote || note ? "Hide note" : "Add a note"}
+        </button>
+        <span className="ml-auto text-xs text-fg-muted">
+          The AI only recommends. Nothing is contacted until a person decides.
+        </span>
       </div>
-      <div className="mt-3 max-w-xl">
-        <Textarea
-          label="Note (optional)"
-          rows={2}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          hint="Why you chose this. Kept with the decision."
-        />
-      </div>
+      {showNote || note ? (
+        <div className="mt-3 max-w-xl">
+          <Textarea
+            label="Note (optional)"
+            rows={2}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            hint="Why you chose this. Kept with the decision, saved when you pick ADD, HOLD or SKIP."
+          />
+        </div>
+      ) : null}
       {error ? (
         <Alert tone="danger" className="mt-3">
           {error}
@@ -399,9 +494,6 @@ function DecisionBar({
           {decision.note ? ` · “${decision.note}”` : ""}
         </p>
       ) : null}
-      <p className="mt-2 text-xs text-fg-muted">
-        The AI only recommends. Nothing is contacted until a person decides.
-      </p>
     </Card>
   );
 }
