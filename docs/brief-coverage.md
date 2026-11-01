@@ -14,10 +14,10 @@ tested against fakes and, for GoHighLevel, checked against the official API docu
 | 3 Campaign setup | Done | All fields, versioned profiles, guidance and presets in the form. Several clients and campaigns. |
 | 4A Manual entry | Done | Name, website and profile URL. Duplicate warnings. |
 | 4B CSV upload | Done | 500+ rows, preview, skipped-row report, progress, cancel. |
-| 4C Provider import | Needs a provider | Adapter framework and a queue exist. No company-data provider is connected and there is no provider search screen. |
-| 5 Company information | Partly | From the company website through the AI, each fact with its source. Facts a website does not state show "Not found". |
-| 5 Commercial structure and growth | Partly | Entered by hand on the card. The 3, 6 and 12 month growth is calculated from the numbers. Nothing fetches headcount automatically (needs a people or company data provider). |
-| 5 Signals | Partly | Found on the company's own pages, each needing a date and a quote that really appears on the page. Funding, job and news feeds need providers. |
+| 4C Provider import | Needs a provider | The adapter framework, the queue and a Find companies search screen exist and work end to end with the offline test provider. No real company-data provider is connected, so there is nothing real to search yet. |
+| 5 Company information | Partly | From the company website through the AI, each fact with its source (Analyze Company), and from a company-data provider through the research run (`POST /companies/{id}/research/`), which stores a snapshot and lists the fields the provider did not return. The provider part is tested only with the offline fake. Where sources disagree, the merged profile shows one value per field by source kind (`RESEARCH_SOURCE_PRECEDENCE`) with the other values as alternatives. |
+| 5 Commercial structure and growth | Partly | Entered by hand on the card, or collected by the research run from a provider: sales, BD, marketing and commercial and partnerships headcounts, and 3, 6 and 12 month growth from the growth module (the provider's own percentages are only a fallback). Job titles go into departments through an editable English and Arabic rules file, and unclear titles are never counted. Needs a real company-data provider to run on real data. |
+| 5 Signals | Partly | Found on the company's own pages, each needing a date and a quote that really appears on the page. The research run adds provider signals, funding and hiring by department, and news items tagged by keyword; a second source for the same event keeps both sources on one signal, and an undated event is counted but never stored. Funding, job and news feeds still need real providers: only offline fakes exist. |
 | 5 Source and date on evidence | Done | Enforced: no source or no date means the signal is dropped. |
 | 6 ICP qualification | Done | Structured output, hard rules after the model, reasons and concerns, no numeric score. |
 | 7 Trigger detection | Partly | Yes or no with type, evidence, date and source; several triggers; each type expires after a fixed window. The windows are the same for every campaign (changing them per campaign is not built). |
@@ -32,22 +32,26 @@ tested against fakes and, for GoHighLevel, checked against the official API docu
 | 14 Account detail | Done | Overview, ICP, signals, commercial team, people, outreach, activity, research history. |
 | 15 Explainable AI | Done | Reasons are written out for fit, trigger, buyer and angle. |
 | 16 Feedback and learning | Done | All flags, stored on the timeline, a report of agreement with the AI, and a CSV for prompt and rule improvements. |
-| 17 Integrations, replaceable | Partly | Category catalogue, encrypted connections, test button, metering and budget. Real adapters: Anthropic and GoHighLevel. Others need a provider choice. |
+| 17 Integrations, replaceable | Partly | Category catalogue, encrypted connections, test button, metering and budget. Real adapters: Anthropic, OpenAI and Gemini (AI), SignalHire (people and email), Hunter (email), ZeroBounce (verification) and GoHighLevel (CRM). Still missing: a company-data provider, a news source, an outreach platform and storage. |
 | 18 Architecture | Done | Next.js and Django REST on PostgreSQL, structured LLM output, background workers. Authentication is Django JWT instead of Supabase. |
-| 19 Data objects and history | Done | Every object in the list. Research, assessments, recommendations, decisions and messages are never overwritten. |
+| 19 Data objects and history | Done | Every object in the list. Research, assessments, recommendations, decisions and messages are never overwritten. Every source has a name and a date, evidence is listed per company (`GET /companies/{id}/evidence/`), and any two research snapshots can be compared. `RESEARCH_HISTORY_DAYS` limits how much history is listed; nothing is deleted. |
 | 20 User flow | Done | Every step, including the steps after Add, with the Next steps list. |
 | 21 Out of scope | Respected | No CRM, sending, LinkedIn automation, dialer, analytics suite or website visitor tracking. |
-| 22 Success criteria | Partly | Bulk analysis, separate fit and trigger, visible evidence, ranked buyers, grounded angles, quick decisions, export and no invented facts are in. "Provider parts replaceable" is true of the design but only two adapters exist. |
+| 22 Success criteria | Partly | Bulk analysis, separate fit and trigger, visible evidence, ranked buyers, grounded angles, quick decisions, export and no invented facts are in. "Provider parts replaceable" is true of the design and of seven adapters, but there is no company-data provider yet. |
 
 ## Also built beyond the brief
 Team roles and passwords, monthly AI budget and usage page, import history, archive and restore,
 bulk decisions, recovery when a worker dies, and an AI-versus-human agreement report.
 
 ## What is left
-1. **Still needs a provider:** company data (automatic headcount by department, growth, funding and
-   job signals) and a provider import screen. SignalHire's company API only returns basic company
-   details and is off by default. Mawsool has no adapter until its API documentation is available.
-2. **Not built:** trigger windows per campaign, a retention setting for old research, a golden
-   evaluation set for the prompts, a model tie-break step, hardening and launch work (load test at
-   500 companies, security and privacy reviews, production deployment, backups).
+1. **Still needs a real provider:** company data (automatic headcount by department, growth, funding
+   and job signals on real companies) and a news source. The collectors, the research run and the
+   endpoints are built and tested against the offline fakes; connecting a real provider means
+   writing its adapter. SignalHire's company API only returns basic company details and is off by
+   default. Mawsool has no adapter until its API documentation is available.
+2. **Not built:** trigger windows per campaign, deleting old research (the history setting only
+   hides it), news tagging by the AI model (it is keyword-based), a golden evaluation set for the
+   prompts, a model tie-break step, an outreach platform and storage adapter, and hardening and
+   launch work (load test at 500 companies, security and privacy reviews, a deployment pipeline
+   with staging).
 3. **To prove:** run a real analysis with an Anthropic key and a real push to GoHighLevel.
