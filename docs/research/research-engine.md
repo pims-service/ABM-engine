@@ -126,11 +126,12 @@ Plain Django settings in `config/settings/base.py`; none is an environment varia
 | `RESEARCH_SOURCE_PRECEDENCE` | `manual, provider, website, news` | which kind of source wins in the merged profile |
 | `RESEARCH_NEWS_PROVIDER` | `""` (no news) | `""` or `fake` |
 | `RESEARCH_NEWS_WINDOW_DAYS` | `365` | how far back news counts |
+| `RESEARCH_DEV_COMPANY_ADAPTER` | `""` (none) | dotted path of the offline company-data adapter; set in the dev and test settings only |
 | `RESEARCH_HISTORY_DAYS` | `0` (all) | how much history the API lists |
 
 A real provider connection is configured under Settings > Integrations as for every other
 integration. Until a company-data adapter exists for a provider, a client with such a connection
-gets "not supported yet", and the offline fake runs only where `PROVIDER_FAKE_ENABLED` is on.
+gets "not supported yet", and the offline fake is used only where `RESEARCH_DEV_COMPANY_ADAPTER` names it (dev and test settings).
 
 ## Adding a collector
 

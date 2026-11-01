@@ -81,7 +81,7 @@ class BiggerFake(FakeCompanyDataAdapter):
 def test_the_fake_company_data_adapter_is_only_for_development() -> None:
     client = make_client()
     assert get_adapter(client.pk).key == "fake-company"
-    with override_settings(PROVIDER_FAKE_ENABLED=False), pytest.raises(CompanyDataUnavailable):
+    with override_settings(RESEARCH_DEV_COMPANY_ADAPTER=""), pytest.raises(CompanyDataUnavailable):
         get_adapter(client.pk)
 
 
