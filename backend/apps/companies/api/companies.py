@@ -9,13 +9,14 @@ Built on ``ClientScopedViewSet`` (docs/permissions.md). Writes go through the se
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, ClassVar, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import filters, mixins, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -73,9 +74,24 @@ from apps.research.card import (
     build_activity,
     build_card,
 )
+from apps.research.collect.merge import merged_profile
+from apps.research.collect.report import (
+    CompanyEvidenceSerializer,
+    ProfileFieldSerializer,
+    ResearchRequestSerializer,
+    ResearchRunSerializer,
+    run_payload,
+)
 from apps.research.commercial import CommercialTeamRequestSerializer, record_commercial_team
-from apps.research.history import SnapshotSerializer, history_for
+from apps.research.evidence import company_evidence
+from apps.research.history import (
+    SnapshotDiffSerializer,
+    SnapshotSerializer,
+    diff_between,
+    history_for,
+)
 from apps.research.models import AIRecommendation
+from apps.research.orchestrator import request_research, research_runs
 from apps.research.services import record_human_decision
 
 from .contacts import (
@@ -335,6 +351,11 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "decision": Level.DECIDE,
         "activity": Level.READ,
         "research_history": Level.READ,
+        "research_diff": Level.READ,
+        "research": Level.EDIT,
+        "research_runs": Level.READ,
+        "evidence": Level.READ,
+        "profile": Level.READ,
         "contacts": Level.READ,
         "add_contact": Level.EDIT,
         "update_contact": Level.EDIT,
@@ -496,6 +517,120 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
     def research_history(self, request: Request, pk: str | None = None) -> Response:
         company = self.get_object()
         return Response(SnapshotSerializer(history_for(company), many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_research_diff",
+        summary="What changed between two research snapshots",
+        description="Compares any two snapshots of this company, not only neighbours. `from` is "
+        "the older one and `to` the newer one (snapshot ids from the research history). 400 when "
+        "an id is missing or not a UUID, 404 when a snapshot is not this company's. "
+        + _levels("READ", "any member"),
+        parameters=[
+            OpenApiParameter("from", str, required=True, description="Snapshot id, the older."),
+            OpenApiParameter("to", str, required=True, description="Snapshot id, the newer."),
+        ],
+        responses={200: SnapshotDiffSerializer, **error_responses(400, 401, 403, 404, 429, 500)},
+    )
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="research-history/diff",
+        pagination_class=None,
+    )
+    def research_diff(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        ids = {}
+        for name in ("from", "to"):
+            try:
+                ids[name] = uuid.UUID(str(request.query_params.get(name, "")))
+            except ValueError:
+                raise ValidationError({name: "A snapshot id is required."}) from None
+        result = diff_between(company, ids["from"], ids["to"])
+        if result is None:
+            raise Http404("No such snapshot for this company.")
+        return Response(SnapshotDiffSerializer(result).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_research",
+        summary="Collect provider data, signals and news",
+        description="Queues a research run as a background job (`company_research`) with one "
+        "step each for the provider profile, the signals (provider signals, funding and hiring) "
+        "and news, and answers **202** with the run. Idempotent: while the company has a queued "
+        "or running run that run is returned (`already_queued: true`). A step that cannot run "
+        "because nothing is configured ends `failed` with what to configure, and the other steps "
+        "still run. 400 for an archived company, campaign or client. This does not read the "
+        "company website or call the AI: that is **Analyze Company**. "
+        + _levels("EDIT", "manager and admin"),
+        request=None,
+        responses={202: ResearchRequestSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"])
+    def research(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        with api_validation():
+            result = request_research(company, self._user())
+        body = ResearchRequestSerializer(
+            {
+                "company_id": company.pk,
+                "run": run_payload(result.job, company.pk),
+                "already_queued": not result.created,
+            }
+        ).data
+        return Response(body, status=status.HTTP_202_ACCEPTED)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_research_runs",
+        summary="Research runs of this company",
+        description="The latest 20 research runs, newest first, each with its steps and what "
+        "every step found. " + _levels("READ", "any member"),
+        responses={
+            200: ResearchRunSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="research-runs", pagination_class=None)
+    def research_runs(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        runs = [run_payload(job, company.pk) for job in research_runs(company)]
+        return Response(ResearchRunSerializer(runs, many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_evidence",
+        summary="Evidence behind this company",
+        description="Every source of what we know: each source once, newest first, with its "
+        "name, type, link, when it was retrieved, the date it states and its age in days, and "
+        "which snapshots and signals it backs. " + _levels("READ", "any member"),
+        responses={
+            200: CompanyEvidenceSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def evidence(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(CompanyEvidenceSerializer(company_evidence(company), many=True).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_profile",
+        summary="Merged profile with the source of each value",
+        description="One value per profile field, chosen across all snapshots by source kind "
+        "(`manual`, then `provider`, then `website`, then `news`; the newest wins inside a kind), "
+        "with the source of the shown value and the other values found. Snapshots are not "
+        "changed. " + _levels("READ", "any member"),
+        responses={
+            200: ProfileFieldSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], pagination_class=None)
+    def profile(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(ProfileFieldSerializer(merged_profile(company), many=True).data)
 
     @extend_schema(
         tags=TAGS,

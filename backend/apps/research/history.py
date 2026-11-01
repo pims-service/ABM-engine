@@ -6,8 +6,11 @@ one just before it. A field that was not found in either snapshot is not a chang
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
+from django.conf import settings
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.companies.models import Company, CompanyResearch
@@ -51,14 +54,25 @@ def diff(old: CompanyResearch | None, new: CompanyResearch) -> list[dict[str, An
 
 
 def history_for(company: Company) -> list[dict[str, Any]]:
-    """Newest first, each with its source and its changes against the snapshot before it."""
+    """Newest first, each with its source and its changes against the snapshot before it.
+
+    ``settings.RESEARCH_HISTORY_DAYS`` (0: no limit) hides snapshots older than that many days,
+    except the newest one. It only limits what is listed: snapshots are append-only and are never
+    deleted. The oldest listed snapshot is still compared with the one before it, so what it
+    changed stays right; ``first`` is true only for the company's very first snapshot.
+    """
     rows = list(
         CompanyResearch.objects.filter(company=company)
         .latest_first()
         .select_related("data_source")[: MAX_SNAPSHOTS + 1]
     )
+    shown = rows[:MAX_SNAPSHOTS]
+    days = int(getattr(settings, "RESEARCH_HISTORY_DAYS", 0))
+    if days > 0:
+        cutoff = timezone.now() - timedelta(days=days)
+        shown = [r for i, r in enumerate(shown) if i == 0 or r.researched_at >= cutoff]
     body: list[dict[str, Any]] = []
-    for index, row in enumerate(rows[:MAX_SNAPSHOTS]):
+    for index, row in enumerate(shown):
         older = rows[index + 1] if index + 1 < len(rows) else None
         body.append(
             {
@@ -70,6 +84,29 @@ def history_for(company: Company) -> list[dict[str, Any]]:
             }
         )
     return body
+
+
+def diff_between(company: Company, older_id: Any, newer_id: Any) -> dict[str, Any] | None:
+    """What changed from snapshot ``older_id`` to snapshot ``newer_id`` of ``company`` (any two,
+    not only neighbours), or ``None`` when either is not a snapshot of this company."""
+    found = {
+        str(row.pk): row
+        for row in CompanyResearch.objects.filter(
+            company=company, pk__in=[older_id, newer_id]
+        ).select_related("data_source")
+    }
+    older, newer = found.get(str(older_id)), found.get(str(newer_id))
+    if older is None or newer is None:
+        return None
+    return {
+        "from_id": older.pk,
+        "to_id": newer.pk,
+        "from_researched_at": older.researched_at,
+        "to_researched_at": newer.researched_at,
+        "from_source_name": older.data_source.name,
+        "to_source_name": newer.data_source.name,
+        "changes": diff(older, newer),
+    }
 
 
 class FieldChangeSerializer(serializers.Serializer[Any]):
@@ -84,4 +121,14 @@ class SnapshotSerializer(serializers.Serializer[Any]):
     researched_at = serializers.DateTimeField()
     source_name = serializers.CharField()
     first = serializers.BooleanField(help_text="The oldest snapshot: nothing to compare with.")
+    changes = FieldChangeSerializer(many=True)
+
+
+class SnapshotDiffSerializer(serializers.Serializer[Any]):
+    from_id = serializers.UUIDField()
+    to_id = serializers.UUIDField()
+    from_researched_at = serializers.DateTimeField()
+    to_researched_at = serializers.DateTimeField()
+    from_source_name = serializers.CharField()
+    to_source_name = serializers.CharField()
     changes = FieldChangeSerializer(many=True)
