@@ -100,12 +100,20 @@ export function ImportPage() {
       title="Import companies"
       description="Upload a CSV file with the companies you want to qualify."
       actions={
-        <Link
-          href="/companies"
-          className={buttonStyles({ variant: "secondary" })}
-        >
-          Back to companies
-        </Link>
+        <>
+          <Link
+            href="/companies/find"
+            className={buttonStyles({ variant: "secondary" })}
+          >
+            Find from a provider
+          </Link>
+          <Link
+            href="/companies"
+            className={buttonStyles({ variant: "secondary" })}
+          >
+            Back to companies
+          </Link>
+        </>
       }
     />
   );

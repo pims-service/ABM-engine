@@ -411,6 +411,12 @@ export function CompaniesPage() {
             >
               Import a CSV
             </Link>
+            <Link
+              href="/companies/find"
+              className={buttonStyles({ variant: "secondary" })}
+            >
+              Find from a provider
+            </Link>
             <Button
               disabled={unassessed === 0}
               onClick={() => setConfirm(true)}
