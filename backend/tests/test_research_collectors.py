@@ -18,7 +18,7 @@ from apps.core.models import Job, JobStatus
 from apps.integrations.company_data_connection import CompanyDataUnavailable, get_adapter
 from apps.integrations.framework import CompanyRef, NormalizedCompany
 from apps.integrations.framework.envelope import AdapterResult
-from apps.integrations.framework.fakes import FakeCompanyDataAdapter
+from apps.integrations.framework.fakes import FIXED_NOW, FakeCompanyDataAdapter
 from apps.integrations.framework.normalized import DepartmentHeadcount, NormalizedJobPosting
 from apps.research import orchestrator
 from apps.research.collect.merge import merged_profile
@@ -484,3 +484,57 @@ def test_the_diff_endpoint_checks_its_input() -> None:
     assert viewer.get(url, {"from": "nope", "to": str(new.pk)}).status_code == 400
     foreign = make_research()
     assert viewer.get(url, {"from": str(old.pk), "to": str(foreign.pk)}).status_code == 404
+
+
+# ------------------------------------------------------------------ growth signals
+
+
+def _earlier_provider_snapshot(company: Any, *, employees: int, sales: int) -> None:
+    """A provider snapshot from half a year before the fake provider's fixed clock."""
+    source = DataSource.objects.create(
+        client=company.client, type=DataSourceType.PROVIDER, name="fake-company"
+    )
+    make_research(
+        company=company,
+        data_source=source,
+        researched_at=FIXED_NOW - timedelta(days=183),
+        employee_count=employees,
+        sales_headcount=sales,
+    )
+
+
+def test_growth_measured_from_our_own_history_becomes_signals() -> None:
+    company = acme()
+    _earlier_provider_snapshot(company, employees=100, sales=10)
+    adapter = BiggerFake()
+    outcome = collect_signals(company, adapter, collect_profile(company, adapter))
+    stored = {s.type: s for s in Signal.objects.filter(company=company)}
+    assert {"headcount_growth", "commercial_team_growth"} <= set(stored)
+    assert "50" in stored["headcount_growth"].evidence
+    assert stored["headcount_growth"].event_date == FIXED_NOW.date()
+    assert outcome.created >= 2
+
+
+def test_the_same_growth_seen_again_is_not_a_new_signal() -> None:
+    company = acme()
+    _earlier_provider_snapshot(company, employees=100, sales=10)
+    adapter = BiggerFake()
+    profile = collect_profile(company, adapter)
+    collect_signals(company, adapter, profile)
+    before = Signal.objects.count()
+    again = collect_signals(company, adapter, collect_profile(company, adapter))
+    assert Signal.objects.count() == before
+    assert again.duplicates >= 2
+
+
+def test_growth_below_the_threshold_or_unknown_stores_nothing() -> None:
+    small = acme()
+    _earlier_provider_snapshot(small, employees=148, sales=19)
+    adapter = BiggerFake()
+    collect_signals(small, adapter, collect_profile(small, adapter))
+    assert not Signal.objects.filter(
+        company=small, type__in=["headcount_growth", "commercial_team_growth"]
+    ).exists()
+    unknown = acme()  # no history: one observation cannot show growth
+    collect_signals(unknown, adapter, collect_profile(unknown, adapter))
+    assert not Signal.objects.filter(company=unknown, type="headcount_growth").exists()

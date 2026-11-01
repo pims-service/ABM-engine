@@ -33,6 +33,11 @@ from apps.integrations.framework.categories import JOB_POSTINGS
 from apps.research.collect.profile import ProfileOutcome, company_ref
 from apps.research.engine.freshness import expiry_for
 from apps.research.evidence import record_evidence, signal_sources
+from apps.research.growth import (
+    COMMERCIAL_TEAM_GROWTH,
+    HEADCOUNT_GROWTH,
+    GrowthTriggerHint,
+)
 from apps.research.models import Signal, SignalType
 from apps.research.services import create_signal, supersede_signal
 from apps.research.taxonomy import classify_title
@@ -220,11 +225,47 @@ def collect_signals(
                     user=user,
                 )
             )
+        if profile is not None and profile.growth is not None:
+            _growth_signals(company, profile, key, make, outcome, user)
     if supports(adapter, JOB_POSTINGS):
         _hiring(company, adapter, outcome, user)
     else:
         outcome.notes.append("The provider does not list job postings.")
     return outcome
+
+
+def _growth_signals(
+    company: Company,
+    profile: ProfileOutcome,
+    key: tuple[str, str],
+    make: Callable[[], DataSource],
+    outcome: SignalOutcome,
+    user: User | None,
+) -> None:
+    """Headcount and commercial-team growth signals, when the measured growth meets the
+    thresholds of ``GrowthTriggerHint``. Growth that is unknown, or too small, stores nothing.
+
+    The event date is the day the headcount was observed. The evidence sentence carries the
+    numbers, so the same measurement seen again is a duplicate and changed numbers are a new
+    signal.
+    """
+    report = profile.growth
+    if report is None:
+        return
+    hint = GrowthTriggerHint()
+    for signal_type in (HEADCOUNT_GROWTH, COMMERCIAL_TEAM_GROWTH):
+        result = hint.evaluate(report, signal_type)
+        if not result.met:
+            continue
+        same = Signal.objects.current().filter(
+            company=company, type=signal_type, evidence=result.evidence
+        )
+        if same.exists():
+            outcome.add(DUPLICATE)
+            continue
+        outcome.add(
+            store_signal(company, key, make, signal_type, result.evidence, report.as_of, user=user)
+        )
 
 
 def _hiring(company: Company, adapter: Any, outcome: SignalOutcome, user: User | None) -> None:
