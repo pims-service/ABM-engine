@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen" onKeyDown={onKeyDown}>
+    <div className="flex h-dvh overflow-hidden" onKeyDown={onKeyDown}>
       <Sidebar
         open={menuOpen}
         onNavigate={() => close({ restoreFocus: false })}
