@@ -183,7 +183,8 @@ RESEARCH_DEPARTMENT_RULES_FILE = ""
 # one kind the newest snapshot wins. The losing values stay visible as alternatives.
 RESEARCH_SOURCE_PRECEDENCE = ("manual", "provider", "website", "news")
 # The news source: "" (none, the step is skipped) or "fake" (offline, only with
-# PROVIDER_FAKE_ENABLED). A real source is added as an adapter; see docs/research/research-engine.md.
+# PROVIDER_FAKE_ENABLED). A real source is added as an adapter; see
+# docs/research/research-engine.md.
 RESEARCH_NEWS_PROVIDER = ""
 # The offline company-data adapter for development, as a dotted path; empty means none. Only
 # the dev and test settings set it.
