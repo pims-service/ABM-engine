@@ -156,9 +156,10 @@ REST_FRAMEWORK = {
         # Login attempts (see apps/accounts/throttles.py): per client IP and per email.
         "login": env("API_THROTTLE_LOGIN", default="20/min"),
         "login_email": env("API_THROTTLE_LOGIN_EMAIL", default="5/min"),
-        # Provider search and import, per user (apps/imports/api; #69 makes these configurable).
-        "provider_search": "300/hour",
-        "provider_import": "60/hour",
+        # Provider search and import, and CSV preview/upload, per user (apps/imports/api).
+        "provider_search": env("API_THROTTLE_PROVIDER_SEARCH", default="300/hour"),
+        "provider_import": env("API_THROTTLE_PROVIDER_IMPORT", default="60/hour"),
+        "csv_upload": env("API_THROTTLE_CSV_UPLOAD", default="60/hour"),
     },
     "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -255,6 +256,9 @@ JOB_STALE_QUEUED_SECONDS = env.int("JOB_STALE_QUEUED_SECONDS", default=86400)
 # progress is saved in chunks of this many rows. File size and row limits: apps.imports.csvparse.
 IMPORT_UPLOAD_DIR = Path(env("IMPORT_UPLOAD_DIR", default=str(BASE_DIR / "var" / "import-uploads")))
 IMPORT_CHUNK_SIZE = max(1, env.int("IMPORT_CHUNK_SIZE", default=100))
+# The most CSV and provider batches of one campaign that may be pending or processing at once;
+# the next upload is refused with 429 `too_many_active_imports` until one ends (issue #69).
+IMPORT_MAX_ACTIVE_BATCHES = max(1, env.int("IMPORT_MAX_ACTIVE_BATCHES", default=3))
 
 # Authentication (ADR 0006): SimpleJWT. Short-lived access token; refresh token rotates on every
 # use and the old one is blacklisted, so a reused (stolen) refresh token is rejected.

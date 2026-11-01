@@ -575,7 +575,15 @@ export function CompaniesPage() {
               groups={[
                 {
                   heading: "Bring in",
-                  items: [{ label: "Import a CSV", href: "/companies/import" }],
+                  items: [
+                    { label: "Import a CSV", href: "/companies/import" },
+                    {
+                      label: "Find from a provider",
+                      description:
+                        "Search a data provider with this campaign's filters",
+                      href: "/companies/find",
+                    },
+                  ],
                 },
                 {
                   heading: "Review",

@@ -161,7 +161,7 @@ export interface paths {
     put?: never;
     /**
      * Start a CSV import
-     * @description Validates the whole file (same rules and errors as the preview), stores it privately, creates the import batch (source `csv`) and a background job, and returns 202 at once; rows are processed by the worker in chunks. Poll `status_url` (the batch: `status`, counters, `progress_percent`) until `status` is `completed`, `partial` (some rows failed), `failed` or `cancelled`. Each row is validated and de-duplicated like a manual entry; a bad row is recorded as failed and never stops the batch. Re-uploading the same file (SHA-256) into the same campaign while an earlier batch of it is pending or processing is 409 `import_in_progress` with the existing batch in `details.batch`; once it ended the same file may be imported again (rows then come back as duplicates). The optional `mapping` field is `{file column: field}` JSON; left out, the suggestion is used. 400 for an archived campaign or client. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     * @description Validates the whole file (same rules and errors as the preview), stores it privately, creates the import batch (source `csv`) and a background job, and returns 202 at once; rows are processed by the worker in chunks. Poll `status_url` (the batch: `status`, counters, `progress_percent`) until `status` is `completed`, `partial` (some rows failed), `failed` or `cancelled`. Each row is validated and de-duplicated like a manual entry; a bad row is recorded as failed and never stops the batch. Re-uploading the same file (SHA-256) into the same campaign while an earlier batch of it is pending or processing is 409 `import_in_progress` with the existing batch in `details.batch`; once it ended the same file may be imported again (rows then come back as duplicates). A campaign may have only `IMPORT_MAX_ACTIVE_BATCHES` (default 3) CSV or provider batches pending or processing at once; another upload is 429 `too_many_active_imports` (`details.active`, `details.limit`). Uploads and previews are throttled per user (`API_THROTTLE_CSV_UPLOAD`, default 60/hour). The optional `mapping` field is `{file column: field}` JSON; left out, the suggestion is used. 400 for an archived campaign or client. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
      */
     post: operations["campaigns_csv_import_create"];
     delete?: never;
@@ -5419,7 +5419,7 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody: {
+    requestBody?: {
       content: {
         "application/json": components["schemas"]["QueuePushRequestRequest"];
       };

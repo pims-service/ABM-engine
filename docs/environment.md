@@ -48,6 +48,9 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `API_THROTTLE_USER` | api | no | `1000/hour` | `1000/hour` | backend | DRF rate for authenticated users. |
 | `API_THROTTLE_LOGIN` | api | no | `20/min` | `20/min` | backend | Login attempts per client IP (DRF rate). |
 | `API_THROTTLE_LOGIN_EMAIL` | api | no | `5/min` | `5/min` | backend | Login attempts per submitted email (DRF rate). |
+| `API_THROTTLE_CSV_UPLOAD` | api | no | `60/hour` | `60/hour` | backend | CSV import previews and uploads per user (DRF rate, `N/second`, `N/minute`, `N/hour` or `N/day`). |
+| `API_THROTTLE_PROVIDER_SEARCH` | api | no | `300/hour` | `300/hour` | backend | Provider company searches per user (DRF rate). |
+| `API_THROTTLE_PROVIDER_IMPORT` | api | no | `60/hour` | `60/hour` | backend | Provider company imports per user (DRF rate). |
 | `JWT_ACCESS_LIFETIME_MINUTES` | api | no | `15` | `15` | backend | Access token lifetime in minutes. Integer. |
 | `JWT_REFRESH_LIFETIME_DAYS` | api | no | `7` | `7` | backend | Refresh token lifetime in days. Integer. |
 | `AUTH_REFRESH_COOKIE_ENABLED` | api | no | `false` | `false` | backend | `true`/`false`. Deliver the refresh token as an httpOnly cookie (BFF) instead of in the JSON body. |
@@ -59,6 +62,7 @@ Real environment variables always win over a `.env` file. All copies are git-ign
 | `Q_TASK_RETRY` | worker | no | `360` | `360` | root, backend | Redelivery delay in seconds; must be greater than `Q_TASK_TIMEOUT`. |
 | `IMPORT_UPLOAD_DIR` | api, worker | no | `backend/var/import-uploads` | `/var/lib/abm/import-uploads` | backend | Private directory where uploaded CSV files wait for the worker (random file names, deleted when the batch ends). The api and the worker must see the same directory: in production mount one shared volume. Never served over HTTP. |
 | `IMPORT_CHUNK_SIZE` | worker | no | `100` | `100` | backend | Rows the CSV import worker processes between progress saves and cancellation checks. Integer, at least 1. |
+| `IMPORT_MAX_ACTIVE_BATCHES` | api | no | `3` | `3` | backend | Most CSV and provider import batches of one campaign that may be pending or processing at once; another upload is refused with `429 too_many_active_imports`. Manual entries do not count. Integer, at least 1. |
 | `LOG_LEVEL` | api, worker | no | `INFO` | `INFO` | root, backend | One of `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 | `DEV_SUPERUSER_EMAIL` | api | no | `admin@example.com` | `YOUR_EMAIL` | root, backend | Read by `seed_dev_data` only. |
 | `DEV_SUPERUSER_PASSWORD` | api | no | none (no superuser is created) | `YOUR_DEV_ADMIN_PASSWORD` | root, backend | Secret. Read by `seed_dev_data` only; local development only. |

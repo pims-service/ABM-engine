@@ -42,6 +42,9 @@ Project documentation lives here. If you are new, start with onboarding.
   (404, not 403) and the guide every new endpoint must follow.
 - [Django admin](admin.md): who can sign in (staff only), what is read only,
   what is masked and how to register a new model.
+- [Adding companies](imports.md): the three input paths (manual, CSV, provider),
+  how duplicates are found, the developer notes, the security notes and a
+  troubleshooting list of every import error code.
 
 ## Integrations
 

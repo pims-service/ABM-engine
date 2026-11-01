@@ -33,6 +33,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from typing import Any
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -86,6 +87,21 @@ class BatchStateError(ValueError):
     that would exceed the total)."""
 
 
+class TooManyActiveBatchesError(Exception):
+    """The campaign already has the most CSV or provider batches allowed at once (the API answers
+    429 ``too_many_active_imports``)."""
+
+    def __init__(self, active: int, limit: int) -> None:
+        self.active = active
+        self.limit = limit
+        super().__init__(f"{active} imports of this campaign are still running (limit {limit}).")
+
+
+def max_active_batches() -> int:
+    """``settings.IMPORT_MAX_ACTIVE_BATCHES`` (at least 1)."""
+    return max(1, int(settings.IMPORT_MAX_ACTIVE_BATCHES))
+
+
 def _clip(text: str) -> str:
     """Secrets scrubbed, bounded length: error text is stored and shown."""
     return redact_text(text)[:MAX_ERROR_LENGTH]
@@ -137,6 +153,15 @@ def create_batch(
         raise ValidationError({"source": f"Unknown import source {source!r}."})
     if campaign.is_archived:
         raise ValidationError("Cannot import into an archived campaign.")
+    if source != ImportSource.MANUAL:  # a manual entry ends inside its own request
+        active = (
+            ImportBatch.objects.active()
+            .filter(campaign=campaign)
+            .exclude(source=ImportSource.MANUAL)
+            .count()
+        )
+        if active >= max_active_batches():
+            raise TooManyActiveBatchesError(active, max_active_batches())
     file_sha256 = file_sha256.strip().lower()
     if file_sha256 and not _SHA256.match(file_sha256):
         raise ValidationError({"file_sha256": "Must be 64 lower-case hex characters."})
