@@ -70,7 +70,7 @@ class BiggerFake(FakeCompanyDataAdapter):
             name=data.name,
             domain=data.domain,
             employee_count=150,
-            departments=(DepartmentHeadcount("sales", 20),),
+            departments=(DepartmentHeadcount("sales", 20), DepartmentHeadcount("bd", 10)),
         )
         return AdapterResult(data=bigger, provenance=result.provenance)
 
@@ -489,7 +489,7 @@ def test_the_diff_endpoint_checks_its_input() -> None:
 # ------------------------------------------------------------------ growth signals
 
 
-def _earlier_provider_snapshot(company: Any, *, employees: int, sales: int) -> None:
+def _earlier_provider_snapshot(company: Any, *, employees: int, sales: int, bd: int) -> None:
     """A provider snapshot from half a year before the fake provider's fixed clock."""
     source = DataSource.objects.create(
         client=company.client, type=DataSourceType.PROVIDER, name="fake-company"
@@ -500,12 +500,13 @@ def _earlier_provider_snapshot(company: Any, *, employees: int, sales: int) -> N
         researched_at=FIXED_NOW - timedelta(days=183),
         employee_count=employees,
         sales_headcount=sales,
+        bd_headcount=bd,
     )
 
 
 def test_growth_measured_from_our_own_history_becomes_signals() -> None:
     company = acme()
-    _earlier_provider_snapshot(company, employees=100, sales=10)
+    _earlier_provider_snapshot(company, employees=100, sales=10, bd=5)
     adapter = BiggerFake()
     outcome = collect_signals(company, adapter, collect_profile(company, adapter))
     stored = {s.type: s for s in Signal.objects.filter(company=company)}
@@ -517,7 +518,7 @@ def test_growth_measured_from_our_own_history_becomes_signals() -> None:
 
 def test_the_same_growth_seen_again_is_not_a_new_signal() -> None:
     company = acme()
-    _earlier_provider_snapshot(company, employees=100, sales=10)
+    _earlier_provider_snapshot(company, employees=100, sales=10, bd=5)
     adapter = BiggerFake()
     profile = collect_profile(company, adapter)
     collect_signals(company, adapter, profile)
@@ -529,7 +530,7 @@ def test_the_same_growth_seen_again_is_not_a_new_signal() -> None:
 
 def test_growth_below_the_threshold_or_unknown_stores_nothing() -> None:
     small = acme()
-    _earlier_provider_snapshot(small, employees=148, sales=19)
+    _earlier_provider_snapshot(small, employees=148, sales=19, bd=9)
     adapter = BiggerFake()
     collect_signals(small, adapter, collect_profile(small, adapter))
     assert not Signal.objects.filter(
