@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "note": "Phrases that put a job title into a department. Matching ignores case, punctuation, Arabic diacritics and the Arabic prefix 'ال'. A title that matches one department is high confidence; one that matches several, or only an ambiguous phrase, is low confidence and is never counted into a department. Edit this file (or point RESEARCH_DEPARTMENT_RULES_FILE at your own copy) and restart the worker; no code change is needed.",
+  "departments": {
+    "sales": [
+      "sales",
+      "account executive",
+      "account manager",
+      "inside sales",
+      "field sales",
+      "مبيعات",
+      "مندوب مبيعات",
+      "مدير مبيعات",
+      "تنفيذي مبيعات"
+    ],
+    "bd": [
+      "business development",
+      "biz dev",
+      "bizdev",
+      "bd",
+      "تطوير الاعمال",
+      "تطوير اعمال"
+    ],
+    "marketing": [
+      "marketing",
+      "brand",
+      "content",
+      "seo",
+      "تسويق",
+      "علامه تجاريه"
+    ],
+    "commercial": [
+      "commercial",
+      "revenue",
+      "trade",
+      "تجاري",
+      "تجاريه"
+    ],
+    "partnerships": [
+      "partnership",
+      "partnerships",
+      "alliances",
+      "channel",
+      "partner manager",
+      "شراكات",
+      "شراكه",
+      "تحالفات"
+    ]
+  },
+  "ambiguous": {
+    "head of growth": "marketing",
+    "growth": "marketing",
+    "customer success": "sales",
+    "revenue operations": "commercial",
+    "رئيس النمو": "marketing",
+    "نجاح العملاء": "sales"
+  }
+}

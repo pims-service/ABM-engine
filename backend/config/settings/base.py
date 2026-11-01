@@ -174,6 +174,22 @@ API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
 # The most companies one provider import may select, and the selection size up to which the
 # import runs inside the request (larger ones run in a background job).
 PROVIDER_IMPORT_MAX_SELECTION = 100
+
+# Research collectors (apps/research/collect, issues #91 to #101). Plain settings, not environment
+# variables.
+# The file of department rules for job titles; empty means the one shipped in apps/research/data.
+RESEARCH_DEPARTMENT_RULES_FILE = ""
+# Which kinds of source win when snapshots disagree about a field (first is preferred); inside
+# one kind the newest snapshot wins. The losing values stay visible as alternatives.
+RESEARCH_SOURCE_PRECEDENCE = ("manual", "provider", "website", "news")
+# The news source: "" (none, the step is skipped) or "fake" (offline, only with
+# PROVIDER_FAKE_ENABLED). A real source is added as an adapter; see docs/research-engine.md.
+RESEARCH_NEWS_PROVIDER = ""
+# How far back news counts, in days.
+RESEARCH_NEWS_WINDOW_DAYS = 365
+# How much research history the API shows, in days; 0 shows all of it. Snapshots are append-only
+# and are never deleted, so this only limits what is listed (the newest snapshot always shows).
+RESEARCH_HISTORY_DAYS = 0
 PROVIDER_IMPORT_INLINE_MAX = 25
 # Register the fake provider (apps/imports/providers/dev.py). Off by default; dev and test
 # settings switch it on. Never enable it in production.
