@@ -1,4 +1,11 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  configure,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,8 +26,10 @@ vi.mock("@/lib/api", async (original) => ({
   getApiClient: () => api,
 }));
 
-// Typing into dialogs is slow on a busy CI runner.
+// Typing into dialogs is slow on a busy CI runner, and each test first loads the list and
+// then opens a tile, so every wait gets more room than the one-second default.
 vi.setConfig({ testTimeout: 20_000 });
+configure({ asyncUtilTimeout: 8_000 });
 
 const TEST_PATH = "/api/v1/integrations/connections/{id}/test/";
 const ITEM_PATH = "/api/v1/integrations/connections/{id}/";
@@ -35,18 +44,41 @@ function forbidden() {
   });
 }
 
+/** Dialogs other than the Manage view (which stays open behind a form on purpose). */
+const FORM_DIALOG = /^(?!.* connections$)/;
+
 function renderPage(
   denied: Parameters<typeof AccessProvider>[0]["initialDenied"] = [],
+  { manage = true }: { manage?: boolean } = {},
 ) {
-  return render(
+  const view = render(
     <AccessProvider initialDenied={denied}>
       <ClientIntegrations clientId={CLIENT_A} clientName="Acme Corp" />
     </AccessProvider>,
   );
+  if (manage) {
+    // The rows live in each tile's Manage view; open the one the fixture belongs to.
+    void screen
+      .findByRole("button", { name: "Manage fake" }, { timeout: 10_000 })
+      .then((button) => fireEvent.click(button))
+      .catch(() => undefined);
+  }
+  return view;
 }
 
 function row(name: string) {
   return screen.getByRole("row", { name: new RegExp(name) });
+}
+
+async function pickFromMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+  item: string,
+) {
+  await user.click(
+    await screen.findByRole("button", { name: `More actions for ${name}` }),
+  );
+  await user.click(screen.getByRole("menuitem", { name: item }));
 }
 
 beforeEach(() => {
@@ -60,33 +92,6 @@ afterEach(() => {
 });
 
 describe("listing", () => {
-  it("groups connections under all nine categories", async () => {
-    renderPage();
-    await screen.findByText("Primary LLM");
-    for (const label of [
-      "AI / LLM",
-      "Company data",
-      "People data",
-      "Email enrichment",
-      "Email verification",
-      "CRM",
-      "Outreach",
-      "Storage",
-      "Automation",
-    ]) {
-      expect(
-        screen.getByRole("heading", { level: 2, name: new RegExp(label) }),
-      ).toBeInTheDocument();
-    }
-    expect(screen.getAllByText("No connections yet.")).toHaveLength(8);
-    const call = api.GET.mock.calls[0];
-    expect(call?.[0]).toBe("/api/v1/integrations/connections/");
-    expect(call?.[1].params.query).toMatchObject({
-      client: CLIENT_A,
-      archived: "false",
-    });
-  });
-
   it("shows status, masked credentials hint and the last test result", async () => {
     api.GET.mockResolvedValue({
       data: pageOf([
@@ -162,7 +167,9 @@ describe("listing", () => {
     ).toBeInTheDocument();
     api.GET.mockResolvedValue({ data: pageOf([primary]) });
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Primary LLM")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Manage fake" }),
+    ).toBeInTheDocument();
   });
 
   it("renders a provider message as text, never as markup", async () => {
@@ -179,7 +186,8 @@ describe("listing", () => {
     });
     const { container } = renderPage();
     expect(await screen.findByText(evil)).toBeInTheDocument();
-    expect(container.querySelector("img")).toBeNull();
+    // The tile logos are images; the message must not add one of its own.
+    expect(container.querySelector('img[src="x"]')).toBeNull();
     // The page has its own links (for example to AI usage); the message adds none.
     expect(container.querySelector('a[href="https://evil.test"]')).toBeNull();
   });
@@ -305,13 +313,13 @@ describe("test connection", () => {
 describe("adding a connection", () => {
   async function openDialog() {
     const user = userEvent.setup();
-    renderPage();
-    await screen.findByText("Primary LLM");
-    await user.click(screen.getByRole("button", { name: "Add connection" }));
-    return {
-      user,
-      dialog: await screen.findByRole("dialog", { name: "Add connection" }),
-    };
+    renderPage([], { manage: false });
+    await screen.findByRole("button", { name: "Custom connection" });
+    await user.click(screen.getByRole("button", { name: "Custom connection" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Custom connection",
+    });
+    return { user, dialog };
   }
 
   it("uses write-only secret inputs that are never pre-filled", async () => {
@@ -366,7 +374,9 @@ describe("adding a connection", () => {
         credentials: { api_key: TEST_SECRET },
       },
     });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: FORM_DIALOG })).toBeNull(),
+    );
     expect(screen.getByText("Added New LLM.")).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(TEST_SECRET);
     expect(JSON.stringify({ ...window.localStorage })).not.toContain(
@@ -458,11 +468,7 @@ describe("credentials", () => {
     api.PATCH.mockResolvedValue({ data: primary });
     const user = userEvent.setup();
     renderPage();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Credentials for Primary LLM",
-      }),
-    );
+    await pickFromMenu(user, "Primary LLM", "Credentials");
     const dialog = await screen.findByRole("dialog", {
       name: "Replace credentials",
     });
@@ -482,7 +488,9 @@ describe("credentials", () => {
         body: { credentials: { api_key: TEST_SECRET } },
       }),
     );
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: FORM_DIALOG })).toBeNull(),
+    );
     expect(document.body.innerHTML).not.toContain(TEST_SECRET);
   });
 
@@ -492,11 +500,7 @@ describe("credentials", () => {
     });
     const user = userEvent.setup();
     renderPage();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Credentials for Primary LLM",
-      }),
-    );
+    await pickFromMenu(user, "Primary LLM", "Credentials");
     await user.click(screen.getByRole("button", { name: "Clear credentials" }));
     const confirm = await screen.findByRole("dialog", {
       name: /Clear credentials of Primary LLM/,
@@ -522,9 +526,7 @@ describe("status changes", () => {
     api.POST.mockResolvedValue({ data: primary });
     const user = userEvent.setup();
     renderPage();
-    await user.click(
-      await screen.findByRole("button", { name: "Archive Primary LLM" }),
-    );
+    await pickFromMenu(user, "Primary LLM", "Archive");
     const confirm = await screen.findByRole("dialog", {
       name: /Archive Primary LLM/,
     });
@@ -554,12 +556,22 @@ describe("status changes", () => {
         }),
       ]),
     });
+    const user = userEvent.setup();
     renderPage();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "More actions for Primary LLM",
+      }),
+    );
     expect(
-      await screen.findByRole("button", { name: "Disable Primary LLM" }),
+      screen.getByRole("menuitem", { name: "Disable" }),
     ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(
+      screen.getByRole("button", { name: "More actions for Paused" }),
+    );
     expect(
-      screen.getByRole("button", { name: "Enable Paused" }),
+      screen.getByRole("menuitem", { name: "Enable" }),
     ).toBeInTheDocument();
   });
 });
@@ -571,7 +583,9 @@ describe("roles", () => {
     expect(
       await screen.findByText("No access to integrations"),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add connection" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Custom connection" }),
+    ).toBeNull();
   });
 
   it("shows managers a read-only list: no add, test or edit actions", async () => {
@@ -580,7 +594,9 @@ describe("roles", () => {
     expect(
       screen.getByText(/Only admins can add, change or test/),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add connection" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Custom connection" }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: /Test connection/ }),
     ).toBeNull();
@@ -603,13 +619,302 @@ describe("roles", () => {
       ),
     ).toBeInTheDocument();
     expect(await screen.findByText(/Only admins can add/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add connection" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Custom connection" }),
+    ).toBeNull();
   });
 
   it("shows no-access when the client's edit level is denied up front", async () => {
     renderPage([{ level: "edit", clientId: CLIENT_A }]);
     expect(
       await screen.findByText("No access to integrations"),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("integration tiles", () => {
+  const tileNames = () =>
+    within(screen.getByRole("list", { name: "Integrations" }))
+      .queryAllByRole("heading", { level: 3 })
+      .map((heading) => heading.textContent);
+
+  async function load(
+    connections = [primary],
+    denied: Parameters<typeof renderPage>[0] = [],
+  ) {
+    api.GET.mockResolvedValue({ data: pageOf(connections) });
+    renderPage(denied, { manage: false });
+    await screen.findByRole("list", { name: "Integrations" });
+  }
+
+  it("shows every provider as a tile, plus a tile for a custom provider in use", async () => {
+    await load();
+    expect(tileNames()).toEqual([
+      "Anthropic Claude",
+      "Google Gemini",
+      "OpenAI",
+      "SignalHire",
+      "Hunter",
+      "ZeroBounce",
+      "GoHighLevel",
+      "People Data Labs",
+      "Coresignal",
+      "Wathq",
+      "HubSpot",
+      "Bouncer",
+      "Kickbox",
+      "fake",
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Connect Anthropic Claude" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Manage fake" }),
+    ).toBeInTheDocument();
+    const list = screen.getByRole("list", { name: "Integrations" });
+    expect(within(list).getByText("Connected")).toBeInTheDocument();
+    expect(within(list).getAllByText("Not connected")).toHaveLength(7);
+    expect(within(list).getAllByText("Coming soon")).toHaveLength(6);
+  });
+
+  it("searches by name, description and category", async () => {
+    const user = userEvent.setup();
+    await load();
+    const search = screen.getByRole("searchbox", {
+      name: "Search integrations",
+    });
+    await user.type(search, "gemini");
+    expect(tileNames()).toEqual(["Google Gemini"]);
+    await user.clear(search);
+    await user.type(search, "email");
+    expect(tileNames()).toEqual([
+      "SignalHire",
+      "Hunter",
+      "ZeroBounce",
+      "Bouncer",
+      "Kickbox",
+    ]);
+    await user.clear(search);
+    await user.type(search, "zzzz");
+    expect(screen.getByText("No integrations match")).toBeInTheDocument();
+  });
+
+  it("filters by group and by connected", async () => {
+    const user = userEvent.setup();
+    await load();
+    await user.click(screen.getByRole("button", { name: "CRM" }));
+    expect(tileNames()).toEqual(["GoHighLevel", "HubSpot"]);
+    await user.click(screen.getByRole("button", { name: "AI" }));
+    expect(tileNames()).toEqual([
+      "Anthropic Claude",
+      "Google Gemini",
+      "OpenAI",
+    ]);
+    await user.click(screen.getByRole("button", { name: "Company data" }));
+    expect(tileNames()).toEqual(["People Data Labs", "Coresignal", "Wathq"]);
+    await user.click(screen.getByRole("button", { name: "Connected" }));
+    expect(tileNames()).toEqual(["fake"]);
+    await user.click(screen.getByRole("button", { name: "All" }));
+    expect(tileNames()).toHaveLength(14);
+  });
+
+  it("shows researched providers as Coming soon, without a way to connect them", async () => {
+    await load();
+    const list = screen.getByRole("list", { name: "Integrations" });
+    const tile = within(list)
+      .getByRole("heading", { name: "HubSpot" })
+      .closest("li")!;
+    expect(within(tile).getByText("Coming soon")).toBeInTheDocument();
+    expect(within(tile).queryByRole("button")).toBeNull();
+  });
+
+  it("connects OpenAI with a model and a key", async () => {
+    api.POST.mockResolvedValue({ data: makeConnection({ name: "OpenAI" }) });
+    const user = userEvent.setup();
+    await load();
+    await user.click(screen.getByRole("button", { name: "Connect OpenAI" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect OpenAI",
+    });
+    await user.type(within(dialog).getByLabelText(/Model/), "gpt-4o");
+    await user.type(within(dialog).getByLabelText(/API key/), TEST_SECRET);
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalled());
+    expect(api.POST.mock.calls[0]?.[1].body).toMatchObject({
+      category: "llm",
+      provider: "openai",
+      config: { model: "gpt-4o" },
+      credentials: { api_key: TEST_SECRET },
+    });
+  });
+
+  it("connects Hunter with just a key, in the email enrichment category", async () => {
+    api.POST.mockResolvedValue({ data: makeConnection({ name: "Hunter" }) });
+    const user = userEvent.setup();
+    await load();
+    await user.click(screen.getByRole("button", { name: "Connect Hunter" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Hunter",
+    });
+    await user.type(within(dialog).getByLabelText(/API key/), TEST_SECRET);
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(1));
+    expect(api.POST.mock.calls[0]?.[1].body).toMatchObject({
+      category: "email_enrichment",
+      provider: "hunter",
+      config: {},
+      credentials: { api_key: TEST_SECRET },
+    });
+  });
+
+  it("opens a short form made for the tile, with plain fields only", async () => {
+    const user = userEvent.setup();
+    await load();
+    await user.click(
+      screen.getByRole("button", { name: "Connect GoHighLevel" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect GoHighLevel",
+    });
+    expect(within(dialog).getByLabelText(/Location ID/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText(/Private Integration token/),
+    ).toHaveAttribute("type", "password");
+    expect(within(dialog).queryByLabelText(/Provider key/)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Settings/)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Credential 1/)).toBeNull();
+  });
+
+  it("sends settings and the secret in the right places", async () => {
+    api.POST.mockResolvedValue({
+      data: makeConnection({ name: "GoHighLevel" }),
+    });
+    const user = userEvent.setup();
+    await load();
+    await user.click(
+      screen.getByRole("button", { name: "Connect GoHighLevel" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect GoHighLevel",
+    });
+    await user.type(within(dialog).getByLabelText(/Location ID/), "loc_123");
+    await user.type(
+      within(dialog).getByLabelText(/Private Integration token/),
+      TEST_SECRET,
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith(
+        "/api/v1/integrations/connections/",
+        {
+          body: {
+            client: CLIENT_A,
+            category: "crm",
+            status: "active",
+            provider: "gohighlevel",
+            name: "GoHighLevel",
+            config: { location_id: "loc_123" },
+            credentials: { api_key: TEST_SECRET },
+          },
+        },
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("Added GoHighLevel.")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(TEST_SECRET);
+  });
+
+  it("sets up both SignalHire categories with one key", async () => {
+    api.POST.mockResolvedValue({
+      data: makeConnection({ name: "SignalHire" }),
+    });
+    const user = userEvent.setup();
+    await load();
+    await user.click(
+      screen.getByRole("button", { name: "Connect SignalHire" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect SignalHire",
+    });
+    await user.type(within(dialog).getByLabelText(/API key/), TEST_SECRET);
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(2));
+    expect(api.POST.mock.calls.map((call) => call[1].body.category)).toEqual([
+      "people_data",
+      "email_enrichment",
+    ]);
+  });
+
+  it("asks Gemini for its model and key", async () => {
+    api.POST.mockResolvedValue({
+      data: makeConnection({ name: "Google Gemini" }),
+    });
+    const user = userEvent.setup();
+    await load();
+    await user.click(
+      screen.getByRole("button", { name: "Connect Google Gemini" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Google Gemini",
+    });
+    await user.type(within(dialog).getByLabelText(/Model/), "gemini-2.5-flash");
+    await user.type(within(dialog).getByLabelText(/API key/), TEST_SECRET);
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalled());
+    expect(api.POST.mock.calls[0]?.[1].body).toMatchObject({
+      category: "llm",
+      provider: "gemini",
+      config: { model: "gemini-2.5-flash" },
+      credentials: { api_key: TEST_SECRET },
+    });
+  });
+
+  it("asks for missing required fields before sending anything", async () => {
+    const user = userEvent.setup();
+    await load();
+    await user.click(
+      screen.getByRole("button", { name: "Connect Anthropic Claude" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Anthropic Claude",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+    expect(
+      await within(dialog).findByText("Enter the model."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Enter the api key.")).toBeInTheDocument();
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("shows a partly connected provider and offers the missing half", async () => {
+    const user = userEvent.setup();
+    await load([
+      makeConnection({
+        provider: "signalhire",
+        category: "people_data",
+        name: "SignalHire",
+      }),
+    ]);
+    expect(screen.getByText("Partly connected")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Manage SignalHire" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "SignalHire connections",
+    });
+    expect(
+      within(dialog).getByRole("button", { name: "Connect Email enrichment" }),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a provider with a failing connection as needing attention", async () => {
+    await load([makeConnection({ status: "error" })]);
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+  });
+
+  it("offers no Connect buttons to someone who can only view", async () => {
+    await load([primary], [{ level: "manage", clientId: CLIENT_A }]);
+    expect(screen.queryByRole("button", { name: /^Connect / })).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Manage fake" }),
     ).toBeInTheDocument();
   });
 });

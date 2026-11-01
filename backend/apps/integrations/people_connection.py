@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+from apps.integrations.adapters.hunter import HunterAdapter
 from apps.integrations.adapters.signalhire import SignalHireEmailAdapter, SignalHirePeopleAdapter
 from apps.integrations.adapters.zerobounce import ZeroBounceAdapter
 from apps.integrations.crypto import (
@@ -34,9 +35,15 @@ from apps.integrations.usage import tracked_execute
 PEOPLE = "people_data"
 EMAIL = "email_enrichment"
 VERIFY = "email_verification"
-#: The provider each category supports so far.
-PROVIDER = {PEOPLE: "signalhire", EMAIL: "signalhire", VERIFY: "zerobounce"}
-LABEL = {"signalhire": "SignalHire", "zerobounce": "ZeroBounce"}
+#: The providers each category supports so far (the client's oldest active connection decides).
+SUPPORTED = {
+    PEOPLE: ("signalhire",),
+    EMAIL: ("signalhire", "hunter"),
+    VERIFY: ("zerobounce",),
+}
+#: The first provider of each category, used where one has to be named.
+PROVIDER = {category: providers[0] for category, providers in SUPPORTED.items()}
+LABEL = {"signalhire": "SignalHire", "hunter": "Hunter", "zerobounce": "ZeroBounce"}
 _WHAT = {PEOPLE: "people data", EMAIL: "email enrichment", VERIFY: "email verification"}
 
 
@@ -48,14 +55,16 @@ def _registry() -> AdapterRegistry:
     registry = AdapterRegistry()
     registry.register(SignalHirePeopleAdapter)
     registry.register(SignalHireEmailAdapter)
+    registry.register(HunterAdapter)
     registry.register(ZeroBounceAdapter)
     return registry
 
 
 def _message_missing(category: str) -> str:
+    names = " or ".join(LABEL[key] for key in SUPPORTED[category])
     return (
         f"No {_WHAT[category]} provider is connected for this client. Add a "
-        f"{LABEL[PROVIDER[category]]} "
+        f"{names} "
         f"connection under Settings > Integrations (category "
         f"{category.replace('_', ' ').title()}, with your API key), then try again."
     )
@@ -66,7 +75,7 @@ def get_adapter(category: str, client_id: Any, *, campaign: Any = None, user: An
     connection = resolve_connection(client_id, category)
     if connection is None:
         raise PeopleUnavailable(_message_missing(category))
-    if connection.provider != PROVIDER[category]:
+    if connection.provider not in SUPPORTED[category]:
         raise PeopleUnavailable(
             f"The provider '{connection.provider}' is not supported yet for {_WHAT[category]}."
         )
@@ -92,6 +101,8 @@ def get_adapter(category: str, client_id: Any, *, campaign: Any = None, user: An
         VERIFY: ("verify",),
     }[category]
     for name in names:
+        if not hasattr(adapter, name):
+            continue  # an operation only some providers have (SignalHire's reveal by id)
         setattr(
             adapter,
             name,
@@ -114,7 +125,7 @@ def connection_problem(category: str, client_id: Any) -> str | None:
     connection = resolve_connection(client_id, category)
     if connection is None:
         return _message_missing(category)
-    if connection.provider != PROVIDER[category]:
+    if connection.provider not in SUPPORTED[category]:
         return f"The provider '{connection.provider}' is not supported yet for {_WHAT[category]}."
     return None
 
@@ -167,5 +178,12 @@ def _test(category: str) -> Any:
 
 
 def register_testers() -> None:
-    for category, provider in PROVIDER.items():
-        register_tester(category, provider, _test(category), replace=True)
+    for category, providers in SUPPORTED.items():
+        for provider in providers:
+            register_tester(category, provider, _test(category), replace=True)
+
+
+def active_provider(category: str, client_id: Any) -> str | None:
+    """The provider key of the client's oldest active connection of ``category``, or ``None``."""
+    connection = resolve_connection(client_id, category)
+    return connection.provider if connection is not None else None

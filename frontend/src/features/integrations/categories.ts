@@ -63,10 +63,10 @@ export function categoryLabel(value: string): string {
  * key can still be typed.
  */
 export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
-  llm: ["anthropic", "fake"],
+  llm: ["anthropic", "gemini", "fake"],
   company_data: ["fake"],
-  people_data: ["signalhire", "mawsool", "fake"],
-  email_enrichment: ["signalhire", "mawsool", "fake"],
+  people_data: ["signalhire", "fake"],
+  email_enrichment: ["signalhire", "fake"],
   email_verification: ["zerobounce", "fake"],
   crm: ["gohighlevel", "fake"],
   outreach: ["fake"],
@@ -90,6 +90,11 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
     configHint:
       'Required: {"model": "the model id from your Anthropic account"}. The credential is your Anthropic API key.',
   },
+  gemini: {
+    credentialNames: ["api_key"],
+    configHint:
+      'Required: {"model": "a Gemini model id, for example gemini-2.5-flash"}. The credential is your Gemini API key from Google AI Studio. Optional: {"thinking_budget": 0} turns thinking off on models that allow it (thinking tokens use up the answer length).',
+  },
   gohighlevel: {
     credentialNames: ["api_key"],
     configHint:
@@ -104,11 +109,6 @@ export const PROVIDER_HINTS: Record<string, ProviderHints> = {
     credentialNames: ["api_key"],
     configHint:
       'Needs only your ZeroBounce API key. Optional: {"region": "default" | "us" | "eu"} picks the server.',
-  },
-  mawsool: {
-    credentialNames: ["api_key"],
-    configHint:
-      "Placeholder: you can save the key now, but the Mawsool adapter is not built yet, so nothing is looked up and Test connection says so.",
   },
   fake: {
     credentialNames: ["api_key"],

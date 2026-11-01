@@ -24,7 +24,8 @@ type Pending =
   | {
       kind: "form";
       connection: Connection | null;
-      category?: ConnectionCategory;
+      provider?: string;
+      connectedCategories?: readonly ConnectionCategory[];
     }
   | { kind: "credentials"; connection: Connection }
   | { kind: "clear"; connection: Connection }
@@ -38,7 +39,13 @@ export type TestState =
   | { state: "error"; message: string };
 
 export interface ConnectionActions {
-  create: (category?: ConnectionCategory) => void;
+  /** The custom (raw) form, for a provider without a ready-made one. */
+  create: () => void;
+  /** The short form of a provider with an adapter. */
+  connect: (
+    provider: string,
+    connectedCategories?: readonly ConnectionCategory[],
+  ) => void;
   edit: (connection: Connection) => void;
   credentials: (connection: Connection) => void;
   /** Ask for confirmation, then enable, disable, archive or restore. */
@@ -187,8 +194,9 @@ export function useConnectionActions(
         open={pending?.kind === "form"}
         clientId={clientId}
         connection={pending?.kind === "form" ? pending.connection : null}
-        defaultCategory={
-          pending?.kind === "form" ? pending.category : undefined
+        providerKey={pending?.kind === "form" ? pending.provider : undefined}
+        connectedCategories={
+          pending?.kind === "form" ? pending.connectedCategories : undefined
         }
         onClose={() => setPending(null)}
         onSaved={(saved) =>
@@ -241,9 +249,18 @@ export function useConnectionActions(
   );
 
   return {
-    create: (category) => {
+    create: () => {
       setNotice(null);
-      setPending({ kind: "form", connection: null, category });
+      setPending({ kind: "form", connection: null });
+    },
+    connect: (provider, connectedCategories) => {
+      setNotice(null);
+      setPending({
+        kind: "form",
+        connection: null,
+        provider,
+        connectedCategories,
+      });
     },
     edit: (connection) => {
       setNotice(null);
