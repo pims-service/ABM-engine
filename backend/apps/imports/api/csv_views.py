@@ -46,6 +46,7 @@ from apps.imports.csvparse import (
 )
 from apps.imports.models import ImportBatch, ImportSource
 from apps.imports.schema import ROW_FIELD
+from apps.imports.services import TooManyActiveBatchesError
 
 from .csv_serializers import (
     CsvImportAcceptedSerializer,
@@ -53,6 +54,8 @@ from .csv_serializers import (
     CsvUploadSerializer,
     ImportBatchSerializer,
 )
+from .errors import TooManyImports
+from .views import ScopedThrottleMixin
 
 TAGS = ["imports"]
 
@@ -111,6 +114,8 @@ def api_errors() -> Iterator[None]:
         raise CsvRejected(exc) from exc
     except csv_import.DuplicateImportError as exc:
         raise ImportInProgress(exc.batch) from exc
+    except TooManyActiveBatchesError as exc:
+        raise TooManyImports(exc.active, exc.limit) from exc
     except DjangoValidationError as exc:
         if hasattr(exc, "error_dict"):
             raise ValidationError(exc.message_dict) from exc
@@ -161,8 +166,11 @@ def _issue_dicts(issues: Any) -> list[dict[str, str]]:
     return [{"field": "", **issue.as_dict()} for issue in issues]
 
 
-class CsvImportViewSet(ClientScopedViewSet):
-    """Preview and start a CSV import into one campaign."""
+class CsvImportViewSet(ScopedThrottleMixin, ClientScopedViewSet):
+    """Preview and start a CSV import into one campaign.
+
+    Throttled per user (scope `csv_upload`, `API_THROTTLE_CSV_UPLOAD`) because both calls read
+    and parse a whole file."""
 
     queryset = Campaign.objects.select_related("client")
     lookup_url_kwarg = "campaign_id"
@@ -289,7 +297,11 @@ class CsvImportViewSet(ClientScopedViewSet):
         "and never stops the batch. Re-uploading the same file (SHA-256) into the same "
         "campaign while an earlier batch of it is pending or processing is 409 "
         "`import_in_progress` with the existing batch in `details.batch`; once it ended the "
-        "same file may be imported again (rows then come back as duplicates). The optional "
+        "same file may be imported again (rows then come back as duplicates). A campaign may "
+        "have only `IMPORT_MAX_ACTIVE_BATCHES` (default 3) CSV or provider batches pending or "
+        "processing at once; another upload is 429 `too_many_active_imports` "
+        "(`details.active`, `details.limit`). Uploads and previews are throttled per user "
+        "(`API_THROTTLE_CSV_UPLOAD`, default 60/hour). The optional "
         "`mapping` field is `{file column: field}` JSON; left out, the suggestion is used. "
         "400 for an archived campaign or client. " + _levels("EDIT", "manager and admin"),
         request={"multipart/form-data": CsvUploadSerializer},

@@ -441,10 +441,13 @@ paths:
         into the same campaign while an earlier batch of it is pending or processing
         is 409 `import_in_progress` with the existing batch in `details.batch`; once
         it ended the same file may be imported again (rows then come back as duplicates).
-        The optional `mapping` field is `{file column: field}` JSON; left out, the
-        suggestion is used. 400 for an archived campaign or client. Needs the `EDIT`
-        level: manager and admin. Others get 403; campaigns of clients you are not
-        a member of give 404.'
+        A campaign may have only `IMPORT_MAX_ACTIVE_BATCHES` (default 3) CSV or provider
+        batches pending or processing at once; another upload is 429 `too_many_active_imports`
+        (`details.active`, `details.limit`). Uploads and previews are throttled per
+        user (`API_THROTTLE_CSV_UPLOAD`, default 60/hour). The optional `mapping`
+        field is `{file column: field}` JSON; left out, the suggestion is used. 400
+        for an archived campaign or client. Needs the `EDIT` level: manager and admin.
+        Others get 403; campaigns of clients you are not a member of give 404.'
       summary: Start a CSV import
       parameters:
       - in: path

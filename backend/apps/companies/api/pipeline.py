@@ -19,6 +19,10 @@ from typing import Any
 from django.core.exceptions import ValidationError
 
 from apps.companies.models import Company, CompanyResearch, Contact
+
+# One guard for every CSV we write (also the import problem file and the AI-vs-you export): it
+# sees through zero-width and bidi characters, which a first-character check does not.
+from apps.imports.csvparse import safe_cell
 from apps.outreach.decisions import ADD, latest_human_decision
 from apps.outreach.models import Activity, ActivityType, Message, MessageStatus, OutreachAngle
 from apps.outreach.services import record_activity
@@ -89,10 +93,7 @@ COLUMNS = (
 )
 
 
-def safe(value: Any) -> str:
-    """Text for a spreadsheet cell: a leading =, +, - or @ would be run as a formula."""
-    text = "" if value is None else str(value)
-    return f"'{text}" if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+safe = safe_cell
 
 
 def approved_accounts_csv(companies: Iterable[Company]) -> str:

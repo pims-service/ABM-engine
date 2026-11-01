@@ -34,12 +34,12 @@ urlpatterns = [
     ),
     path(
         "campaigns/<uuid:campaign_id>/csv-import/preview/",
-        CsvImportViewSet.as_view({"post": "preview"}),
+        CsvImportViewSet.as_view({"post": "preview"}, throttle_scope="csv_upload"),
         name="campaign-csv-import-preview",
     ),
     path(
         "campaigns/<uuid:campaign_id>/csv-import/",
-        CsvImportViewSet.as_view({"post": "create"}),
+        CsvImportViewSet.as_view({"post": "create"}, throttle_scope="csv_upload"),
         name="campaign-csv-import",
     ),
 ]

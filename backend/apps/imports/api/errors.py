@@ -32,6 +32,21 @@ _STATUS: tuple[tuple[type[ProviderError], int], ...] = (
 )
 
 
+class TooManyImports(APIException):
+    """429: the campaign already has the most imports running at once."""
+
+    status_code = 429
+    default_code = "too_many_active_imports"
+    default_detail = (
+        "This campaign already has the most imports running at once. Wait for one to finish "
+        "or cancel it, then try again."
+    )
+
+    def __init__(self, active: int, limit: int) -> None:
+        self.error_details = {"active": active, "limit": limit}
+        super().__init__()
+
+
 class ProviderAPIError(APIException):
     """An upstream provider problem, safe to show."""
 

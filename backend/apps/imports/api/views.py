@@ -42,8 +42,9 @@ from apps.imports.providers import (
     ProviderRegistryError,
     default_registry,
 )
+from apps.imports.services import TooManyActiveBatchesError
 
-from .errors import ProviderAPIError
+from .errors import ProviderAPIError, TooManyImports
 from .serializers import (
     ProviderCapabilitiesSerializer,
     ProviderImportBatchSerializer,
@@ -83,6 +84,8 @@ def api_errors() -> Iterator[None]:
         raise ValidationError({"provider": [exc.message]}) from None
     except ProviderError as exc:
         raise ProviderAPIError(exc) from None
+    except TooManyActiveBatchesError as exc:
+        raise TooManyImports(exc.active, exc.limit) from None
     except DjangoValidationError as exc:
         if hasattr(exc, "error_dict"):
             raise ValidationError(exc.message_dict) from exc
