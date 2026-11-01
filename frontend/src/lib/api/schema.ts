@@ -1118,6 +1118,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/evidence/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Evidence behind this company
+     * @description Every source of what we know: each source once, newest first, with its name, type, link, when it was retrieved, the date it states and its age in days, and which snapshots and signals it backs. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_evidence"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/export-message/": {
     parameters: {
       query?: never;
@@ -1258,6 +1278,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/profile/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Merged profile with the source of each value
+     * @description One value per profile field, chosen across all snapshots by source kind (`manual`, then `provider`, then `website`, then `news`; the newest wins inside a kind), with the source of the shown value and the other values found. Snapshots are not changed. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_profile"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/push-to-crm/": {
     parameters: {
       query?: never;
@@ -1278,6 +1318,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/companies/{id}/research/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Collect provider data, signals and news
+     * @description Queues a research run as a background job (`company_research`) with one step each for the provider profile, the signals (provider signals, funding and hiring) and news, and answers **202** with the run. Idempotent: while the company has a queued or running run that run is returned (`already_queued: true`). A step that cannot run because nothing is configured ends `failed` with what to configure, and the other steps still run. 400 for an archived company, campaign or client. This does not read the company website or call the AI: that is **Analyze Company**. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_research"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/companies/{id}/research-history/": {
     parameters: {
       query?: never;
@@ -1290,6 +1350,46 @@ export interface paths {
      * @description Every research snapshot of this company, newest first (the latest 20), each with the fields that changed against the snapshot before it (Brief section 19). Older snapshots are never altered by a new run. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
      */
     get: operations["companies_research_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/research-history/diff/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * What changed between two research snapshots
+     * @description Compares any two snapshots of this company, not only neighbours. `from` is the older one and `to` the newer one (snapshot ids from the research history). 400 when an id is missing or not a UUID, 404 when a snapshot is not this company's. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_research_diff"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/research-runs/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Research runs of this company
+     * @description The latest 20 research runs, newest first, each with its steps and what every step found. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_research_runs"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2372,6 +2472,26 @@ export interface components {
       readonly updated_at: string;
       readonly latest_research: components["schemas"]["ResearchSummary"] | null;
     };
+    CompanyEvidence: {
+      /** Format: uuid */
+      id: string;
+      /** @description `provider`, `website`, `news` or `manual`. */
+      type: string;
+      /** @description The provider, site or publication. */
+      name: string;
+      url: string;
+      provider_reference: string;
+      /** Format: date-time */
+      retrieved_at: string;
+      /**
+       * Format: date
+       * @description The date the source itself states, when it states one.
+       */
+      evidence_date: string | null;
+      /** @description Whole days since it was retrieved. */
+      age_days: number;
+      backs: components["schemas"]["EvidenceBack"][];
+    };
     /** @description Just enough of a company to show and link it. */
     CompanyRef: {
       /** Format: uuid */
@@ -2725,6 +2845,14 @@ export interface components {
       type_label: string;
       /** Format: date */
       event_date: string;
+    };
+    EvidenceBack: {
+      /** @description `research_snapshot` or `signal`. */
+      kind: string;
+      /** Format: uuid */
+      id: string;
+      /** @description The snapshot date, or the signal type and date. */
+      detail: string;
     };
     FeedbackCount: {
       kind: string;
@@ -3376,6 +3504,27 @@ export interface components {
       dedupe: components["schemas"]["Dedupe"];
       importable: boolean;
     };
+    ProfileAlternative: {
+      value: string;
+      origin: components["schemas"]["ProfileSource"];
+    };
+    ProfileField: {
+      field: string;
+      name: string;
+      value: string;
+      /** @description Where the shown value comes from. */
+      origin: components["schemas"]["ProfileSource"];
+      /** @description Other values found by lower-ranked or older sources. */
+      alternatives: components["schemas"]["ProfileAlternative"][];
+    };
+    ProfileSource: {
+      /** Format: uuid */
+      id: string;
+      name: string;
+      type: string;
+      /** Format: date-time */
+      researched_at: string;
+    };
     ProviderCall: {
       /** Format: uuid */
       readonly id: string;
@@ -3612,6 +3761,42 @@ export interface components {
       /** @description The steps after ADD (find contact, email, verify, messages, approve, export); empty until the account is decided ADD. */
       workflow: components["schemas"]["WorkflowStep"][];
     };
+    /** @description Result of `POST /companies/{id}/research/` (HTTP 202). */
+    ResearchRequest: {
+      /** Format: uuid */
+      company_id: string;
+      run: components["schemas"]["ResearchRun"];
+      /** @description True when the company already had a queued or running run: that run is returned and nothing new is queued. */
+      already_queued: boolean;
+    };
+    ResearchRun: {
+      /** Format: uuid */
+      id: string;
+      /** @description `queued`, `running`, `succeeded`, `partial` or `failed`. */
+      status: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      started_at: string | null;
+      /** Format: date-time */
+      finished_at: string | null;
+      error_summary: string;
+      steps: components["schemas"]["ResearchStep"][];
+    };
+    ResearchStep: {
+      /** @description `profile`, `signals` or `news`. */
+      step: string;
+      /** @description `queued`, `running`, `succeeded` or `failed`. */
+      status: string;
+      /** @description Why the step failed, in words. */
+      error: string;
+      /** @description What the step found: counts, `missing_fields` for the profile step and a `skipped_reason` when news was skipped. */
+      result: unknown;
+      /** Format: date-time */
+      started_at: string | null;
+      /** Format: date-time */
+      finished_at: string | null;
+    };
     /** @description The current (latest) research snapshot of a company. Null facts mean "not found". */
     ResearchSummary: {
       /** Format: uuid */
@@ -3763,6 +3948,19 @@ export interface components {
       source_name: string;
       /** @description The oldest snapshot: nothing to compare with. */
       first: boolean;
+      changes: components["schemas"]["FieldChange"][];
+    };
+    SnapshotDiff: {
+      /** Format: uuid */
+      from_id: string;
+      /** Format: uuid */
+      to_id: string;
+      /** Format: date-time */
+      from_researched_at: string;
+      /** Format: date-time */
+      to_researched_at: string;
+      from_source_name: string;
+      to_source_name: string;
       changes: components["schemas"]["FieldChange"][];
     };
     /**
@@ -8755,6 +8953,73 @@ export interface operations {
       };
     };
   };
+  companies_evidence: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CompanyEvidence"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   companies_export_message: {
     parameters: {
       query?: never;
@@ -9298,6 +9563,73 @@ export interface operations {
       };
     };
   };
+  companies_profile: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProfileField"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   companies_push_to_crm: {
     parameters: {
       query?: never;
@@ -9378,6 +9710,82 @@ export interface operations {
       };
     };
   };
+  companies_research: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResearchRequest"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
   companies_research_history: {
     parameters: {
       query?: never;
@@ -9396,6 +9804,154 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Snapshot"][];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_research_diff: {
+    parameters: {
+      query: {
+        /** @description Snapshot id, the older. */
+        from: string;
+        /** @description Snapshot id, the newer. */
+        to: string;
+      };
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SnapshotDiff"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_research_runs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ResearchRun"][];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */

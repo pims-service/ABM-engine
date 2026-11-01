@@ -453,6 +453,13 @@ def _scenarios() -> dict[str, Scenario]:
             body=lambda: {"contact_id": str(uuid.uuid4())},
         ),
         Scenario("GET /api/v1/companies/{pk}/research-history/", "item", Level.READ, "company"),
+        Scenario(
+            "GET /api/v1/companies/{pk}/research-history/diff/", "item", Level.READ, "company"
+        ),
+        Scenario("POST /api/v1/companies/{pk}/research/", "item", Level.EDIT, "company"),
+        Scenario("GET /api/v1/companies/{pk}/research-runs/", "item", Level.READ, "company"),
+        Scenario("GET /api/v1/companies/{pk}/evidence/", "item", Level.READ, "company"),
+        Scenario("GET /api/v1/companies/{pk}/profile/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/contacts/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/messages/", "item", Level.READ, "company"),
         Scenario("GET /api/v1/companies/{pk}/buyer-ranking/", "item", Level.READ, "company"),

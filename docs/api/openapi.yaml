@@ -4558,6 +4558,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/evidence/:
+    get:
+      operationId: companies_evidence
+      description: 'Every source of what we know: each source once, newest first,
+        with its name, type, link, when it was retrieved, the date it states and its
+        age in days, and which snapshots and signals it backs. Needs the `READ` level:
+        any member. Others get 403; companies of clients you are not a member of give
+        404.'
+      summary: Evidence behind this company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CompanyEvidence'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/export-message/:
     post:
       operationId: companies_export_message
@@ -5043,6 +5104,67 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/profile/:
+    get:
+      operationId: companies_profile
+      description: 'One value per profile field, chosen across all snapshots by source
+        kind (`manual`, then `provider`, then `website`, then `news`; the newest wins
+        inside a kind), with the source of the shown value and the other values found.
+        Snapshots are not changed. Needs the `READ` level: any member. Others get
+        403; companies of clients you are not a member of give 404.'
+      summary: Merged profile with the source of each value
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileField'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/push-to-crm/:
     post:
       operationId: companies_push_to_crm
@@ -5116,6 +5238,75 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/research/:
+    post:
+      operationId: companies_research
+      description: 'Queues a research run as a background job (`company_research`)
+        with one step each for the provider profile, the signals (provider signals,
+        funding and hiring) and news, and answers **202** with the run. Idempotent:
+        while the company has a queued or running run that run is returned (`already_queued:
+        true`). A step that cannot run because nothing is configured ends `failed`
+        with what to configure, and the other steps still run. 400 for an archived
+        company, campaign or client. This does not read the company website or call
+        the AI: that is **Analyze Company**. Needs the `EDIT` level: manager and admin.
+        Others get 403; companies of clients you are not a member of give 404.'
+      summary: Collect provider data, signals and news
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchRequest'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/research-history/:
     get:
       operationId: companies_research_history
@@ -5145,6 +5336,142 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Snapshot'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/research-history/diff/:
+    get:
+      operationId: companies_research_diff
+      description: 'Compares any two snapshots of this company, not only neighbours.
+        `from` is the older one and `to` the newer one (snapshot ids from the research
+        history). 400 when an id is missing or not a UUID, 404 when a snapshot is
+        not this company''s. Needs the `READ` level: any member. Others get 403; companies
+        of clients you are not a member of give 404.'
+      summary: What changed between two research snapshots
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: string
+        description: Snapshot id, the older.
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      - in: query
+        name: to
+        schema:
+          type: string
+        description: Snapshot id, the newer.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnapshotDiff'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/research-runs/:
+    get:
+      operationId: companies_research_runs
+      description: 'The latest 20 research runs, newest first, each with its steps
+        and what every step found. Needs the `READ` level: any member. Others get
+        403; companies of clients you are not a member of give 404.'
+      summary: Research runs of this company
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResearchRun'
           description: ''
         '401':
           content:
@@ -8626,6 +8953,47 @@ components:
       - status
       - updated_at
       - website
+    CompanyEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: '`provider`, `website`, `news` or `manual`.'
+        name:
+          type: string
+          description: The provider, site or publication.
+        url:
+          type: string
+        provider_reference:
+          type: string
+        retrieved_at:
+          type: string
+          format: date-time
+        evidence_date:
+          type: string
+          format: date
+          nullable: true
+          description: The date the source itself states, when it states one.
+        age_days:
+          type: integer
+          description: Whole days since it was retrieved.
+        backs:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceBack'
+      required:
+      - age_days
+      - backs
+      - evidence_date
+      - id
+      - name
+      - provider_reference
+      - retrieved_at
+      - type
+      - url
     CompanyRef:
       type: object
       description: Just enough of a company to show and link it.
@@ -9393,6 +9761,22 @@ components:
       required:
       - event_date
       - type_label
+    EvidenceBack:
+      type: object
+      properties:
+        kind:
+          type: string
+          description: '`research_snapshot` or `signal`.'
+        id:
+          type: string
+          format: uuid
+        detail:
+          type: string
+          description: The snapshot date, or the signal type and date.
+      required:
+      - detail
+      - id
+      - kind
     FeedbackCount:
       type: object
       properties:
@@ -10697,6 +11081,58 @@ components:
       - dedupe
       - importable
       - provider_key
+    ProfileAlternative:
+      type: object
+      properties:
+        value:
+          type: string
+        origin:
+          $ref: '#/components/schemas/ProfileSource'
+      required:
+      - origin
+      - value
+    ProfileField:
+      type: object
+      properties:
+        field:
+          type: string
+        name:
+          type: string
+        value:
+          type: string
+        origin:
+          allOf:
+          - $ref: '#/components/schemas/ProfileSource'
+          description: Where the shown value comes from.
+        alternatives:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProfileAlternative'
+          description: Other values found by lower-ranked or older sources.
+      required:
+      - alternatives
+      - field
+      - name
+      - origin
+      - value
+    ProfileSource:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+        researched_at:
+          type: string
+          format: date-time
+      required:
+      - id
+      - name
+      - researched_at
+      - type
     ProviderCall:
       type: object
       properties:
@@ -11315,6 +11751,88 @@ components:
       - research
       - trigger
       - workflow
+    ResearchRequest:
+      type: object
+      description: Result of `POST /companies/{id}/research/` (HTTP 202).
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        run:
+          $ref: '#/components/schemas/ResearchRun'
+        already_queued:
+          type: boolean
+          description: 'True when the company already had a queued or running run:
+            that run is returned and nothing new is queued.'
+      required:
+      - already_queued
+      - company_id
+      - run
+    ResearchRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: '`queued`, `running`, `succeeded`, `partial` or `failed`.'
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_summary:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResearchStep'
+      required:
+      - created_at
+      - error_summary
+      - finished_at
+      - id
+      - started_at
+      - status
+      - steps
+    ResearchStep:
+      type: object
+      properties:
+        step:
+          type: string
+          description: '`profile`, `signals` or `news`.'
+        status:
+          type: string
+          description: '`queued`, `running`, `succeeded` or `failed`.'
+        error:
+          type: string
+          description: Why the step failed, in words.
+        result:
+          nullable: true
+          description: 'What the step found: counts, `missing_fields` for the profile
+            step and a `skipped_reason` when news was skipped.'
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - error
+      - finished_at
+      - result
+      - started_at
+      - status
+      - step
     ResearchSummary:
       type: object
       description: The current (latest) research snapshot of a company. Null facts
@@ -11714,6 +12232,37 @@ components:
       - id
       - researched_at
       - source_name
+    SnapshotDiff:
+      type: object
+      properties:
+        from_id:
+          type: string
+          format: uuid
+        to_id:
+          type: string
+          format: uuid
+        from_researched_at:
+          type: string
+          format: date-time
+        to_researched_at:
+          type: string
+          format: date-time
+        from_source_name:
+          type: string
+        to_source_name:
+          type: string
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldChange'
+      required:
+      - changes
+      - from_id
+      - from_researched_at
+      - from_source_name
+      - to_id
+      - to_researched_at
+      - to_source_name
     SortEnum:
       enum:
       - relevance

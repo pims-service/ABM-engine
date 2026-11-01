@@ -24,6 +24,7 @@ from apps.integrations.framework.errors import ProviderError
 from apps.integrations.llm import find_ungrounded, pydantic_schema, structured_call
 from apps.outreach.models import ActivityType
 from apps.outreach.services import create_angle, record_activity
+from apps.research.evidence import record_evidence
 from apps.research.models import AIRecommendation, ICPAssessment, Signal, SignalType
 from apps.research.services import (
     company_trigger_state,
@@ -154,15 +155,14 @@ def run_analysis(
         sources: dict[str, DataSource] = {}
         for item in readable:
             result = item.result
-            source = DataSource(
-                client_id=company.client_id,
-                type=DataSourceType.WEBSITE,
-                name=urlsplit(result.final_url).netloc[:200],
+            source = record_evidence(
+                company.client,
+                DataSourceType.WEBSITE,
+                urlsplit(result.final_url).netloc[:200],
                 url=result.final_url,
-                retrieved_at=result.fetched_at,
-                created_by=user,
+                observed_at=result.fetched_at,
+                user=user,
             )
-            source.save()
             sources[_norm_url(result.final_url)] = source
         home = sources[_norm_url(readable[0].result.final_url)]
 

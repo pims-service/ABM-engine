@@ -13,11 +13,12 @@ Permission checks belong to the API layer (issue #46); these functions enforce d
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.campaigns.models import Campaign, Client
@@ -105,6 +106,10 @@ class CompanyResult:
         return []
 
 
+#: How far in the future a clock may be before a date counts as invented (clock skew).
+_CLOCK_SKEW = timedelta(minutes=5)
+
+
 def create_data_source(
     client: Client,
     type: str,
@@ -116,7 +121,19 @@ def create_data_source(
     evidence_date: Any = None,
     user: User | None = None,
 ) -> DataSource:
-    """Insert one ``DataSource`` (append-only). ``retrieved_at`` defaults to now."""
+    """Insert one ``DataSource`` (append-only). ``retrieved_at`` defaults to now.
+
+    Evidence needs the name of its source, and neither the retrieval nor the date the source
+    states may lie in the future (issue #100). Research code goes through
+    ``apps.research.evidence.record_evidence``, which calls this.
+    """
+    if not name or not name.strip():
+        raise ValidationError({"name": "Evidence needs the name of its source."})
+    now = timezone.now()
+    if retrieved_at is not None and retrieved_at > now + _CLOCK_SKEW:
+        raise ValidationError({"retrieved_at": "Evidence cannot be retrieved in the future."})
+    if evidence_date is not None and evidence_date > (now + _CLOCK_SKEW).date():
+        raise ValidationError({"evidence_date": "The date of the evidence is in the future."})
     extra: dict[str, Any] = {} if retrieved_at is None else {"retrieved_at": retrieved_at}
     source = DataSource(
         client=client,

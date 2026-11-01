@@ -70,6 +70,8 @@ Project documentation lives here. If you are new, start with onboarding.
   figures are computed, flagged and explained, and the JSON stored on the research snapshot.
 - [Qualification engine](research/qualification-engine.md): how "Analyze Company" turns a website into
   research, signals, an ICP assessment and a recommendation, and what it needs.
+- [Research engine](research/research-engine.md): the collectors (profile, signals, news), the
+  evidence service, history and retention, and how to add a source.
 
 ## Reference for each part of the repo
 
