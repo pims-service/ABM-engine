@@ -297,7 +297,7 @@ def test_every_csv_export_uses_the_one_formula_guard() -> None:
 
     # The approved-accounts export and the AI-vs-you export share one guard with the problem file.
     assert pipeline.safe is safe_cell
-    assert agreement.safe is safe_cell
+    assert cast(Any, agreement).safe is safe_cell
     for hostile in ("=1+1", "+cmd", "-2", "@SUM(A1)", "\t=1", "​=1", "‮@1"):
         assert pipeline.safe(hostile).startswith("'"), repr(hostile)
     assert pipeline.safe("Acme Logistics") == "Acme Logistics"
