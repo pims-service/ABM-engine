@@ -9667,7 +9667,7 @@ components:
       properties:
         step:
           allOf:
-          - $ref: '#/components/schemas/EnrichContactsRequestStepEnum'
+          - $ref: '#/components/schemas/StepEnum'
           description: |-
             `find_emails`: look up the email of people who have none; `verify_emails`: check the emails people already have; `find_and_verify`: both, checking each email as soon as it is found.
 
@@ -9684,16 +9684,6 @@ components:
           maxItems: 500
       required:
       - step
-    EnrichContactsRequestStepEnum:
-      enum:
-      - find_emails
-      - verify_emails
-      - find_and_verify
-      type: string
-      description: |-
-        * `find_emails` - find_emails
-        * `verify_emails` - verify_emails
-        * `find_and_verify` - find_and_verify
     EnrichContactsResult:
       type: object
       properties:
@@ -9775,7 +9765,8 @@ components:
       type: object
       properties:
         kind:
-          $ref: '#/components/schemas/EvidenceBackKindEnum'
+          type: string
+          description: '`research_snapshot` or `signal`.'
         id:
           type: string
           format: uuid
@@ -9786,14 +9777,6 @@ components:
       - detail
       - id
       - kind
-    EvidenceBackKindEnum:
-      enum:
-      - research_snapshot
-      - signal
-      type: string
-      description: |-
-        * `research_snapshot` - research_snapshot
-        * `signal` - signal
     FeedbackCount:
       type: object
       properties:
@@ -9804,33 +9787,11 @@ components:
       required:
       - count
       - kind
-    FeedbackRequestKindEnum:
-      enum:
-      - wrong_buyer
-      - not_b2b
-      - unsuitable_industry
-      - not_a_trigger
-      - ceo_should_be_primary
-      - ceo_should_not_be_primary
-      - government_company
-      - incorrect_company_data
-      - other
-      type: string
-      description: |-
-        * `wrong_buyer` - Wrong buyer
-        * `not_b2b` - Company is not B2B
-        * `unsuitable_industry` - Industry is unsuitable
-        * `not_a_trigger` - Signal should not count as a trigger
-        * `ceo_should_be_primary` - CEO should be primary
-        * `ceo_should_not_be_primary` - CEO should not be primary
-        * `government_company` - Company is government
-        * `incorrect_company_data` - Incorrect company data
-        * `other` - Other
     FeedbackRequestRequest:
       type: object
       properties:
         kind:
-          $ref: '#/components/schemas/FeedbackRequestKindEnum'
+          $ref: '#/components/schemas/KindEnum'
         note:
           type: string
           default: ''
@@ -10443,6 +10404,28 @@ components:
         * `succeeded` - Succeeded
         * `partial` - Partially succeeded
         * `failed` - Failed
+    KindEnum:
+      enum:
+      - wrong_buyer
+      - not_b2b
+      - unsuitable_industry
+      - not_a_trigger
+      - ceo_should_be_primary
+      - ceo_should_not_be_primary
+      - government_company
+      - incorrect_company_data
+      - other
+      type: string
+      description: |-
+        * `wrong_buyer` - Wrong buyer
+        * `not_b2b` - Company is not B2B
+        * `unsuitable_industry` - Industry is unsuitable
+        * `not_a_trigger` - Signal should not count as a trigger
+        * `ceo_should_be_primary` - CEO should be primary
+        * `ceo_should_not_be_primary` - CEO should not be primary
+        * `government_company` - Company is government
+        * `incorrect_company_data` - Incorrect company data
+        * `other` - Other
     LastTestStatusEnum:
       enum:
       - ok
@@ -11823,9 +11806,11 @@ components:
       type: object
       properties:
         step:
-          $ref: '#/components/schemas/ResearchStepStepEnum'
+          type: string
+          description: '`profile`, `signals` or `news`.'
         status:
-          $ref: '#/components/schemas/ResearchStepStatusEnum'
+          type: string
+          description: '`queued`, `running`, `succeeded` or `failed`.'
         error:
           type: string
           description: Why the step failed, in words.
@@ -11848,28 +11833,6 @@ components:
       - started_at
       - status
       - step
-    ResearchStepStatusEnum:
-      enum:
-      - queued
-      - running
-      - succeeded
-      - failed
-      type: string
-      description: |-
-        * `queued` - queued
-        * `running` - running
-        * `succeeded` - succeeded
-        * `failed` - failed
-    ResearchStepStepEnum:
-      enum:
-      - profile
-      - signals
-      - news
-      type: string
-      description: |-
-        * `profile` - profile
-        * `signals` - signals
-        * `news` - news
     ResearchSummary:
       type: object
       description: The current (latest) research snapshot of a company. Null facts
@@ -12346,6 +12309,16 @@ components:
         * `allow` - allow
         * `warn` - warn
         * `deny` - deny
+    StepEnum:
+      enum:
+      - find_emails
+      - verify_emails
+      - find_and_verify
+      type: string
+      description: |-
+        * `find_emails` - find_emails
+        * `verify_emails` - verify_emails
+        * `find_and_verify` - find_and_verify
     TargetTypeEnum:
       enum:
       - company

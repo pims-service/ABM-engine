@@ -2808,18 +2808,10 @@ export interface components {
        *     * `verify_emails` - verify_emails
        *     * `find_and_verify` - find_and_verify
        */
-      step: components["schemas"]["EnrichContactsRequestStepEnum"];
+      step: components["schemas"]["StepEnum"];
       /** @description Limit this to these companies. Leave out for every approved company. */
       company_ids?: string[];
     };
-    /**
-     * @description * `find_emails` - find_emails
-     *     * `verify_emails` - verify_emails
-     *     * `find_and_verify` - find_and_verify
-     * @enum {string}
-     */
-    EnrichContactsRequestStepEnum:
-      "find_emails" | "verify_emails" | "find_and_verify";
     EnrichContactsResult: {
       /** @description People handed to the worker. */
       queued: number;
@@ -2855,46 +2847,19 @@ export interface components {
       event_date: string;
     };
     EvidenceBack: {
-      kind: components["schemas"]["EvidenceBackKindEnum"];
+      /** @description `research_snapshot` or `signal`. */
+      kind: string;
       /** Format: uuid */
       id: string;
       /** @description The snapshot date, or the signal type and date. */
       detail: string;
     };
-    /**
-     * @description * `research_snapshot` - research_snapshot
-     *     * `signal` - signal
-     * @enum {string}
-     */
-    EvidenceBackKindEnum: "research_snapshot" | "signal";
     FeedbackCount: {
       kind: string;
       count: number;
     };
-    /**
-     * @description * `wrong_buyer` - Wrong buyer
-     *     * `not_b2b` - Company is not B2B
-     *     * `unsuitable_industry` - Industry is unsuitable
-     *     * `not_a_trigger` - Signal should not count as a trigger
-     *     * `ceo_should_be_primary` - CEO should be primary
-     *     * `ceo_should_not_be_primary` - CEO should not be primary
-     *     * `government_company` - Company is government
-     *     * `incorrect_company_data` - Incorrect company data
-     *     * `other` - Other
-     * @enum {string}
-     */
-    FeedbackRequestKindEnum:
-      | "wrong_buyer"
-      | "not_b2b"
-      | "unsuitable_industry"
-      | "not_a_trigger"
-      | "ceo_should_be_primary"
-      | "ceo_should_not_be_primary"
-      | "government_company"
-      | "incorrect_company_data"
-      | "other";
     FeedbackRequestRequest: {
-      kind: components["schemas"]["FeedbackRequestKindEnum"];
+      kind: components["schemas"]["KindEnum"];
       /** @default  */
       note: string;
       target_type?: components["schemas"]["TargetTypeEnum"];
@@ -3155,6 +3120,28 @@ export interface components {
      * @enum {string}
      */
     JobStatusEnum: "queued" | "running" | "succeeded" | "partial" | "failed";
+    /**
+     * @description * `wrong_buyer` - Wrong buyer
+     *     * `not_b2b` - Company is not B2B
+     *     * `unsuitable_industry` - Industry is unsuitable
+     *     * `not_a_trigger` - Signal should not count as a trigger
+     *     * `ceo_should_be_primary` - CEO should be primary
+     *     * `ceo_should_not_be_primary` - CEO should not be primary
+     *     * `government_company` - Company is government
+     *     * `incorrect_company_data` - Incorrect company data
+     *     * `other` - Other
+     * @enum {string}
+     */
+    KindEnum:
+      | "wrong_buyer"
+      | "not_b2b"
+      | "unsuitable_industry"
+      | "not_a_trigger"
+      | "ceo_should_be_primary"
+      | "ceo_should_not_be_primary"
+      | "government_company"
+      | "incorrect_company_data"
+      | "other";
     /**
      * @description * `ok` - OK
      *     * `failed` - Failed
@@ -3797,8 +3784,10 @@ export interface components {
       steps: components["schemas"]["ResearchStep"][];
     };
     ResearchStep: {
-      step: components["schemas"]["ResearchStepStepEnum"];
-      status: components["schemas"]["ResearchStepStatusEnum"];
+      /** @description `profile`, `signals` or `news`. */
+      step: string;
+      /** @description `queued`, `running`, `succeeded` or `failed`. */
+      status: string;
       /** @description Why the step failed, in words. */
       error: string;
       /** @description What the step found: counts, `missing_fields` for the profile step and a `skipped_reason` when news was skipped. */
@@ -3808,21 +3797,6 @@ export interface components {
       /** Format: date-time */
       finished_at: string | null;
     };
-    /**
-     * @description * `queued` - queued
-     *     * `running` - running
-     *     * `succeeded` - succeeded
-     *     * `failed` - failed
-     * @enum {string}
-     */
-    ResearchStepStatusEnum: "queued" | "running" | "succeeded" | "failed";
-    /**
-     * @description * `profile` - profile
-     *     * `signals` - signals
-     *     * `news` - news
-     * @enum {string}
-     */
-    ResearchStepStepEnum: "profile" | "signals" | "news";
     /** @description The current (latest) research snapshot of a company. Null facts mean "not found". */
     ResearchSummary: {
       /** Format: uuid */
@@ -4018,6 +3992,13 @@ export interface components {
      * @enum {string}
      */
     StateEnum: "allow" | "warn" | "deny";
+    /**
+     * @description * `find_emails` - find_emails
+     *     * `verify_emails` - verify_emails
+     *     * `find_and_verify` - find_and_verify
+     * @enum {string}
+     */
+    StepEnum: "find_emails" | "verify_emails" | "find_and_verify";
     /**
      * @description * `company` - Company
      *     * `signal` - Signal

@@ -7,15 +7,13 @@ from typing import Any
 
 from rest_framework import serializers
 
-from apps.core.models import Job, JobItemStatus
+from apps.core.models import Job
 from apps.research.collect.run import step_of
-
-STATUS_CHOICES = [s.value for s in JobItemStatus]
 
 
 class ResearchStepSerializer(serializers.Serializer[Any]):
-    step = serializers.ChoiceField(choices=["profile", "signals", "news"])
-    status = serializers.ChoiceField(choices=STATUS_CHOICES)
+    step = serializers.CharField(help_text="`profile`, `signals` or `news`.")
+    status = serializers.CharField(help_text="`queued`, `running`, `succeeded` or `failed`.")
     error = serializers.CharField(allow_blank=True, help_text="Why the step failed, in words.")
     result = serializers.JSONField(
         allow_null=True,
@@ -50,7 +48,7 @@ class ResearchRequestSerializer(serializers.Serializer[Any]):
 
 
 class EvidenceBackSerializer(serializers.Serializer[Any]):
-    kind = serializers.ChoiceField(choices=["research_snapshot", "signal"])
+    kind = serializers.CharField(help_text="`research_snapshot` or `signal`.")
     id = serializers.UUIDField()
     detail = serializers.CharField(help_text="The snapshot date, or the signal type and date.")
 
