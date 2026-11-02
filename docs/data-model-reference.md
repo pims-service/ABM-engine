@@ -797,6 +797,31 @@ Indexes:
 - `rs_airec_client_idx`: (client)
 - `rs_airec_latest_idx`: (company, -created_at, -id)
 
+### BuyerRankingRun
+
+`research.BuyerRankingRun`, append-only, tenant, table `research_buyerrankingrun`.
+
+| Field | Type | Null | Notes |
+| --- | --- | --- | --- |
+| id | uuid | no | PK |
+| client_id | uuid | no | FK to campaigns.Client |
+| company_id | uuid | no | FK to companies.Company |
+| inputs_hash | text(64) | no |  |
+| algorithm_version | text(20) | no |  |
+| note | text | no |  |
+| people | jsonb | no |  |
+| explanation | jsonb | yes |  |
+| model_name | text(100) | no |  |
+| prompt_version | text(50) | no |  |
+| schema_version | text(50) | no |  |
+| created_by_id | uuid | yes | FK to accounts.User |
+| created_at | timestamptz | no |  |
+
+Indexes:
+
+- `rs_buyerrun_client_idx`: (client)
+- `rs_buyerrun_latest_idx`: (company, -created_at, -id)
+
 ### HumanDecision
 
 `research.HumanDecision`, append-only, tenant, table `research_humandecision`.

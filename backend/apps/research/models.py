@@ -465,3 +465,57 @@ class HumanDecision(AppendOnlyModel, TenantModel, UUIDModel):
             raise TenantMismatchError(
                 "HumanDecision.ai_recommendation belongs to a different company."
             )
+
+
+# ------------------------------------------------------------------ BuyerRankingRun
+
+
+class BuyerRankingRunQuerySet(LatestPerCompanyQuerySet):  # type: ignore[override]
+    latest_order = ("created_at", "id")
+
+
+class BuyerRankingRun(AppendOnlyModel, TenantModel, UUIDModel):
+    """One stored ranking of the people at a company (Brief sections 8, 15 and 19; issue #137).
+
+    A run records the order and the reasons as they were, and ``inputs_hash``: a hash of what the
+    ranking was made from (the campaign's preferred titles and target departments, the company
+    size and the people). Whether a run is stale is computed by comparing that hash with the
+    current inputs; nothing is rewritten and older runs stay. ``explanation`` is the optional
+    AI explanation and tie-break (issue #132): ``{"source": "model" | "rules", ...}``.
+    """
+
+    tenant_parent = "company"
+
+    company = models.ForeignKey(
+        Company, on_delete=models.PROTECT, related_name="buyer_ranking_runs"
+    )
+    inputs_hash = models.CharField(max_length=64)
+    algorithm_version = models.CharField(max_length=20)
+    note = models.TextField(blank=True, help_text="How the company size shaped the ranking.")
+    people = models.JSONField(
+        default=list, blank=True, help_text="The ranked people as stored, with their reasons."
+    )
+    explanation = models.JSONField(null=True, blank=True)
+    model_name = models.CharField(max_length=100, blank=True)
+    prompt_version = models.CharField(max_length=50, blank=True)
+    schema_version = models.CharField(max_length=50, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    objects = BuyerRankingRunQuerySet.as_manager()
+
+    class Meta:
+        ordering: ClassVar[tuple[str, ...]] = ("-created_at", "-id")
+        indexes: ClassVar[list[models.Index]] = [
+            models.Index(fields=["company", "-created_at", "-id"], name="rs_buyerrun_latest_idx"),
+            models.Index(fields=["client"], name="rs_buyerrun_client_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"buyer ranking of {self.company_id} @ {self.created_at:%Y-%m-%d %H:%M}"

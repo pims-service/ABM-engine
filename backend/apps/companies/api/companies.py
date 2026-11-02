@@ -60,6 +60,15 @@ from apps.outreach.messages_api import (
 )
 from apps.outreach.models import ActivityType
 from apps.outreach.services import record_activity, record_feedback
+from apps.research.buyer_runs import (
+    BuyerRunRequestSerializer,
+    BuyerRunResultSerializer,
+    BuyerRunSerializer,
+    describe_runs,
+)
+from apps.research.buyer_runs import (
+    run_ranking as run_buyer_ranking,
+)
 from apps.research.buyers import (
     BuyerRankingSerializer,
     apply_ranking,
@@ -374,6 +383,8 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         "push_to_crm": Level.EDIT,
         "buyer_ranking": Level.READ,
         "apply_buyer_ranking": Level.EDIT,
+        "run_buyer_ranking_action": Level.EDIT,
+        "buyer_ranking_runs": Level.READ,
         "archive": Level.MANAGE,
         "restore": Level.MANAGE,
     }
@@ -987,6 +998,58 @@ class CompanyViewSet(mixins.RetrieveModelMixin, CompanyBaseViewSet):
         if company.is_archived:
             raise ValidationError({"non_field_errors": ["Archived companies are read-only."]})
         return Response(BuyerRankingSerializer(ranking_body(apply_ranking(company))).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_run_buyer_ranking",
+        summary="Run and store the buyer ranking",
+        description="Stores the ranking of the people as a run (Brief sections 8 and 19). Older "
+        "runs stay. If nothing changed since the latest run (the campaign's preferred titles and "
+        "target departments, the company size, the people) nothing is made and the latest run is "
+        "returned with `created: false`, unless `force` is true. `explain` adds the AI "
+        "explanation and tie-break; without an AI connection, or if the model answer is not "
+        "usable, the run keeps the rules ranking with a plain explanation. It does not change the "
+        "contacts: applying a ranking is a separate step. 201 when a run was made, 200 when not. "
+        + _levels("EDIT", "manager and admin"),
+        request=BuyerRunRequestSerializer,
+        responses={200: BuyerRunResultSerializer, 201: BuyerRunResultSerializer, **_ERRORS_WRITE},
+    )
+    @action(detail=True, methods=["post"], url_path="buyer-ranking/run")
+    def run_buyer_ranking_action(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        body = BuyerRunRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            result = run_buyer_ranking(
+                company,
+                self._user(),
+                force=body.validated_data["force"],
+                explain=body.validated_data["explain"],
+            )
+        runs = describe_runs(company, 1)
+        data = BuyerRunResultSerializer(
+            {"run": runs[0], "created": result.created, "reason": result.reason}
+        ).data
+        return Response(
+            data, status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="companies_buyer_ranking_runs",
+        summary="Stored buyer ranking runs",
+        description="The latest 20 runs, newest first. The newest is `current`, or `stale` when "
+        "the campaign's buyer rules, the company size or the people changed since it was made; "
+        "older runs are `superseded`. Nothing is deleted. " + _levels("READ", "any member"),
+        responses={
+            200: BuyerRunSerializer(many=True),
+            **error_responses(401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="buyer-ranking/runs", pagination_class=None)
+    def buyer_ranking_runs(self, request: Request, pk: str | None = None) -> Response:
+        company = self.get_object()
+        return Response(BuyerRunSerializer(describe_runs(company), many=True).data)
 
     @extend_schema(
         tags=TAGS,

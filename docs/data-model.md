@@ -68,6 +68,7 @@ erDiagram
     Company |o--o{ ImportRow : "company"
     Company ||--o{ AIRecommendation : "company"
     Company ||--o{ Activity : "company"
+    Company ||--o{ BuyerRankingRun : "company"
     Company ||--o{ CompanyResearch : "company"
     Company ||--o{ Contact : "company"
     Company ||--o{ HumanDecision : "company"
@@ -292,6 +293,12 @@ erDiagram
         uuid icp_assessment_id FK
         text_8 status
     }
+    BuyerRankingRun {
+        uuid id PK
+        uuid client_id FK
+        uuid company_id FK
+        uuid created_by_id FK
+    }
     HumanDecision {
         uuid id PK
         uuid client_id FK
@@ -398,6 +405,7 @@ this page and the reference disagree, the reference is right: fix the table.
 | MessageSource | outreach | append-only, tenant | `outreach_message_sources` |
 | OutreachAngle | outreach | append-only, tenant | `outreach_outreachangle` |
 | AIRecommendation | research | append-only, tenant | `research_airecommendation` |
+| BuyerRankingRun | research | append-only, tenant | `research_buyerrankingrun` |
 | HumanDecision | research | append-only, tenant | `research_humandecision` |
 | ICPAssessment | research | append-only, tenant | `research_icpassessment` |
 | Signal | research | append-only, tenant | `research_signal` |

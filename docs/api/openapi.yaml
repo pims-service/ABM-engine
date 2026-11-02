@@ -4221,6 +4221,148 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/buyer-ranking/run/:
+    post:
+      operationId: companies_run_buyer_ranking
+      description: 'Stores the ranking of the people as a run (Brief sections 8 and
+        19). Older runs stay. If nothing changed since the latest run (the campaign''s
+        preferred titles and target departments, the company size, the people) nothing
+        is made and the latest run is returned with `created: false`, unless `force`
+        is true. `explain` adds the AI explanation and tie-break; without an AI connection,
+        or if the model answer is not usable, the run keeps the rules ranking with
+        a plain explanation. It does not change the contacts: applying a ranking is
+        a separate step. 201 when a run was made, 200 when not. Needs the `EDIT` level:
+        manager and admin. Others get 403; companies of clients you are not a member
+        of give 404.'
+      summary: Run and store the buyer ranking
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuyerRunRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerRunResult'
+          description: ''
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuyerRunResult'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+  /api/v1/companies/{id}/buyer-ranking/runs/:
+    get:
+      operationId: companies_buyer_ranking_runs
+      description: 'The latest 20 runs, newest first. The newest is `current`, or
+        `stale` when the campaign''s buyer rules, the company size or the people changed
+        since it was made; older runs are `superseded`. Nothing is deleted. Needs
+        the `READ` level: any member. Others get 403; companies of clients you are
+        not a member of give 404.'
+      summary: Stored buyer ranking runs
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this company.
+        required: true
+      tags:
+      - companies
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BuyerRun'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/companies/{id}/card/:
     get:
       operationId: companies_card
@@ -8032,6 +8174,70 @@ components:
       required:
       - note
       - people
+    BuyerRun:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          description: '`current`, `stale` (the inputs changed since this run) or
+            `superseded` (a newer run exists).'
+        note:
+          type: string
+        people:
+          type: array
+          items:
+            $ref: '#/components/schemas/RankedPerson'
+        explanation:
+          nullable: true
+          description: 'Only when the run asked for it: `source` (`model` or `rules`),
+            the primary and secondary contact ids, `rationale`, `concerns`, `tie_broken`
+            and a `note` saying why the model was not used.'
+        model_name:
+          type: string
+        algorithm_version:
+          type: string
+      required:
+      - algorithm_version
+      - created_at
+      - explanation
+      - id
+      - model_name
+      - note
+      - people
+      - status
+    BuyerRunRequestRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          default: false
+          description: Make a new run even if nothing changed.
+        explain:
+          type: boolean
+          default: false
+          description: Add the AI explanation and tie-break. Needs an AI connection;
+            without one the run keeps the rules ranking with a plain explanation.
+    BuyerRunResult:
+      type: object
+      properties:
+        run:
+          $ref: '#/components/schemas/BuyerRun'
+        created:
+          type: boolean
+          description: 'False: nothing changed, the latest run is returned.'
+        reason:
+          type: string
+          description: '`created` or `unchanged`.'
+      required:
+      - created
+      - reason
+      - run
     Campaign:
       type: object
       description: A campaign with its current profile. ``status`` changes only through
