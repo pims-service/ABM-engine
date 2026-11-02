@@ -47,7 +47,7 @@ jobs:
     name: Check the commit
     if: ${{ inputs.action == 'deploy' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: read
       actions: read
@@ -76,13 +76,27 @@ jobs:
           git merge-base --is-ancestor "${SHA}" origin/main \
             || { echo "::error::${SHA} is not in main"; exit 1; }
 
+      # CI on a fresh merge to main takes a few minutes. Wait for it instead of failing, so a deploy
+      # started right after a merge works; it still fails when CI failed or never ran.
       - name: CI passed for the commit
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.rev.outputs.sha }}
         run: |
-          passed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success" --jq '.total_count')"
-          [ "${passed}" -gt 0 ] || { echo "::error::no successful CI run for ${SHA}"; exit 1; }
+          for attempt in $(seq 1 80); do
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}" --jq '.workflow_runs')"
+            passed="$(echo "${runs}" | jq '[.[] | select(.conclusion == "success")] | length')"
+            waiting="$(echo "${runs}" | jq '[.[] | select(.status != "completed")] | length')"
+            if [ "${passed}" -gt 0 ]; then
+              echo "CI passed for ${SHA}"; exit 0
+            fi
+            if [ "${waiting}" -eq 0 ]; then
+              echo "::error::no successful CI run for ${SHA}: it failed or did not run"; exit 1
+            fi
+            echo "CI for ${SHA} is still running (check ${attempt} of 80); waiting 30 seconds"
+            sleep 30
+          done
+          echo "::error::CI for ${SHA} did not finish within 40 minutes"; exit 1
 
   release:
     name: Build, push and deploy
