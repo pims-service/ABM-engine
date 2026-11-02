@@ -290,3 +290,20 @@ def make_angle(**overrides: Any) -> Any:
 
 def make_message(**overrides: Any) -> Any:
     return MessageFactory(**overrides)
+
+
+class BuyerRankingRunFactory(factory.django.DjangoModelFactory):
+    """A stored buyer ranking (the content is a plain example, not a real ranking)."""
+
+    class Meta:
+        model = "research.BuyerRankingRun"
+
+    company = factory.SubFactory(CompanyFactory)
+    inputs_hash = factory.Sequence(lambda n: f"{n:064d}")
+    algorithm_version = "1"
+    note = "Larger company (about 120 employees): the CEO is not assumed to be best."
+    people = factory.LazyFunction(list)
+
+
+def make_buyer_run(**overrides: Any) -> Any:
+    return BuyerRankingRunFactory(**overrides)

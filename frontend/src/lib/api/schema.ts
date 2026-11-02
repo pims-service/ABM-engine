@@ -390,6 +390,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/rerun-buyer-ranking/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Re-run the buyer ranking of many accounts
+     * @description Runs and stores the buyer ranking of up to 200 accounts of this campaign. Each account is handled on its own, so one problem never blocks the rest: the answer lists `created`, `unchanged` (nothing changed since its latest run, unless `force`) or `error` per account. `explain` adds the AI explanation and tie-break (one model call per account that needs it). Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_rerun_buyer_ranking"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/summary/": {
     parameters: {
       query?: never;
@@ -1034,6 +1054,46 @@ export interface paths {
      * @description Brief sections 8 and 15: who to contact first, with the reasons. Uses only the people already entered, the campaign's ordered preferred titles and target departments, and the company's size (a small company: the founder or CEO first; a larger one: the CEO is not assumed to be the best target). Nothing is stored; it is a suggestion. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
      */
     get: operations["companies_buyer_ranking"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/buyer-ranking/run/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Run and store the buyer ranking
+     * @description Stores the ranking of the people as a run (Brief sections 8 and 19). Older runs stay. If nothing changed since the latest run (the campaign's preferred titles and target departments, the company size, the people) nothing is made and the latest run is returned with `created: false`, unless `force` is true. `explain` adds the AI explanation and tie-break; without an AI connection, or if the model answer is not usable, the run keeps the rules ranking with a plain explanation. It does not change the contacts: applying a ranking is a separate step. 201 when a run was made, 200 when not. Needs the `EDIT` level: manager and admin. Others get 403; companies of clients you are not a member of give 404.
+     */
+    post: operations["companies_run_buyer_ranking"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/companies/{id}/buyer-ranking/runs/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Stored buyer ranking runs
+     * @description The latest 20 runs, newest first. The newest is `current`, or `stale` when the campaign's buyer rules, the company size or the people changed since it was made; older runs are `superseded`. Nothing is deleted. Needs the `READ` level: any member. Others get 403; companies of clients you are not a member of give 404.
+     */
+    get: operations["companies_buyer_ranking_runs"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2091,6 +2151,28 @@ export interface components {
       queued: number;
       already_running: number;
     };
+    BulkBuyerRunItem: {
+      /** Format: uuid */
+      company_id: string;
+      /** @description `created`, `unchanged` or `error`. */
+      status: string;
+      /** Format: uuid */
+      run_id: string | null;
+      error: string;
+    };
+    BulkBuyerRunRequestRequest: {
+      /**
+       * @description Make a new run even if nothing changed.
+       * @default false
+       */
+      force: boolean;
+      /**
+       * @description Add the AI explanation and tie-break. Needs an AI connection; without one the run keeps the rules ranking with a plain explanation.
+       * @default false
+       */
+      explain: boolean;
+      company_ids: string[];
+    };
     BulkCrmResult: {
       pushed: number;
       skipped: components["schemas"]["CrmSkipped"][];
@@ -2131,6 +2213,39 @@ export interface components {
       /** @description How the company's size shaped the ranking. */
       note: string;
       people: components["schemas"]["RankedPerson"][];
+    };
+    BuyerRun: {
+      /** Format: uuid */
+      id: string;
+      /** Format: date-time */
+      created_at: string;
+      /** @description `current`, `stale` (the inputs changed since this run) or `superseded` (a newer run exists). */
+      status: string;
+      note: string;
+      people: components["schemas"]["RankedPerson"][];
+      /** @description Only when the run asked for it: `source` (`model` or `rules`), the primary and secondary contact ids, `rationale`, `concerns`, `tie_broken` and a `note` saying why the model was not used. */
+      explanation: unknown;
+      model_name: string;
+      algorithm_version: string;
+    };
+    BuyerRunRequestRequest: {
+      /**
+       * @description Make a new run even if nothing changed.
+       * @default false
+       */
+      force: boolean;
+      /**
+       * @description Add the AI explanation and tie-break. Needs an AI connection; without one the run keeps the rules ranking with a plain explanation.
+       * @default false
+       */
+      explain: boolean;
+    };
+    BuyerRunResult: {
+      run: components["schemas"]["BuyerRun"];
+      /** @description False: nothing changed, the latest run is returned. */
+      created: boolean;
+      /** @description `created` or `unchanged`. */
+      reason: string;
     };
     /** @description A campaign with its current profile. ``status`` changes only through the actions. */
     Campaign: {
@@ -3337,6 +3452,21 @@ export interface components {
        */
       previous?: string | null;
       results: components["schemas"]["AccountRow"][];
+    };
+    PaginatedBulkBuyerRunItemList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["BulkBuyerRunItem"][];
     };
     PaginatedCampaignList: {
       /** @example 123 */
@@ -5671,6 +5801,94 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["QueuePushResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_rerun_buyer_ranking: {
+    parameters: {
+      query?: {
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description A search term. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkBuyerRunRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedBulkBuyerRunItemList"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
@@ -8719,6 +8937,161 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["BuyerRanking"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_run_buyer_ranking: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["BuyerRunRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BuyerRunResult"];
+        };
+      };
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BuyerRunResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  companies_buyer_ranking_runs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this company. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BuyerRun"][];
         };
       };
       /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */

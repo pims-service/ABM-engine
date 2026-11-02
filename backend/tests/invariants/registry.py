@@ -22,6 +22,7 @@ from apps.outreach.services import record_activity
 from tests.factories import (
     make_ai_recommendation,
     make_angle,
+    make_buyer_run,
     make_campaign,
     make_company,
     make_contact,
@@ -93,6 +94,7 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
         company=company, ai_recommendation=recommendation, decided_by=user
     )
     signal = make_signal(company=company, data_source=source)
+    buyer_run = make_buyer_run(company=company)
     contact = make_contact(company=company, data_source=source)
     angle = make_angle(company=company, signals=[signal], data_sources=[source])
     message = make_message(angle=angle, contact=contact, signals=[signal], data_sources=[source])
@@ -130,6 +132,7 @@ def build_client_rows(client: Client, member: User | None = None) -> dict[str, A
         recommendation._meta.label: recommendation,
         decision._meta.label: decision,
         signal._meta.label: signal,
+        buyer_run._meta.label: buyer_run,
         angle._meta.label: angle,
         angle.signal_links.get()._meta.label: angle.signal_links.get(),
         angle.source_links.get()._meta.label: angle.source_links.get(),

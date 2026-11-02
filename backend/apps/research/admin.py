@@ -7,7 +7,7 @@ from django.contrib import admin
 
 from apps.core.admin_base import ReadOnlyAdmin
 
-from .models import AIRecommendation, HumanDecision, ICPAssessment, Signal
+from .models import AIRecommendation, BuyerRankingRun, HumanDecision, ICPAssessment, Signal
 
 
 @admin.register(Signal)
@@ -45,3 +45,13 @@ class HumanDecisionAdmin(ReadOnlyAdmin):
     list_select_related = ("company", "decided_by")
     search_fields = ("company__name", "note")
     date_hierarchy = "decided_at"
+
+
+@admin.register(BuyerRankingRun)
+class BuyerRankingRunAdmin(ReadOnlyAdmin):
+    list_display = ("company", "created_at", "algorithm_version", "model_name", "client")
+    list_filter = ("client",)
+    list_select_related = ("company", "client")
+    search_fields = ("company__name",)
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)

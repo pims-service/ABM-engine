@@ -657,6 +657,7 @@ describe("integration tiles", () => {
       "Hunter",
       "ZeroBounce",
       "GoHighLevel",
+      "Apollo",
       "People Data Labs",
       "Coresignal",
       "Wathq",
@@ -673,8 +674,8 @@ describe("integration tiles", () => {
     ).toBeInTheDocument();
     const list = screen.getByRole("list", { name: "Integrations" });
     expect(within(list).getByText("Connected")).toBeInTheDocument();
-    expect(within(list).getAllByText("Not connected")).toHaveLength(7);
-    expect(within(list).getAllByText("Coming soon")).toHaveLength(6);
+    expect(within(list).getAllByText("Not connected")).toHaveLength(9);
+    expect(within(list).getAllByText("Coming soon")).toHaveLength(5);
   });
 
   it("searches by name, description and category", async () => {
@@ -711,11 +712,16 @@ describe("integration tiles", () => {
       "OpenAI",
     ]);
     await user.click(screen.getByRole("button", { name: "Company data" }));
-    expect(tileNames()).toEqual(["People Data Labs", "Coresignal", "Wathq"]);
+    expect(tileNames()).toEqual([
+      "Apollo",
+      "People Data Labs",
+      "Coresignal",
+      "Wathq",
+    ]);
     await user.click(screen.getByRole("button", { name: "Connected" }));
     expect(tileNames()).toEqual(["fake"]);
     await user.click(screen.getByRole("button", { name: "All" }));
-    expect(tileNames()).toHaveLength(14);
+    expect(tileNames()).toHaveLength(15);
   });
 
   it("shows researched providers as Coming soon, without a way to connect them", async () => {
@@ -766,6 +772,33 @@ describe("integration tiles", () => {
       credentials: { api_key: TEST_SECRET },
     });
   });
+
+  it.each([
+    ["Apollo", "apollo"],
+    ["People Data Labs", "peopledatalabs"],
+  ])(
+    "connects %s with just a key, in the company data category",
+    async (label, provider) => {
+      api.POST.mockResolvedValue({ data: makeConnection({ name: label }) });
+      const user = userEvent.setup();
+      await load();
+      await user.click(
+        screen.getByRole("button", { name: `Connect ${label}` }),
+      );
+      const dialog = await screen.findByRole("dialog", {
+        name: `Connect ${label}`,
+      });
+      await user.type(within(dialog).getByLabelText(/API key/), TEST_SECRET);
+      await user.click(within(dialog).getByRole("button", { name: "Connect" }));
+      await waitFor(() => expect(api.POST).toHaveBeenCalledTimes(1));
+      expect(api.POST.mock.calls[0]?.[1].body).toMatchObject({
+        category: "company_data",
+        provider,
+        config: {},
+        credentials: { api_key: TEST_SECRET },
+      });
+    },
+  );
 
   it("opens a short form made for the tile, with plain fields only", async () => {
     const user = userEvent.setup();
