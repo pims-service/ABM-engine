@@ -130,8 +130,10 @@ Plain Django settings in `config/settings/base.py`; none is an environment varia
 | `RESEARCH_HISTORY_DAYS` | `0` (all) | how much history the API lists |
 
 A real provider connection is configured under Settings > Integrations as for every other
-integration. Until a company-data adapter exists for a provider, a client with such a connection
-gets "not supported yet", and the offline fake is used only where `RESEARCH_DEV_COMPANY_ADAPTER` names it (dev and test settings).
+integration. Company data can come from Apollo, People Data Labs or Hunter
+([company data providers](../integrations/company-data-providers.md)); a connection to any other
+provider gets "not supported yet", and the offline fake is used only where
+`RESEARCH_DEV_COMPANY_ADAPTER` names it (dev and test settings).
 
 ## Adding a collector
 
@@ -148,8 +150,9 @@ gets "not supported yet", and the offline fake is used only where `RESEARCH_DEV_
 
 ## Known limits
 
-* No real company-data or news provider is connected yet; the collectors are tested through the
-  offline fakes.
+* The company-data adapters (Apollo, People Data Labs, Hunter) are written from the providers'
+  documentation and tested against fake transports; none has been run with a real key yet. There is
+  no news provider.
 * Provider snapshots can become the "latest snapshot" the company card shows; the merged profile
   endpoint is where source precedence is applied.
 * News tagging is keyword-based, not language-model-based.

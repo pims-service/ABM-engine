@@ -64,7 +64,7 @@ export function categoryLabel(value: string): string {
  */
 export const KNOWN_PROVIDERS: Record<ConnectionCategory, readonly string[]> = {
   llm: ["anthropic", "gemini", "fake"],
-  company_data: ["fake"],
+  company_data: ["apollo", "peopledatalabs", "hunter", "fake"],
   people_data: ["signalhire", "fake"],
   email_enrichment: ["signalhire", "fake"],
   email_verification: ["zerobounce", "fake"],
