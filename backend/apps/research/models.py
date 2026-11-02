@@ -18,8 +18,9 @@ Design: ``docs/data-model.md`` ("Signal", "Trigger freshness") and ADR 0008 / 00
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
 from django.conf import settings
@@ -68,20 +69,34 @@ class SignalQuerySet(  # type: ignore[override]
         """Signals nothing supersedes (corrected rows drop out)."""
         return self.filter(superseded_by__isnull=True)
 
-    def fresh(self, as_of: datetime | None = None) -> SignalQuerySet:
+    def fresh(
+        self, as_of: datetime | None = None, windows: Mapping[str, int] | None = None
+    ) -> SignalQuerySet:
         """Current signals that have not expired at ``as_of`` (default: now).
 
         ``expires_at`` null means no freshness rule yet and counts as fresh. A signal is stale
         at the exact instant it expires (``expires_at > as_of`` is fresh). Supersession is
         evaluated as of now, not as of ``as_of``.
+
+        ``windows`` is a campaign's own ``{signal type: days}``. For a type in it, the stored
+        ``expires_at`` is not used: the signal is fresh while ``event_date`` plus the window is
+        after ``as_of`` (the same instant rule: the event day starts at midnight UTC). Other types
+        keep their stored expiry. Nothing is rewritten, so changing a window applies at once to
+        the signals already stored.
         """
         if as_of is None:
             as_of = timezone.now()
         elif timezone.is_naive(as_of):
             raise ValueError("as_of must be timezone-aware.")
-        return self.current().filter(
-            models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=as_of)
-        )
+        stored = models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=as_of)
+        if not windows:
+            return self.current().filter(stored)
+        condition = ~models.Q(type__in=list(windows)) & stored
+        for signal_type, days in windows.items():
+            # midnight(event_date) + days > as_of  <=>  event_date > (as_of - days) as a date
+            cutoff = (as_of - timedelta(days=days)).astimezone(UTC).date()
+            condition |= models.Q(type=signal_type, event_date__gt=cutoff)
+        return self.current().filter(condition)
 
     def for_company(self, company: Company | Any) -> SignalQuerySet:
         return self.filter(company=company)
@@ -148,8 +163,10 @@ class Signal(AppendOnlyModel, TenantModel, UUIDModel):
         """True when no later signal supersedes this one."""
         return not Signal.objects.filter(supersedes=self).exists()
 
-    def is_fresh(self, as_of: datetime | None = None) -> bool:
-        return Signal.objects.fresh(as_of).filter(pk=self.pk).exists()
+    def is_fresh(
+        self, as_of: datetime | None = None, windows: Mapping[str, int] | None = None
+    ) -> bool:
+        return Signal.objects.fresh(as_of, windows).filter(pk=self.pk).exists()
 
     def sync_client(self) -> None:
         super().sync_client()

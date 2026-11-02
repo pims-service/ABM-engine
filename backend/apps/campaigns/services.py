@@ -421,6 +421,37 @@ def update_campaign(campaign: Campaign, user: User | None = None, **changes: Any
     return _change_campaign(campaign, AuditAction.UPDATE, user, mutate)
 
 
+def set_trigger_windows(campaign: Campaign, windows: Any, user: User | None = None) -> Campaign:
+    """Set how many days each kind of signal counts as a current trigger for ``campaign``
+    (``{signal type: days}``, replacing what was there; ``{}`` goes back to the defaults).
+
+    Applied when trigger status is read, so it takes effect on signals already stored at once.
+    ``ValidationError`` names every bad type; an archived campaign is read-only. Audited.
+    """
+    from apps.research.windows import validate_windows  # late: research depends on campaigns
+
+    clean = validate_windows(windows)
+    with transaction.atomic():
+        locked = Campaign.objects.select_for_update().get(pk=campaign.pk)
+        if locked.is_archived:
+            raise ValidationError("Archived campaigns are read-only.")
+        before = {"trigger_windows": dict(locked.trigger_windows or {})}
+        if before["trigger_windows"] != clean:
+            locked.trigger_windows = clean
+            locked.save(update_fields=["trigger_windows", "updated_at"])
+            record_change(
+                AuditAction.UPDATE,
+                "campaign",
+                locked.pk,
+                actor=user,
+                client=locked.client_id,
+                before=before,
+                after={"trigger_windows": clean},
+            )
+    campaign.refresh_from_db()
+    return campaign
+
+
 def activate_campaign(campaign: Campaign, user: User | None = None) -> Campaign:
     """draft -> active, audited."""
     return _change_campaign(campaign, AuditAction.UPDATE, user, lambda locked: locked.activate())

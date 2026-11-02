@@ -130,6 +130,14 @@ class Campaign(ArchivableModel, TenantModel, BaseModel):
         on_delete=models.PROTECT,
         related_name="+",
     )
+    trigger_windows = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Days each signal type counts as a current trigger: {signal type: days}. "
+            "Unlisted types use the defaults."
+        ),
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
