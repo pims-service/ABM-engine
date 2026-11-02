@@ -47,3 +47,9 @@ See `backend/README.md` (Background jobs) for adding tasks and the retry/failed 
 - Configuration comes from environment variables. Document every variable in `.env.example` with placeholders such as `YOUR_API_KEY`.
 - Never commit real credentials. `.env` files are git-ignored.
 - Production deployment and hardening are a later milestone.
+
+## Production
+
+`infra/prod/` holds the production Compose file, the Caddy configuration, a settings template
+(`env.example`) and the backup and restore scripts. See
+[docs/operations/production.md](../docs/operations/production.md).
