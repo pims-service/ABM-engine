@@ -1,6 +1,12 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
@@ -10,6 +16,14 @@ import { MAIN_CONTENT_ID } from "@/lib/ids";
 export function AppShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
+
+  // The shell fills the window and `main` is the one thing that scrolls. Without this the page
+  // itself can scroll as well, which shows a second scrollbar beside the first.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.add("overflow-hidden");
+    return () => root.classList.remove("overflow-hidden");
+  }, []);
 
   function close({ restoreFocus }: { restoreFocus: boolean }) {
     setMenuOpen(false);

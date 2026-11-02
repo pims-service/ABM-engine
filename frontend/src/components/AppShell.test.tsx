@@ -20,6 +20,13 @@ describe("AppShell", () => {
     expect(screen.getByRole("heading", { name: "Hello" })).toBeInTheDocument();
   });
 
+  it("keeps the page itself from scrolling, so main is the only scrollbar", () => {
+    const { unmount } = render(<AppShell>content</AppShell>);
+    expect(document.documentElement).toHaveClass("overflow-hidden");
+    unmount();
+    expect(document.documentElement).not.toHaveClass("overflow-hidden");
+  });
+
   it("toggles the mobile menu and closes it with Escape, restoring focus", async () => {
     render(<AppShell>content</AppShell>);
     const menu = screen.getByRole("button", { name: "Menu" });
