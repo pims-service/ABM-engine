@@ -219,6 +219,41 @@ export const PROVIDERS: readonly ProviderPreset[] = [
       },
     ],
   },
+  {
+    key: "apollo",
+    label: "Apollo",
+    tagline: "Company size, headcount by team and open jobs",
+    blurb:
+      "Looks up a company and fills in headcount by team, growth, funding and open job postings. Searching needs a paid Apollo plan, and every lookup uses Apollo credits.",
+    group: "data",
+    categories: ["company_data"],
+    keyLink: {
+      href: "https://app.apollo.io/#/settings/integrations/api",
+      text: "Create a key in your Apollo settings",
+    },
+    fields: [
+      API_KEY("Your Apollo API key. Stored encrypted, never shown again."),
+    ],
+  },
+  {
+    key: "peopledatalabs",
+    logo: { src: "/integrations/peopledatalabs.ico" },
+    label: "People Data Labs",
+    tagline: "Company size, headcount by team, growth and funding",
+    blurb:
+      "Looks up a company and fills in headcount by team, growth over 3, 6 and 12 months and funding. A match costs one credit; no match is free.",
+    group: "data",
+    categories: ["company_data"],
+    keyLink: {
+      href: "https://dashboard.peopledatalabs.com/api-keys",
+      text: "Get a key in your People Data Labs dashboard",
+    },
+    fields: [
+      API_KEY(
+        "Your People Data Labs API key. Stored encrypted, never shown again.",
+      ),
+    ],
+  },
 ];
 
 /** A provider the project has researched but has no integration for yet. Shown, not connectable. */
@@ -236,14 +271,6 @@ export interface PlannedProvider {
  * adapter, so a tile offers no Connect button: nobody can save a key that nothing would use.
  */
 export const PLANNED: readonly PlannedProvider[] = [
-  {
-    key: "peopledatalabs",
-    label: "People Data Labs",
-    logo: { src: "/integrations/peopledatalabs.ico" },
-    tagline: "Company size, headcount growth and funding",
-    group: "data",
-    categories: ["company_data"],
-  },
   {
     key: "coresignal",
     label: "Coresignal",
