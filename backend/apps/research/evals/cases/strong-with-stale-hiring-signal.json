@@ -1,0 +1,80 @@
+{
+  "id": "strong-with-stale-hiring-signal",
+  "description": "A sales hiring signal older than its 60 day window no longer counts as a trigger; the fit is unaffected.",
+  "tags": [
+    "strong_icp_no_trigger",
+    "freshness"
+  ],
+  "campaign": {
+    "offer": "B2B outbound lead generation",
+    "countries": [
+      "SA"
+    ],
+    "industries": [
+      "Financial Services",
+      "Accounting",
+      "SaaS",
+      "Technology"
+    ],
+    "company_size_min": 10,
+    "company_size_max": 500,
+    "business_model": "b2b",
+    "excluded_industries": [
+      "Government"
+    ],
+    "excluded_company_types": [
+      "Non-profit"
+    ],
+    "target_departments": [
+      "Sales",
+      "Business Development",
+      "Commercial",
+      "Partnerships"
+    ],
+    "preferred_buyer_titles": [
+      "VP BD",
+      "Head of BD",
+      "Commercial Director",
+      "Sales Director",
+      "CEO"
+    ],
+    "outreach_languages": [
+      "ar",
+      "en"
+    ],
+    "custom_rules": "Prefer companies with an existing business development team."
+  },
+  "trigger_windows": {},
+  "company": {
+    "name": "Riyadh Ledger",
+    "industry": "Accounting",
+    "description": "Accounting and audit software for Saudi firms.",
+    "headquarters": "Riyadh",
+    "employee_count": 120,
+    "classification": "b2b"
+  },
+  "signals": [
+    {
+      "type": "sales_hiring",
+      "event_date": "2026-05-01",
+      "evidence": "Posted three sales roles in May 2026."
+    }
+  ],
+  "as_of": "2026-11-01",
+  "model_output_source": "scripted",
+  "model_output": {
+    "fit": "strong",
+    "reasons": [
+      "Saudi accounting software",
+      "120 employees"
+    ],
+    "concerns": [],
+    "recommendation": "add",
+    "explanation": "Judged against the campaign rules."
+  },
+  "expected": {
+    "fit": "strong",
+    "recommendation": "add",
+    "trigger": false
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "id": "weak-fit-is-never-an-add",
+  "description": "A weak fit is not an ADD even if the model says add.",
+  "tags": [
+    "hard_rules",
+    "negative"
+  ],
+  "campaign": {
+    "offer": "B2B outbound lead generation",
+    "countries": [
+      "SA"
+    ],
+    "industries": [
+      "Financial Services",
+      "Accounting",
+      "SaaS",
+      "Technology"
+    ],
+    "company_size_min": 10,
+    "company_size_max": 500,
+    "business_model": "b2b",
+    "excluded_industries": [
+      "Government"
+    ],
+    "excluded_company_types": [
+      "Non-profit"
+    ],
+    "target_departments": [
+      "Sales",
+      "Business Development",
+      "Commercial",
+      "Partnerships"
+    ],
+    "preferred_buyer_titles": [
+      "VP BD",
+      "Head of BD",
+      "Commercial Director",
+      "Sales Director",
+      "CEO"
+    ],
+    "outreach_languages": [
+      "ar",
+      "en"
+    ],
+    "custom_rules": "Prefer companies with an existing business development team."
+  },
+  "trigger_windows": {},
+  "company": {
+    "name": "Local Print Shop",
+    "industry": "Printing",
+    "description": "Prints flyers for local shops.",
+    "headquarters": "Riyadh",
+    "employee_count": 25,
+    "classification": "b2b"
+  },
+  "signals": [],
+  "as_of": "2026-11-01",
+  "model_output_source": "scripted",
+  "model_output": {
+    "fit": "weak",
+    "reasons": [
+      "Small company"
+    ],
+    "concerns": [
+      "Not in a target industry"
+    ],
+    "recommendation": "add",
+    "explanation": "Judged against the campaign rules."
+  },
+  "expected": {
+    "fit": "weak",
+    "recommendation": "hold",
+    "trigger": false
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "id": "unknown-size-stays-unknown",
+  "description": "No employee count is found: nothing is assumed, the model's medium and hold stand.",
+  "tags": [
+    "unknown",
+    "core"
+  ],
+  "campaign": {
+    "offer": "B2B outbound lead generation",
+    "countries": [
+      "SA"
+    ],
+    "industries": [
+      "Financial Services",
+      "Accounting",
+      "SaaS",
+      "Technology"
+    ],
+    "company_size_min": 10,
+    "company_size_max": 500,
+    "business_model": "b2b",
+    "excluded_industries": [
+      "Government"
+    ],
+    "excluded_company_types": [
+      "Non-profit"
+    ],
+    "target_departments": [
+      "Sales",
+      "Business Development",
+      "Commercial",
+      "Partnerships"
+    ],
+    "preferred_buyer_titles": [
+      "VP BD",
+      "Head of BD",
+      "Commercial Director",
+      "Sales Director",
+      "CEO"
+    ],
+    "outreach_languages": [
+      "ar",
+      "en"
+    ],
+    "custom_rules": "Prefer companies with an existing business development team."
+  },
+  "trigger_windows": {},
+  "company": {
+    "name": "Hadaf Consulting",
+    "industry": "Technology",
+    "description": "Technology consulting for businesses.",
+    "headquarters": "Riyadh",
+    "employee_count": null,
+    "classification": "b2b"
+  },
+  "signals": [],
+  "as_of": "2026-11-01",
+  "model_output_source": "scripted",
+  "model_output": {
+    "fit": "medium",
+    "reasons": [
+      "Technology consulting for businesses"
+    ],
+    "concerns": [
+      "Company size is unknown"
+    ],
+    "recommendation": "hold",
+    "explanation": "Judged against the campaign rules."
+  },
+  "expected": {
+    "fit": "medium",
+    "recommendation": "hold",
+    "trigger": false
+  }
+}
