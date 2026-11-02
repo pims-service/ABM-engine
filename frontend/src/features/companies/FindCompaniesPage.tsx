@@ -70,7 +70,9 @@ function key(item: PreviewItem, index: number): string {
 /** `/companies/find`: search a data provider with the campaign's filters and import what you pick. */
 export function FindCompaniesPage() {
   const campaign = useOptionalSelection()?.campaign ?? null;
-  const providers = useApiQuery("providers", (signal) => listProviders(signal));
+  const providers = useApiQuery(`providers:${campaign?.id ?? ""}`, (signal) =>
+    listProviders(campaign?.id, signal),
+  );
   const searchable = (providers.data ?? []).filter((p) => p.supports_search);
 
   const [providerName, setProviderName] = useState("");

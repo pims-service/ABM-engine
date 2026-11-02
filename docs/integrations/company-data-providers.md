@@ -14,6 +14,12 @@ chosen by accident: create a connection with category *Company data* and provide
 client uses its oldest active company-data connection. Then **Collect provider data** on a
 company (History tab) starts a research run.
 
+**Find companies** (the company search and import screen) lists the search-capable providers a
+client has connected (Apollo, People Data Labs) next to the offline test provider, for the
+selected campaign only. A search uses that client's own key, is metered like every provider call
+and counts against the connection's budget; another client's connection is never used. Hunter has
+no company search, so it is not listed there.
+
 ## The three adapters
 
 | | Apollo | People Data Labs | Hunter |

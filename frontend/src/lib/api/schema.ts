@@ -1823,7 +1823,7 @@ export interface paths {
     };
     /**
      * List company data providers
-     * @description The providers registered in this deployment, with their capabilities (which filters they apply, page size, terms). No credentials or settings are ever included. The `fake` provider exists in dev and test only. An empty list means no provider is configured. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     * @description The providers registered in this deployment, with their capabilities (which filters they apply, page size, terms). With `campaign`, also the licensed company-data providers (Apollo, People Data Labs) that campaign's client has connected under Settings > Integrations. No credentials or settings are ever included. The `fake` provider exists in dev and test only. An empty list means no provider is configured. 404 when the campaign is not one the caller can see. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
      */
     get: operations["providers_list"];
     put?: never;
@@ -11921,6 +11921,8 @@ export interface operations {
   providers_list: {
     parameters: {
       query?: {
+        /** @description Also list the providers this campaign's client has connected. */
+        campaign?: string;
         /** @description A page number within the paginated result set. */
         page?: number;
         /** @description Number of results to return per page. */
@@ -11951,6 +11953,15 @@ export interface operations {
       };
       /** @description Not allowed (`permission_denied`). */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
         headers: {
           [name: string]: unknown;
         };

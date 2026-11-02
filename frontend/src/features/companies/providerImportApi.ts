@@ -14,9 +14,19 @@ type ProviderCompanyRequest = components["schemas"]["ProviderCompanyRequest"];
 /** Companies per page of results (the server's own default). */
 const PAGE_SIZE = 25;
 
-/** The providers this deployment can search (the offline test provider is listed in dev). */
-export async function listProviders(signal?: AbortSignal): Promise<Provider[]> {
-  const { data } = await getApiClient().GET("/api/v1/providers/", { signal });
+/**
+ * The providers that can be searched: the ones this deployment registers (the offline test
+ * provider is listed in dev) and, with a campaign, the licensed providers that campaign's client
+ * has connected under Settings > Integrations.
+ */
+export async function listProviders(
+  campaignId?: string | null,
+  signal?: AbortSignal,
+): Promise<Provider[]> {
+  const { data } = await getApiClient().GET("/api/v1/providers/", {
+    params: { query: campaignId ? { campaign: campaignId } : {} },
+    signal,
+  });
   const page = data as { results?: Provider[] } | Provider[] | undefined;
   if (Array.isArray(page)) return page;
   return page?.results ?? [];

@@ -69,15 +69,10 @@ def _message_missing() -> str:
     )
 
 
-def get_adapter(client_id: Any, *, job: Any = None, campaign: Any = None, user: Any = None) -> Any:
-    """The metered adapter of the client's oldest active company-data connection, or
-    ``CompanyDataUnavailable`` with a message that says what to do."""
-    connection = resolve_connection(client_id, COMPANY_DATA)
-    if connection is None:
-        dev_adapter = getattr(settings, "RESEARCH_DEV_COMPANY_ADAPTER", "")
-        if dev_adapter:
-            return import_string(dev_adapter)()
-        raise CompanyDataUnavailable(_message_missing())
+def _build_adapter(
+    connection: IntegrationConnection, *, job: Any = None, campaign: Any = None, user: Any = None
+) -> Any:
+    """The metered adapter of ``connection``, or ``CompanyDataUnavailable`` with a safe message."""
     if connection.provider not in SUPPORTED:
         raise CompanyDataUnavailable(
             f"The provider '{connection.provider}' is not supported yet for company data."
@@ -109,6 +104,74 @@ def get_adapter(client_id: Any, *, job: Any = None, campaign: Any = None, user: 
             ),
         )
     return adapter
+
+
+def get_adapter(client_id: Any, *, job: Any = None, campaign: Any = None, user: Any = None) -> Any:
+    """The metered adapter of the client's oldest active company-data connection, or
+    ``CompanyDataUnavailable`` with a message that says what to do."""
+    connection = resolve_connection(client_id, COMPANY_DATA)
+    if connection is None:
+        dev_adapter = getattr(settings, "RESEARCH_DEV_COMPANY_ADAPTER", "")
+        if dev_adapter:
+            return import_string(dev_adapter)()
+        raise CompanyDataUnavailable(_message_missing())
+    return _build_adapter(connection, job=job, campaign=campaign, user=user)
+
+
+# ------------------------------------------------------------------ Find companies (the import)
+def searchable_keys() -> tuple[str, ...]:
+    """The supported providers whose adapter can search (Apollo and People Data Labs)."""
+    return tuple(
+        adapter.key
+        for adapter in _registry().list(COMPANY_DATA)
+        if adapter.capabilities.supports("search")
+    )
+
+
+def connected_search_providers(client_id: Any) -> list[Any]:
+    """The search providers the client has an active connection for, described (name and
+    capabilities) without reading any credential. Used to list what Find companies can search."""
+    described: list[Any] = []
+    for key in searchable_keys():
+        if resolve_connection(client_id, COMPANY_DATA, key) is None:
+            continue
+        cls = _registry().get_class(COMPANY_DATA, key)
+        described.append(_Described(cls))
+    return described
+
+
+class _Described:
+    """What the providers list needs of a provider: a name and its capabilities."""
+
+    def __init__(self, adapter_cls: Any) -> None:
+        from apps.imports.providers.base import FilterSupport, ProviderCapabilities
+
+        self.name: str = adapter_cls.key
+        self.capabilities = ProviderCapabilities(
+            terms=adapter_cls.terms,
+            supports_search=True,
+            supports_filters=FilterSupport(),
+            max_page_size=adapter_cls.capabilities.max_page_size,
+            requires_credentials=adapter_cls.capabilities.requires_credentials,
+        )
+
+
+def search_provider(
+    client_id: Any, name: str, *, campaign: Any = None, user: Any = None, job: Any = None
+) -> Any | None:
+    """The client's connection to ``name`` as a company search provider for the import flow, or
+    ``None`` when the client has no active connection to a searchable provider of that name.
+    ``CompanyDataUnavailable`` when the connection exists but cannot be used (no key, bad
+    settings); every call is metered like any other provider call."""
+    from apps.integrations.framework.bridge import as_company_search_provider
+
+    if name not in searchable_keys():
+        return None
+    connection = resolve_connection(client_id, COMPANY_DATA, name)
+    if connection is None:
+        return None
+    adapter = _build_adapter(connection, job=job, campaign=campaign, user=user)
+    return as_company_search_provider(adapter)
 
 
 def _test(connection: IntegrationConnection, credentials: Credentials) -> tuple[bool, str]:

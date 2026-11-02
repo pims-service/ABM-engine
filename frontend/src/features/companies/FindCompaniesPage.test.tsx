@@ -103,6 +103,15 @@ describe("FindCompaniesPage", () => {
     expect(api.POST).not.toHaveBeenCalled();
   });
 
+  it("lists the providers connected for the selected campaign", async () => {
+    render(<FindCompaniesPage />);
+    expect(await screen.findByText("Atlas Freight")).toBeInTheDocument();
+    const call = api.GET.mock.calls.find(
+      (args) => args[0] === "/api/v1/providers/",
+    );
+    expect(call?.[1].params.query).toEqual({ campaign: campaign.id });
+  });
+
   it("explains, and links to integrations, when no provider can be searched", async () => {
     api.GET.mockResolvedValue({ data: { results: [] } });
     render(<FindCompaniesPage />);
