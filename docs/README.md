@@ -78,6 +78,8 @@ Project documentation lives here. If you are new, start with onboarding.
   explanation and tie-break.
 - [Trigger windows](research/trigger-windows.md): how long a signal counts as a trigger, and how a
   campaign sets its own windows.
+- [Demo data](demo-data.md): `seed_demo_data`, a realistic invented demo (clients, campaigns, accounts at
+  every stage) for showing the product.
 - [Production deployment](operations/production.md): running V1 on one server, backups,
   restore and rollback (files in `infra/prod/`).
 - [Company data providers](integrations/company-data-providers.md): the Apollo, People Data Labs and
