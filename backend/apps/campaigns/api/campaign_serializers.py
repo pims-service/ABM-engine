@@ -331,3 +331,24 @@ class RulesSummarySerializer(serializers.Serializer[dict[str, Any]]):
         help_text="Reserved for a future machine-readable rule list; always empty in "
         "schema_version 1.",
     )
+
+
+class TriggerWindowsWriteSerializer(serializers.Serializer[dict[str, Any]]):
+    windows = serializers.DictField(
+        child=serializers.IntegerField(),
+        help_text='Signal type to days, for example `{"funding": 180}`. Replaces the campaign\'s '
+        "windows; `{}` goes back to the defaults. Each value is 1 to 3650 days. A type that is "
+        "not listed keeps its default.",
+    )
+
+
+class TriggerWindowsSerializer(serializers.Serializer[dict[str, Any]]):
+    windows = serializers.DictField(
+        child=serializers.IntegerField(),
+        help_text="The windows this campaign has set (empty: all defaults).",
+    )
+    defaults = serializers.DictField(
+        child=serializers.IntegerField(),
+        help_text="The default window in days of every signal type.",
+    )
+    max_days = serializers.IntegerField(help_text="The longest window that can be set.")

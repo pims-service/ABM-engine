@@ -46,6 +46,8 @@ from .campaign_serializers import (
     CampaignWriteSerializer,
     RulesSummaryQuerySerializer,
     RulesSummarySerializer,
+    TriggerWindowsSerializer,
+    TriggerWindowsWriteSerializer,
 )
 
 TAGS = ["campaigns"]
@@ -165,6 +167,8 @@ class CampaignViewSet(
         "profile_versions": Level.READ,
         "profile_version": Level.READ,
         "rules_summary": Level.READ,
+        "trigger_windows": Level.READ,
+        "update_trigger_windows": Level.EDIT,
     }
 
     # ---------------------------------------------------------------- queryset
@@ -429,6 +433,49 @@ class CampaignViewSet(
         version = query.validated_data.get("version")
         profile = None if version is None else self._profile(campaign, version)
         return Response(RulesSummarySerializer(build_rules_summary(campaign, profile)).data)
+
+    @staticmethod
+    def _windows_body(campaign: Campaign) -> dict[str, Any]:
+        from apps.research.windows import FRESH_DAYS, MAX_WINDOW_DAYS, usable_windows
+
+        return {
+            "windows": usable_windows(campaign.trigger_windows),
+            "defaults": dict(FRESH_DAYS),
+            "max_days": MAX_WINDOW_DAYS,
+        }
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaigns_trigger_windows",
+        summary="How long each kind of signal counts as a trigger",
+        description="The campaign's own freshness windows (days per signal type), the defaults "
+        "of every type and the longest window allowed. A signal is a current trigger while its "
+        "event date plus the window is still in the future. " + _levels("READ", "any member"),
+        responses={200: TriggerWindowsSerializer, **error_responses(401, 403, 404, 429, 500)},
+    )
+    @action(detail=True, methods=["get"], url_path="trigger-windows")
+    def trigger_windows(self, request: Request, pk: str | None = None) -> Response:
+        return Response(TriggerWindowsSerializer(self._windows_body(self.get_object())).data)
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaigns_update_trigger_windows",
+        summary="Set the trigger windows of a campaign",
+        description="Replaces the campaign's windows. `{}` goes back to the defaults. It applies "
+        "at once to signals already stored (no signal is rewritten, and expired signals stay "
+        "stored and visible). 400 names every bad type or value. "
+        + _levels("EDIT", "manager and admin"),
+        request=TriggerWindowsWriteSerializer,
+        responses={200: TriggerWindowsSerializer, **_ERRORS_WRITE},
+    )
+    @trigger_windows.mapping.put
+    def update_trigger_windows(self, request: Request, pk: str | None = None) -> Response:
+        campaign = self.get_object()
+        body = TriggerWindowsWriteSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        with api_validation():
+            services.set_trigger_windows(campaign, body.validated_data["windows"], self._user())
+        return Response(TriggerWindowsSerializer(self._windows_body(campaign)).data)
 
 
 @extend_schema_view(

@@ -84,6 +84,8 @@ def test_operations_have_stable_ids_and_tags(schema: dict[str, Any]) -> None:
             "/api/v1/campaigns/{id}/profile-versions/{version}/",
         ),
         "campaigns_rules_summary": ("GET", "/api/v1/campaigns/{id}/rules-summary/"),
+        "campaigns_trigger_windows": ("GET", "/api/v1/campaigns/{id}/trigger-windows/"),
+        "campaigns_update_trigger_windows": ("PUT", "/api/v1/campaigns/{id}/trigger-windows/"),
         "campaign_companies_list": ("GET", "/api/v1/campaigns/{campaign_pk}/companies/"),
         "campaign_companies_create": ("POST", "/api/v1/campaigns/{campaign_pk}/companies/"),
         "companies_retrieve": ("GET", "/api/v1/companies/{id}/"),

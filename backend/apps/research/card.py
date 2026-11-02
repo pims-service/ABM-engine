@@ -7,6 +7,7 @@ do not have yet is listed in ``gaps`` so the screen can say so.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from rest_framework import serializers
@@ -24,6 +25,7 @@ from apps.research.models import (
     Signal,
 )
 from apps.research.services import company_trigger_state
+from apps.research.windows import expiry_for, usable_windows
 
 GAP_HEADCOUNT = (
     "Sales, business development and marketing headcount, and 3, 6 and 12 month growth, need a "
@@ -191,14 +193,20 @@ def _research(row: CompanyResearch | None) -> dict[str, Any] | None:
     }
 
 
-def _signal(signal: Signal) -> dict[str, Any]:
+def _signal(signal: Signal, windows: Mapping[str, int]) -> dict[str, Any]:
+    # A type the campaign set a window for expires by that window, not by the stored default.
+    expires_at = (
+        expiry_for(signal.type, signal.event_date, windows)
+        if signal.type in windows
+        else signal.expires_at
+    )
     return {
         "id": signal.pk,
         "type": signal.type,
         "type_label": signal.get_type_display(),
         "evidence": signal.evidence,
         "event_date": signal.event_date,
-        "expires_at": signal.expires_at,
+        "expires_at": expires_at,
         "source": _source(signal.data_source),
     }
 
@@ -338,6 +346,7 @@ def build_card(company: Company) -> dict[str, Any]:
         .first()
     )
     state = company_trigger_state(company)
+    windows = usable_windows(company.campaign.trigger_windows)
     job = latest_analysis_jobs([company.pk]).get(str(company.pk))
     gaps: list[str] = []
     if research is None or research.sales_headcount is None:
@@ -359,7 +368,7 @@ def build_card(company: Company) -> dict[str, Any]:
         "research": _research(research),
         "trigger": {
             "triggered": state.triggered,
-            "signals": [_signal(s) for s in state.signals],
+            "signals": [_signal(s, windows) for s in state.signals],
         },
         "icp": _icp(assessment),
         "recommendation": _recommendation(recommendation),

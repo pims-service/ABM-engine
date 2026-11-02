@@ -662,6 +662,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{id}/trigger-windows/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * How long each kind of signal counts as a trigger
+     * @description The campaign's own freshness windows (days per signal type), the defaults of every type and the longest window allowed. A signal is a current trigger while its event date plus the window is still in the future. Needs the `READ` level: any member. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    get: operations["campaigns_trigger_windows"];
+    /**
+     * Set the trigger windows of a campaign
+     * @description Replaces the campaign's windows. `{}` goes back to the defaults. It applies at once to signals already stored (no signal is rewritten, and expired signals stay stored and visible). 400 names every bad type or value. Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients you are not a member of give 404.
+     */
+    put: operations["campaigns_update_trigger_windows"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/clients/": {
     parameters: {
       query?: never;
@@ -4157,6 +4181,24 @@ export interface components {
       /** @description Refresh token. Omitted when the refresh cookie is enabled (it is then delivered as an httpOnly cookie). */
       refresh?: string;
     };
+    TriggerWindows: {
+      /** @description The windows this campaign has set (empty: all defaults). */
+      windows: {
+        [key: string]: number;
+      };
+      /** @description The default window in days of every signal type. */
+      defaults: {
+        [key: string]: number;
+      };
+      /** @description The longest window that can be set. */
+      max_days: number;
+    };
+    TriggerWindowsWriteRequest: {
+      /** @description Signal type to days, for example `{"funding": 180}`. Replaces the campaign's windows; `{}` goes back to the defaults. Each value is 1 to 3650 days. A type that is not listed keeps its default. */
+      windows: {
+        [key: string]: number;
+      };
+    };
     /** @description One group of the summary: the requested group keys (only those) plus the numbers. */
     UsageRow: {
       provider?: string;
@@ -7044,6 +7086,153 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RulesSummary"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_trigger_windows: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerWindows"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaigns_update_trigger_windows: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description A UUID string identifying this campaign. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TriggerWindowsWriteRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerWindows"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */

@@ -12,6 +12,7 @@ Permission checks belong to the API layer (issue #46); these functions enforce d
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -22,7 +23,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.accounts.models import User
-from apps.campaigns.models import CampaignProfile
+from apps.campaigns.models import Campaign, CampaignProfile
 from apps.companies.models import Company, CompanyResearch, DataSource
 from apps.core.base import TenantMismatchError
 
@@ -36,11 +37,13 @@ from .models import (
     Signal,
     SignalType,
 )
+from .windows import usable_windows
 
 __all__ = [
     "TriggerState",
     "company_trigger_state",
     "create_signal",
+    "fresh_signals_for",
     "record_ai_recommendation",
     "record_human_decision",
     "record_icp_assessment",
@@ -66,10 +69,28 @@ class TriggerState:
 
 
 def company_trigger_state(company: Company, as_of: datetime | None = None) -> TriggerState:
-    """Trigger Yes when the company has at least one fresh, unsuperseded signal at ``as_of``."""
+    """Trigger Yes when the company has at least one fresh, unsuperseded signal at ``as_of``,
+    judged with the campaign's own trigger windows."""
     when = as_of or timezone.now()
-    signals = list(Signal.objects.for_company(company).fresh(when).latest_first())
+    windows = usable_windows(company.campaign.trigger_windows)
+    signals = list(Signal.objects.for_company(company).fresh(when, windows).latest_first())
     return TriggerState(as_of=when, signals=signals)
+
+
+def fresh_signals_for(companies: Iterable[Company], as_of: datetime | None = None) -> list[Signal]:
+    """The fresh signals of ``companies``, newest event first, each company judged with its own
+    campaign's trigger windows (one query per campaign, usually one in all)."""
+    by_campaign: dict[Any, list[Any]] = defaultdict(list)
+    for company in companies:
+        by_campaign[company.campaign_id].append(company.pk)
+    stored = dict(
+        Campaign.objects.filter(pk__in=list(by_campaign)).values_list("pk", "trigger_windows")
+    )
+    found: list[Signal] = []
+    for campaign_id, ids in by_campaign.items():
+        windows = usable_windows(stored.get(campaign_id))
+        found.extend(Signal.objects.fresh(as_of, windows).filter(company__in=ids))
+    return sorted(found, key=lambda signal: signal.event_date, reverse=True)
 
 
 @transaction.atomic

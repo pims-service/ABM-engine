@@ -2796,6 +2796,135 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Unexpected server error (`internal_error`).
+  /api/v1/campaigns/{id}/trigger-windows/:
+    get:
+      operationId: campaigns_trigger_windows
+      description: 'The campaign''s own freshness windows (days per signal type),
+        the defaults of every type and the longest window allowed. A signal is a current
+        trigger while its event date plus the window is still in the future. Needs
+        the `READ` level: any member. Others get 403; campaigns of clients you are
+        not a member of give 404.'
+      summary: How long each kind of signal counts as a trigger
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerWindows'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
+    put:
+      operationId: campaigns_update_trigger_windows
+      description: 'Replaces the campaign''s windows. `{}` goes back to the defaults.
+        It applies at once to signals already stored (no signal is rewritten, and
+        expired signals stay stored and visible). 400 names every bad type or value.
+        Needs the `EDIT` level: manager and admin. Others get 403; campaigns of clients
+        you are not a member of give 404.'
+      summary: Set the trigger windows of a campaign
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this campaign.
+        required: true
+      tags:
+      - campaigns
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TriggerWindowsWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TriggerWindows'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Validation or parse error (`validation_error`, `parse_error`).
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Missing, invalid or expired credentials (`not_authenticated`,
+            `authentication_failed`).
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Throttled (`throttled`, with `details.retry_after`).
+        '500':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Unexpected server error (`internal_error`).
   /api/v1/clients/:
     get:
       operationId: clients_list
@@ -12737,6 +12866,38 @@ components:
             is then delivered as an httpOnly cookie).
       required:
       - access
+    TriggerWindows:
+      type: object
+      properties:
+        windows:
+          type: object
+          additionalProperties:
+            type: integer
+          description: 'The windows this campaign has set (empty: all defaults).'
+        defaults:
+          type: object
+          additionalProperties:
+            type: integer
+          description: The default window in days of every signal type.
+        max_days:
+          type: integer
+          description: The longest window that can be set.
+      required:
+      - defaults
+      - max_days
+      - windows
+    TriggerWindowsWriteRequest:
+      type: object
+      properties:
+        windows:
+          type: object
+          additionalProperties:
+            type: integer
+          description: 'Signal type to days, for example `{"funding": 180}`. Replaces
+            the campaign''s windows; `{}` goes back to the defaults. Each value is
+            1 to 3650 days. A type that is not listed keeps its default.'
+      required:
+      - windows
     UsageRow:
       type: object
       description: 'One group of the summary: the requested group keys (only those)

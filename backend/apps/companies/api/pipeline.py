@@ -26,7 +26,8 @@ from apps.imports.csvparse import safe_cell
 from apps.outreach.decisions import ADD, latest_human_decision
 from apps.outreach.models import Activity, ActivityType, Message, MessageStatus, OutreachAngle
 from apps.outreach.services import record_activity
-from apps.research.models import AIRecommendation, ICPAssessment, Signal
+from apps.research.models import AIRecommendation, ICPAssessment
+from apps.research.services import fresh_signals_for
 
 STAGES = ("none", "contacted", "replied", "meeting_booked")
 _RANK = {
@@ -104,7 +105,7 @@ def approved_accounts_csv(companies: Iterable[Company]) -> str:
     fits = {a.company_id: a for a in ICPAssessment.objects.current().filter(company__in=ids)}
     recs = {r.company_id: r for r in AIRecommendation.objects.current().filter(company__in=ids)}
     types: dict[Any, list[str]] = defaultdict(list)
-    for signal in Signal.objects.fresh().filter(company__in=ids).order_by("-event_date"):
+    for signal in fresh_signals_for(rows):
         label = signal.get_type_display()
         if label not in types[signal.company_id]:
             types[signal.company_id].append(label)
