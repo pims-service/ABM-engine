@@ -390,6 +390,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/campaigns/{campaign_pk}/accounts/rerun-buyer-ranking/": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Re-run the buyer ranking of many accounts
+     * @description Runs and stores the buyer ranking of up to 200 accounts of this campaign. Each account is handled on its own, so one problem never blocks the rest: the answer lists `created`, `unchanged` (nothing changed since its latest run, unless `force`) or `error` per account. `explain` adds the AI explanation and tie-break (one model call per account that needs it). Needs the EDIT level.
+     */
+    post: operations["campaign_accounts_rerun_buyer_ranking"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/campaigns/{campaign_pk}/accounts/summary/": {
     parameters: {
       query?: never;
@@ -2107,6 +2127,28 @@ export interface components {
       queued: number;
       already_running: number;
     };
+    BulkBuyerRunItem: {
+      /** Format: uuid */
+      company_id: string;
+      /** @description `created`, `unchanged` or `error`. */
+      status: string;
+      /** Format: uuid */
+      run_id: string | null;
+      error: string;
+    };
+    BulkBuyerRunRequestRequest: {
+      /**
+       * @description Make a new run even if nothing changed.
+       * @default false
+       */
+      force: boolean;
+      /**
+       * @description Add the AI explanation and tie-break. Needs an AI connection; without one the run keeps the rules ranking with a plain explanation.
+       * @default false
+       */
+      explain: boolean;
+      company_ids: string[];
+    };
     BulkCrmResult: {
       pushed: number;
       skipped: components["schemas"]["CrmSkipped"][];
@@ -3386,6 +3428,21 @@ export interface components {
        */
       previous?: string | null;
       results: components["schemas"]["AccountRow"][];
+    };
+    PaginatedBulkBuyerRunItemList: {
+      /** @example 123 */
+      count: number;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=4
+       */
+      next?: string | null;
+      /**
+       * Format: uri
+       * @example http://api.example.org/accounts/?page=2
+       */
+      previous?: string | null;
+      results: components["schemas"]["BulkBuyerRunItem"][];
     };
     PaginatedCampaignList: {
       /** @example 123 */
@@ -5702,6 +5759,94 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["QueuePushResult"];
+        };
+      };
+      /** @description Validation or parse error (`validation_error`, `parse_error`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Missing, invalid or expired credentials (`not_authenticated`, `authentication_failed`). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not allowed (`permission_denied`). */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Not found (`not_found`). */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Throttled (`throttled`, with `details.retry_after`). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+      /** @description Unexpected server error (`internal_error`). */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorEnvelope"];
+        };
+      };
+    };
+  };
+  campaign_accounts_rerun_buyer_ranking: {
+    parameters: {
+      query?: {
+        /** @description Which field to use when ordering the results. */
+        ordering?: string;
+        /** @description A page number within the paginated result set. */
+        page?: number;
+        /** @description Number of results to return per page. */
+        page_size?: number;
+        /** @description A search term. */
+        search?: string;
+      };
+      header?: never;
+      path: {
+        campaign_pk: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkBuyerRunRequestRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PaginatedBulkBuyerRunItemList"];
         };
       };
       /** @description Validation or parse error (`validation_error`, `parse_error`). */
