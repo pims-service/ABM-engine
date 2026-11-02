@@ -72,6 +72,8 @@ Project documentation lives here. If you are new, start with onboarding.
   research, signals, an ICP assessment and a recommendation, and what it needs.
 - [Research engine](research/research-engine.md): the collectors (profile, signals, news), the
   evidence service, history and retention, and how to add a source.
+- [Evaluating the qualification step](research/evaluation.md): the labelled golden set, the
+  `run_evals` command, live and recorded modes, and the prompt fingerprint.
 - [Trigger windows](research/trigger-windows.md): how long a signal counts as a trigger, and how a
   campaign sets its own windows.
 - [Production deployment](operations/production.md): running V1 on one server, backups,
