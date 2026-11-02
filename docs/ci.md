@@ -92,3 +92,10 @@ docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.21.2 detect --s
   `# pragma: allowlist secret` (detect-secrets) or a `.gitleaks.toml`
   allowlist entry; never with real values. See
   [environment.md](environment.md#secrets-handling).
+
+## Deploy workflow
+
+`.github/workflows/deploy.yml` is separate from CI: it is started by hand, deploys a commit of
+`main` whose CI run passed, and is described in
+[production deployment](operations/production.md#deploying-with-the-pipeline). It uses repository
+environment secrets (the only workflow that does), so it never runs on pull requests.

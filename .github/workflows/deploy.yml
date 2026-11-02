@@ -1,0 +1,205 @@
+name: Deploy
+
+# Issue #192. One manual action deploys a commit of main to a server:
+#
+#   gate     the commit is on main and its CI run passed
+#   release  one job, so the environment's approval is asked once: the api and web images are built
+#            on GitHub and pushed to ghcr.io (nothing is uploaded from anyone's machine), then over
+#            SSH the deployment files are copied, the images are pulled on the server, the database
+#            is backed up, the tag is switched, and the stack is waited on until healthy (it rolls
+#            back if it is not)
+#
+# Run it from Actions > Deploy > Run workflow, choosing the environment. The `production`
+# environment should have required reviewers (Settings > Environments): that is the approval step.
+# Secrets and variables are per environment; see docs/operations/production.md.
+#
+# The rollback action puts the previous version back on the server (the database is not changed
+# back; restore a backup for that).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Where to deploy
+        type: choice
+        options: [production, staging]
+        default: production
+      action:
+        description: Deploy a version, or go back to the previous one
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      ref:
+        description: Commit, branch or tag to deploy (it must be in main)
+        type: string
+        default: main
+
+# One deploy at a time per environment; a second one waits instead of cancelling a running deploy.
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Check the commit
+    if: ${{ inputs.action == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.rev.outputs.sha }}
+      tag: ${{ steps.rev.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Resolve the commit
+        id: rev
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tag=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Only commits that are in main are deployed: they were reviewed and went through the
+      # required checks.
+      - name: The commit is in main
+        env:
+          SHA: ${{ steps.rev.outputs.sha }}
+        run: |
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "${SHA}" origin/main \
+            || { echo "::error::${SHA} is not in main"; exit 1; }
+
+      - name: CI passed for the commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.rev.outputs.sha }}
+        run: |
+          passed="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${SHA}&status=success" --jq '.total_count')"
+          [ "${passed}" -gt 0 ] || { echo "::error::no successful CI run for ${SHA}"; exit 1; }
+
+  release:
+    name: Build, push and deploy
+    # After the gate for a deploy; on its own for a rollback.
+    if: ${{ always() && !cancelled() && (inputs.action == 'rollback' || needs.gate.result == 'success') }}
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'ec2-user' }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR || '/opt/abm' }}
+      TARGET: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.sha || inputs.ref }}
+
+      - name: SSH access is configured
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_HOST: ${{ vars.PUBLIC_HOST }}
+        run: |
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            eval "value=\${$name:-}"
+            [ -n "${value}" ] || { echo "::error::the ${name} secret of the ${TARGET} environment is not set"; exit 1; }
+          done
+          if [ "${{ inputs.action }}" = "deploy" ] && [ -z "${PUBLIC_HOST}" ]; then
+            echo "::error::set the PUBLIC_HOST variable of the ${TARGET} environment"; exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+
+      - name: Image names
+        id: names
+        if: ${{ inputs.action == 'deploy' }}
+        env:
+          TAG: ${{ needs.gate.outputs.tag }}
+        run: |
+          base="ghcr.io/$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "api=${base}/api:${TAG}" >> "$GITHUB_OUTPUT"
+          # The web image has the public API address built in, so it is built per environment.
+          echo "web=${base}/web:${TAG}-${TARGET}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ inputs.action == 'deploy' }}
+
+      - uses: docker/login-action@v3
+        if: ${{ inputs.action == 'deploy' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push the api image
+        if: ${{ inputs.action == 'deploy' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.names.outputs.api }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build and push the web image
+        if: ${{ inputs.action == 'deploy' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ steps.names.outputs.web }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://${{ vars.PUBLIC_HOST }}/api
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      - name: Copy the deployment files
+        run: |
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          scp ${SSH_OPTS} infra/prod/deploy.sh infra/prod/backup.sh infra/prod/restore.sh \
+            infra/prod/docker-compose.prod.yml infra/prod/Caddyfile \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+
+      - name: Deploy
+        if: ${{ inputs.action == 'deploy' }}
+        env:
+          API_IMAGE: ${{ steps.names.outputs.api }}
+          WEB_IMAGE: ${{ steps.names.outputs.web }}
+          TAG: ${{ needs.gate.outputs.tag }}
+          REGISTRY_TOKEN: ${{ github.token }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: |
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          # The token goes over the SSH connection on stdin: it is never in a command line or a log.
+          printf '%s' "${REGISTRY_TOKEN}" | ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "docker login ghcr.io -u '${REGISTRY_USER}' --password-stdin"
+          ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_DIR}' && chmod +x deploy.sh backup.sh restore.sh && API_IMAGE='${API_IMAGE}' WEB_IMAGE='${WEB_IMAGE}' ./deploy.sh '${TAG}'"
+          echo "Deployed ${TAG} to ${TARGET}." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Roll back
+        if: ${{ inputs.action == 'rollback' }}
+        run: |
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd '${DEPLOY_DIR}' && chmod +x deploy.sh && ./deploy.sh --rollback"
+          echo "Rolled ${TARGET} back to its previous version." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the registry login from the server
+        if: ${{ always() && inputs.action == 'deploy' }}
+        run: |
+          SSH_OPTS="-i $HOME/.ssh/deploy_key -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          ssh ${SSH_OPTS} "${DEPLOY_USER}@${DEPLOY_HOST}" "docker logout ghcr.io" || true
