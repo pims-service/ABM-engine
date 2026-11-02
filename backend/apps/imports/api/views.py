@@ -20,8 +20,10 @@ from datetime import timedelta
 from typing import Any, ClassVar, cast
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import Http404
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -43,6 +45,7 @@ from apps.imports.providers import (
     default_registry,
 )
 from apps.imports.services import TooManyActiveBatchesError
+from apps.integrations.company_data_connection import connected_search_providers
 
 from .errors import ProviderAPIError, TooManyImports
 from .serializers import (
@@ -176,7 +179,8 @@ def batch_payload(
 
 
 class ProviderViewSet(ClientScopedViewSet):
-    """The registered providers (not tenant data: any signed-in member may list them)."""
+    """The providers that can be searched: the ones registered in this deployment, and with
+    ``?campaign=`` the licensed providers that campaign's client has connected."""
 
     queryset = Campaign.objects.none()
     action_levels: ClassVar[dict[str, Level]] = {"list": Level.READ}
@@ -186,22 +190,41 @@ class ProviderViewSet(ClientScopedViewSet):
         operation_id="providers_list",
         summary="List company data providers",
         description="The providers registered in this deployment, with their capabilities "
-        "(which filters they apply, page size, terms). No credentials or settings are ever "
-        "included. The `fake` provider exists in dev and test only. An empty list means no "
-        "provider is configured. " + _levels("READ", "any member"),
+        "(which filters they apply, page size, terms). With `campaign`, also the licensed "
+        "company-data providers (Apollo, People Data Labs) that campaign's client has connected "
+        "under Settings > Integrations. No credentials or settings are ever included. The `fake` "
+        "provider exists in dev and test only. An empty list means no provider is configured. "
+        "404 when the campaign is not one the caller can see. " + _levels("READ", "any member"),
+        parameters=[
+            OpenApiParameter(
+                "campaign",
+                OpenApiTypes.UUID,
+                required=False,
+                description="Also list the providers this campaign's client has connected.",
+            )
+        ],
         responses={
             200: ProviderCapabilitiesSerializer(many=True),
-            **error_responses(401, 403, 429, 500),
+            **error_responses(401, 403, 404, 429, 500),
         },
     )
     def list(self, request: Request) -> Response:
+        providers = list(default_registry.list())
+        campaign_id = request.query_params.get("campaign")
+        if campaign_id:
+            try:
+                campaign = Campaign.objects.for_user(request.user).get(pk=campaign_id)
+            except (Campaign.DoesNotExist, DjangoValidationError, ValueError):
+                raise Http404 from None
+            self.resolve_client(campaign.client_id, Level.READ)
+            providers += connected_search_providers(campaign.client_id)
         rows = [
             {
                 **service.describe_provider(p),
                 "max_import_selection": service.max_selection(),
                 "inline_import_max": service.inline_threshold(),
             }
-            for p in default_registry.list()
+            for p in providers
         ]
         page = self.paginate_queryset(rows)
         return self.get_paginated_response(

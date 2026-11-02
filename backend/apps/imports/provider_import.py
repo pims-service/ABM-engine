@@ -60,7 +60,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -153,8 +153,34 @@ def inline_threshold() -> int:
 # ------------------------------------------------------------------ providers
 
 
-def get_provider(name: str, registry: ProviderRegistry | None = None) -> CompanySearchProvider:
-    """The registered provider (``ProviderRegistryError`` ``provider_not_found`` otherwise)."""
+def get_provider(
+    name: str,
+    registry: ProviderRegistry | None = None,
+    *,
+    campaign: Campaign | None = None,
+    user: User | None = None,
+) -> CompanySearchProvider:
+    """The provider to search (``ProviderRegistryError`` ``provider_not_found`` otherwise).
+
+    A name in the process-wide registry (the offline test provider) wins. Otherwise, given the
+    campaign, it is the client's own connection to a licensed company-data provider (Apollo,
+    People Data Labs): built with the client's credentials, metered like every provider call and
+    refused with a safe message when the connection cannot be used. An explicit ``registry``
+    (tests) is used as it is.
+    """
+    if registry is None and campaign is not None and name not in default_registry:
+        # Imported here: the integrations app imports the import contract, not the other way.
+        from apps.integrations.company_data_connection import (
+            CompanyDataUnavailable,
+            search_provider,
+        )
+
+        try:
+            connected = search_provider(campaign.client_id, name, campaign=campaign, user=user)
+        except CompanyDataUnavailable as exc:
+            raise ProviderRegistryError("provider_not_found", str(exc)) from None
+        if connected is not None:
+            return cast(CompanySearchProvider, connected)
     return (registry or default_registry).get(name)
 
 
@@ -344,7 +370,7 @@ def preview_provider_search(
     Raises ``ProviderRegistryError`` for an unknown provider and ``ProviderError`` subclasses
     for provider failures; the original upstream error is never copied into either.
     """
-    provider = get_provider(provider_name, registry)
+    provider = get_provider(provider_name, registry, campaign=campaign, user=user)
     if not isinstance(request, CompanySearchRequest):
         request = default_search_request(campaign, query=request or "")
     try:
@@ -461,7 +487,7 @@ def import_provider_companies(
     selection, and ``ProviderRegistryError`` for an unknown provider. Provider failures while
     finding ids do not raise: they end the batch ``partial`` or ``failed``.
     """
-    provider = get_provider(provider_name, registry)  # the registry holds the canonical name
+    provider = get_provider(provider_name, registry, campaign=campaign, user=user)
     if campaign.is_archived:
         raise ValidationError("Cannot import into an archived campaign.")
     if campaign.client.is_archived:
@@ -701,7 +727,7 @@ def run_provider_import(
     resolved: dict[str, tuple[ProviderCompany, datetime]] = {}
     if pending_ids:
         try:
-            provider = get_provider(provider_name, registry)
+            provider = get_provider(provider_name, registry, campaign=batch.campaign, user=user)
         except ProviderRegistryError:
             error = ProviderUnavailable(provider_name=provider_name)
         else:

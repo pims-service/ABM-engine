@@ -7388,12 +7388,21 @@ paths:
     get:
       operationId: providers_list
       description: 'The providers registered in this deployment, with their capabilities
-        (which filters they apply, page size, terms). No credentials or settings are
+        (which filters they apply, page size, terms). With `campaign`, also the licensed
+        company-data providers (Apollo, People Data Labs) that campaign''s client
+        has connected under Settings > Integrations. No credentials or settings are
         ever included. The `fake` provider exists in dev and test only. An empty list
-        means no provider is configured. Needs the `READ` level: any member. Others
-        get 403; campaigns of clients you are not a member of give 404.'
+        means no provider is configured. 404 when the campaign is not one the caller
+        can see. Needs the `READ` level: any member. Others get 403; campaigns of
+        clients you are not a member of give 404.'
       summary: List company data providers
       parameters:
+      - in: query
+        name: campaign
+        schema:
+          type: string
+          format: uuid
+        description: Also list the providers this campaign's client has connected.
       - name: page
         required: false
         in: query
@@ -7430,6 +7439,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
           description: Not allowed (`permission_denied`).
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+          description: Not found (`not_found`).
         '429':
           content:
             application/json:
