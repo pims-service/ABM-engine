@@ -68,6 +68,13 @@ from apps.research.agreement import (
     bounds,
     feedback_csv,
 )
+from apps.research.buyer_runs import (
+    BulkBuyerRunItemSerializer,
+    BulkBuyerRunRequestSerializer,
+)
+from apps.research.buyer_runs import (
+    run_ranking as run_buyer_ranking,
+)
 from apps.research.models import (
     AIRecommendation,
     Fit,
@@ -448,6 +455,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         "push_to_crm": Level.EDIT,
         "queue_push_to_crm": Level.EDIT,
         "decide": Level.DECIDE,
+        "rerun_buyer_ranking": Level.EDIT,
         "agreement": Level.EDIT,
         "feedback_export": Level.EDIT,
     }
@@ -642,6 +650,72 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
             },
             status=status.HTTP_202_ACCEPTED,
         )
+
+    @extend_schema(
+        tags=TAGS,
+        operation_id="campaign_accounts_rerun_buyer_ranking",
+        summary="Re-run the buyer ranking of many accounts",
+        description="Runs and stores the buyer ranking of up to 200 accounts of this campaign. "
+        "Each account is handled on its own, so one problem never blocks the rest: the answer "
+        "lists `created`, `unchanged` (nothing changed since its latest run, unless `force`) or "
+        "`error` per account. `explain` adds the AI explanation and tie-break (one model call "
+        "per account that needs it). Needs the EDIT level.",
+        request=BulkBuyerRunRequestSerializer,
+        responses={
+            200: BulkBuyerRunItemSerializer(many=True),
+            **error_responses(400, 401, 403, 404, 429, 500),
+        },
+    )
+    @action(detail=False, methods=["post"], url_path="rerun-buyer-ranking")
+    def rerun_buyer_ranking(self, request: Request, campaign_pk: str | None = None) -> Response:
+        body = BulkBuyerRunRequestSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        ids = list(dict.fromkeys(body.validated_data["company_ids"]))
+        user = request.user
+        if not isinstance(user, User):
+            raise PermissionDenied()
+        companies = {
+            c.pk: c for c in self._campaign_companies(Level.EDIT, "all").filter(pk__in=ids)
+        }
+        results: list[dict[str, Any]] = []
+        for company_id in ids:
+            company = companies.get(company_id)
+            if company is None:
+                results.append(
+                    {
+                        "company_id": company_id,
+                        "status": "error",
+                        "run_id": None,
+                        "error": "Not found.",
+                    }
+                )
+                continue
+            try:
+                outcome = run_buyer_ranking(
+                    company,
+                    user,
+                    force=body.validated_data["force"],
+                    explain=body.validated_data["explain"],
+                )
+            except DjangoValidationError as exc:
+                results.append(
+                    {
+                        "company_id": company_id,
+                        "status": "error",
+                        "run_id": None,
+                        "error": " ".join(exc.messages),
+                    }
+                )
+                continue
+            results.append(
+                {
+                    "company_id": company_id,
+                    "status": outcome.reason,
+                    "run_id": outcome.run.pk,
+                    "error": "",
+                }
+            )
+        return Response(BulkBuyerRunItemSerializer(results, many=True).data)
 
     @extend_schema(
         tags=TAGS,

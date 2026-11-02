@@ -41,6 +41,11 @@ urlpatterns = [
         name="campaign-accounts-decide",
     ),
     path(
+        "campaigns/<uuid:campaign_pk>/accounts/rerun-buyer-ranking/",
+        AccountViewSet.as_view({"post": "rerun_buyer_ranking"}),
+        name="campaign-accounts-rerun-buyer-ranking",
+    ),
+    path(
         "campaigns/<uuid:campaign_pk>/accounts/agreement/",
         AccountViewSet.as_view({"get": "agreement"}),
         name="campaign-accounts-agreement",

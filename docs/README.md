@@ -72,6 +72,8 @@ Project documentation lives here. If you are new, start with onboarding.
   research, signals, an ICP assessment and a recommendation, and what it needs.
 - [Research engine](research/research-engine.md): the collectors (profile, signals, news), the
   evidence service, history and retention, and how to add a source.
+- [Buyer ranking](research/buyer-ranking.md): the ranking rules, stored runs and staleness, and the AI
+  explanation and tie-break.
 - [Trigger windows](research/trigger-windows.md): how long a signal counts as a trigger, and how a
   campaign sets its own windows.
 - [Production deployment](operations/production.md): running V1 on one server, backups,
