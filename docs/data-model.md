@@ -693,6 +693,30 @@ HumanDecision (tie-break after `decided_at`), and `explanation`, `model_name`,
 status and decision are CHECK-constrained enums. There is no numeric field and the
 services refuse a `raw_output` that carries a key containing "score".
 
+### BuyerRankingRun (issue #137), append-only
+
+One stored ranking of the people at a company (Brief §8, §15 and §19). The ranking is made by
+rules (`apps/research/buyers.py`); a run keeps it as it was, so a re-run adds a row and older runs
+stay.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| id | uuid | PK |
+| company_id | FK Company | |
+| inputs_hash | text | hash of what the ranking was made from: the campaign's preferred titles and target departments, the company size and the people |
+| algorithm_version | text | |
+| note | text | how the company size shaped the ranking |
+| people | json | the ranked people: contact id, name, title, rank, suggested role, reasons |
+| explanation | json, null | optional AI explanation and tie-break: `source` (`model` or `rules`), the chosen contacts, `rationale`, `concerns`, `tie_broken`, `note` |
+| model_name, prompt_version, schema_version | text | set when a model explanation was used, blank otherwise |
+| created_by_id | FK User, null | |
+| created_at | timestamptz | |
+
+Whether a run is stale is **computed** when read, by comparing `inputs_hash` with the current
+inputs; there is no stored flag, so a rule change marks every ranking stale without touching a row.
+Running again with unchanged inputs adds nothing unless forced. Applying a ranking (the primary
+and secondary roles on the contacts) is a separate step and does not edit a run.
+
 ### OutreachAngle (issue #43), append-only
 
 Why we should contact this account (Brief §9). Stored apart from messages so
