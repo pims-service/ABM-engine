@@ -56,6 +56,61 @@ Redis.
    docker compose exec api python manage.py createsuperuser
    ```
 
+## Deploying with the pipeline
+
+`.github/workflows/deploy.yml` (Actions > Deploy > Run workflow) deploys a commit of `main` to a
+server without anyone building or uploading an image:
+
+1. **Check the commit.** It must be in `main` and its CI run must have passed.
+2. **Build.** GitHub builds the api and web images and pushes them to the GitHub container
+   registry (`ghcr.io/<owner>/<repo>/api:<sha>` and `web:<sha>-<environment>`; the web image has the
+   public address built in, so it is built per environment).
+3. **Deploy over SSH.** It copies `infra/prod/` to the server, logs the server into the registry for
+   the length of the run, and runs `deploy.sh`: pull the images, back the database up, switch
+   `IMAGE_TAG`, start the stack (the api migrates the database as it starts), wait until the
+   database, api, worker and web are healthy and `/readyz` answers, then remove old images (the
+   newest three stay).
+4. **If the stack is not healthy** within four minutes, `deploy.sh` puts the previous tag back and the
+   run fails. The api may already have migrated the database, so it also names the backup to restore
+   if the old version cannot use it.
+
+Choose the **environment** (`production` or `staging`), the **action** and the **ref**. The action
+`rollback` runs `deploy.sh --rollback`: the server goes back to the tag that ran before the last
+deploy (its images are kept). The database is not changed back: restore a backup for that.
+
+### Set it up once
+
+On GitHub (Settings > Environments), create `production` (and `staging` when there is a staging
+server). Give `production` **required reviewers**: that is the approval step, asked once per run.
+In each environment set:
+
+| Kind | Name | What |
+| --- | --- | --- |
+| Secret | `DEPLOY_HOST` | the server's address |
+| Secret | `DEPLOY_SSH_KEY` | the private half of a key made for deploying only (`ssh-keygen -t ed25519 -f deploy_key`) |
+| Secret | `DEPLOY_KNOWN_HOSTS` | the server's host key, from `ssh-keyscan -t ed25519 <host>`; the run refuses a server it does not recognise |
+| Variable | `PUBLIC_HOST` | the address people use in the browser (built into the web image) |
+| Variable | `DEPLOY_USER`, `DEPLOY_DIR` | optional; default `ec2-user` and `/opt/abm` |
+
+Put the public half of the deploy key in `~/.ssh/authorized_keys` of the deploy user on the server.
+The server needs Docker with the Compose plugin, `curl`, and the first-deploy files from "First
+deploy" above (`.env` in `DEPLOY_DIR`). The registry login uses the run's own short-lived token,
+which is passed over SSH on standard input and removed from the server when the run ends; no
+personal access token is stored anywhere. In branch protection for `main`, keep the CI checks
+required: the gate only trusts a commit whose CI run passed.
+
+### A staging environment
+
+A staging deploy is the same run with `environment: staging`: it needs a second server (or a
+second stack) set up like production, with its own secrets and `PUBLIC_HOST`. Until one exists the
+`staging` run stops at the first step and says which secret is missing.
+
+## Deploying by hand
+
+The pipeline is the normal way. By hand, with images already on the server (built there, or loaded
+with `docker load`), run `./deploy.sh <tag> --no-pull` in `DEPLOY_DIR`: it does the same backup,
+switch, health wait and rollback.
+
 ## Updating
 
 Build the new images with a new tag, set `IMAGE_TAG` in `.env` to it, and run `docker compose up -d`.
@@ -122,10 +177,11 @@ each service's health. The worker has its own health check (`worker_healthcheck`
 
 ## What is not here yet
 
-* **CI/CD.** There is no pipeline that builds, tests and deploys to a staging server and then to
-  production with an approval step. Deployment is the manual steps above.
-* **A staging environment.** Only one stack is described.
+* **The pipeline has not been run.** It was written and checked with actionlint and shellcheck, but
+  its first real run needs the environment secrets above. Expect to fix small things then.
+* **A staging server.** The workflow supports the environment; there is no server for it.
 * **An automated off-server copy of the backups.** The script makes the dump; copying it away is
   up to you (cron plus `rsync` or an object-storage client).
-* **A rollback rehearsal on the live server.** The steps above are written and the restore is
-  tested on the development database, but a full rollback has not been rehearsed on a server.
+* **A rollback rehearsal on the live server.** The steps are written and the restore is tested on
+  the development database, but a full rollback has not been rehearsed on a server.
+* **Image scanning.** The images are not scanned for known vulnerabilities in the pipeline.
