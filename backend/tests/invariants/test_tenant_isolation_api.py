@@ -342,6 +342,14 @@ def _scenarios() -> dict[str, Scenario]:
             "GET /api/v1/campaigns/{pk}/profile-versions/{version}/", "item", Level.READ, "campaign"
         ),
         Scenario("GET /api/v1/campaigns/{pk}/rules-summary/", "item", Level.READ, "campaign"),
+        Scenario("GET /api/v1/campaigns/{pk}/trigger-windows/", "item", Level.READ, "campaign"),
+        Scenario(
+            "PUT /api/v1/campaigns/{pk}/trigger-windows/",
+            "item",
+            Level.EDIT,
+            "campaign",
+            body=lambda: {"windows": {"funding": 90}},
+        ),
         # Provider import (issue #67)
         Scenario("GET /api/v1/providers/", "list", Level.READ),
         Scenario(

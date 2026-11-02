@@ -12,6 +12,7 @@ engine. Nothing is computed with a model here.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from typing import Any, ClassVar
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -76,7 +77,8 @@ from apps.research.models import (
     Signal,
     SignalType,
 )
-from apps.research.services import record_human_decision
+from apps.research.services import fresh_signals_for, record_human_decision
+from apps.research.windows import usable_windows
 
 from .pipeline import approved_accounts_csv, stages_for
 
@@ -270,8 +272,9 @@ def _reached(*types: str) -> Any:
     return Exists(Activity.objects.filter(company=OuterRef("pk"), type__in=types))
 
 
-def _fresh_signals(**extra: Any) -> Any:
-    return Exists(Signal.objects.fresh().filter(company=OuterRef("pk"), **extra))
+def _fresh_signals(windows: Mapping[str, int] | None = None, **extra: Any) -> Any:
+    """Companies with a fresh signal, judged with the campaign's own trigger windows."""
+    return Exists(Signal.objects.fresh(None, windows).filter(company=OuterRef("pk"), **extra))
 
 
 def _fit_rank_subquery() -> Any:
@@ -290,18 +293,22 @@ def _fit_rank_subquery() -> Any:
     )
 
 
-def filter_accounts(queryset: QuerySet[Company], params: dict[str, Any]) -> QuerySet[Company]:
+def filter_accounts(
+    queryset: QuerySet[Company],
+    params: dict[str, Any],
+    windows: Mapping[str, int] | None = None,
+) -> QuerySet[Company]:
     """Apply the validated query parameters (all filters run in the database)."""
     if (fit := params.get("icp_fit")) == "unassessed":
         queryset = queryset.filter(~_latest(ICPAssessment))
     elif fit:
         queryset = queryset.filter(_latest(ICPAssessment, fit=fit))
     if (trigger := params.get("trigger")) == "yes":
-        queryset = queryset.filter(_fresh_signals())
+        queryset = queryset.filter(_fresh_signals(windows))
     elif trigger == "no":
-        queryset = queryset.filter(~_fresh_signals())
+        queryset = queryset.filter(~_fresh_signals(windows))
     if kind := params.get("trigger_type"):
-        queryset = queryset.filter(_fresh_signals(type=kind))
+        queryset = queryset.filter(_fresh_signals(windows, type=kind))
     if ai := params.get("ai"):
         queryset = queryset.filter(_latest(AIRecommendation, status=ai))
     if (human := params.get("human")) == "undecided":
@@ -355,7 +362,7 @@ def build_rows(companies: list[Company]) -> list[dict[str, Any]]:
     recs = {r.company_id: r for r in AIRecommendation.objects.current().filter(company__in=ids)}
     decisions = {d.company_id: d for d in HumanDecision.objects.current().filter(company__in=ids)}
     types: dict[Any, list[str]] = defaultdict(list)
-    for signal in Signal.objects.fresh().filter(company__in=ids).order_by("-event_date"):
+    for signal in fresh_signals_for(companies):
         if signal.get_type_display() not in types[signal.company_id]:
             types[signal.company_id].append(signal.get_type_display())
     buyers = {
@@ -460,6 +467,15 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
                 raise PermissionDenied("Your role does not allow this action.")
         return campaign
 
+    def _windows(self) -> dict[str, int]:
+        """The campaign's own trigger windows (call after the permission check)."""
+        stored = (
+            Campaign.objects.filter(pk=self.kwargs["campaign_pk"])
+            .values_list("trigger_windows", flat=True)
+            .first()
+        )
+        return usable_windows(stored)
+
     def _campaign_companies(self, level: Level, archived: str = "false") -> Any:
         campaign = self._campaign(level)
         queryset = super().get_queryset().filter(campaign_id=campaign.pk)
@@ -476,7 +492,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
         query.is_valid(raise_exception=True)
         params = query.validated_data
         queryset = self._campaign_companies(Level.READ, params.get("archived", "false"))
-        queryset = filter_accounts(queryset, params)
+        queryset = filter_accounts(queryset, params, self._windows())
         ordering = self.request.query_params.get("ordering", "")
         if ordering.lstrip("-") == "icp_fit":
             queryset = queryset.annotate(icp_fit=_fit_rank_subquery())
@@ -513,7 +529,7 @@ class AccountViewSet(mixins.ListModelMixin, ClientScopedViewSet):
             strong=Count("pk", filter=Q(_latest(ICPAssessment, fit="strong"))),
             medium=Count("pk", filter=Q(_latest(ICPAssessment, fit="medium"))),
             weak=Count("pk", filter=Q(_latest(ICPAssessment, fit="weak"))),
-            trigger_yes=Count("pk", filter=Q(_fresh_signals())),
+            trigger_yes=Count("pk", filter=Q(_fresh_signals(self._windows()))),
             needs_review=Count("pk", filter=assessed & ~Q(_latest(HumanDecision))),
             human_add=Count("pk", filter=Q(_latest(HumanDecision, decision="add"))),
             human_hold=Count("pk", filter=Q(_latest(HumanDecision, decision="hold"))),

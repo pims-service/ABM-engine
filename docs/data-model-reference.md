@@ -44,6 +44,7 @@ Constraints:
 | name | text(200) | no |  |
 | status | text(16) | no | one of: `draft`, `active`, `archived` |
 | current_profile_id | uuid | no | FK to campaigns.CampaignProfile |
+| trigger_windows | jsonb | no |  |
 | created_by_id | uuid | yes | FK to accounts.User |
 
 Constraints:
