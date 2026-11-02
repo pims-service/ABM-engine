@@ -13,6 +13,7 @@ changed data adds a new snapshot and the old one stays in the history.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -76,9 +77,46 @@ def _sum(*counts: int | None) -> int | None:
     return sum(known) if known else None
 
 
-def _growth(data: NormalizedCompany, provenance: Provenance) -> GrowthReport:
-    """The growth report of one provider answer: one observation per headcount it states, plus
-    the percentages it gives directly for the windows one observation cannot answer."""
+#: The snapshot columns that hold one department's headcount. The combined commercial and
+#: partnerships column is left out: it is a sum, not a department of its own.
+_HISTORY_DEPARTMENTS = (
+    ("sales_headcount", "sales"),
+    ("bd_headcount", "bd"),
+    ("marketing_headcount", "marketing"),
+)
+
+
+def _history(company: Company, provider: str, as_of: date) -> list[HeadcountPoint]:
+    """Earlier headcounts this provider gave for ``company``, as observations on the days they
+    were retrieved. They are what lets growth be measured from our own history when a provider
+    only ever states today's headcount. A snapshot from the same day is the answer being
+    processed now, so it is left out."""
+    points: list[HeadcountPoint] = []
+    snapshots = CompanyResearch.objects.filter(
+        company=company,
+        data_source__type=DataSourceType.PROVIDER,
+        data_source__name=provider,
+    ).latest_first()
+    for snapshot in snapshots:
+        day = snapshot.researched_at.date()
+        if day == as_of:
+            continue
+        reference = f"snapshot:{snapshot.pk}"
+        if snapshot.employee_count is not None:
+            points.append(HeadcountPoint(day, snapshot.employee_count, reference))
+        for column, department in _HISTORY_DEPARTMENTS:
+            count = getattr(snapshot, column)
+            if count is not None:
+                points.append(HeadcountPoint(day, count, reference, department))
+    return points
+
+
+def _growth(
+    data: NormalizedCompany, provenance: Provenance, history: list[HeadcountPoint]
+) -> GrowthReport:
+    """The growth report of one provider answer: one observation per headcount it states, the
+    earlier observations from our own history, and the percentages the provider gives directly
+    for the windows the observations cannot answer."""
     as_of = provenance.retrieved_at.date()
     reference = f"provider:{provenance.provider}:{provenance.source_ref or 'unspecified'}"
     points: list[HeadcountPoint] = []
@@ -87,6 +125,7 @@ def _growth(data: NormalizedCompany, provenance: Provenance) -> GrowthReport:
     for item in data.departments:
         if item.count is not None:
             points.append(HeadcountPoint(as_of, item.count, reference, item.department))
+    points.extend(history)
     provided: dict[str | None, ProviderGrowth] = {}
 
     def offer(key: str | None, a: Decimal | None, b: Decimal | None, c: Decimal | None) -> None:
@@ -136,7 +175,9 @@ def collect_profile(company: Company, adapter: Any, *, user: User | None = None)
     if data is None:
         return ProfileOutcome(EMPTY, missing_fields=list(PROVIDER_FIELDS))
     provenance: Provenance = result.provenance
-    growth = _growth(data, provenance)
+    growth = _growth(
+        data, provenance, _history(company, provenance.provider, provenance.retrieved_at.date())
+    )
     facts = facts_of(data, growth)
     missing = [name for name in PROVIDER_FIELDS if facts.get(name) is None]
     outcome = ProfileOutcome(

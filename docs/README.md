@@ -72,6 +72,8 @@ Project documentation lives here. If you are new, start with onboarding.
   research, signals, an ICP assessment and a recommendation, and what it needs.
 - [Research engine](research/research-engine.md): the collectors (profile, signals, news), the
   evidence service, history and retention, and how to add a source.
+- [Production deployment](operations/production.md): running V1 on one server, backups,
+  restore and rollback (files in `infra/prod/`).
 - [Company data providers](integrations/company-data-providers.md): the Apollo, People Data Labs and
   Hunter adapters, how to connect one, the market research behind the choice and what is unverified.
 

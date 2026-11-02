@@ -8,6 +8,7 @@ from datetime import date
 from apps.campaigns.models import CampaignProfile
 from apps.integrations.framework import PromptSpec
 from apps.integrations.llm import UNTRUSTED_SYSTEM_NOTE, wrap_untrusted
+from apps.research.engine.rules_compiler import compile_rules
 from apps.research.models import Signal
 
 EXTRACT_VERSION = "1"
@@ -38,32 +39,6 @@ def extraction_prompt(name: str, pages: Sequence[tuple[str, str]], today: date) 
     return PromptSpec(name="company_facts", version=EXTRACT_VERSION, system=system, user=user)
 
 
-def _rules(profile: CampaignProfile) -> str:
-    def lst(items: Sequence[str]) -> str:
-        return ", ".join(items) if items else "not specified"
-
-    size = "not specified"
-    low, high = profile.company_size_min, profile.company_size_max
-    if low is not None and high is not None:
-        size = f"{low} to {high} employees"
-    elif low is not None:
-        size = f"at least {low} employees"
-    elif high is not None:
-        size = f"up to {high} employees"
-    return (
-        f"Offer: {profile.offer}\n"
-        f"Countries: {lst(profile.countries)}\n"
-        f"Industries: {lst(profile.industries)}\n"
-        f"Company size: {size}\n"
-        f"Business model: {profile.business_model}\n"
-        f"Excluded industries: {lst(profile.excluded_industries)}\n"
-        f"Excluded company types: {lst(profile.excluded_company_types)}\n"
-        f"Target departments: {lst(profile.target_departments)}\n"
-        f"Preferred buyer titles: {lst(profile.preferred_buyer_titles)}\n"
-        f"Custom rules: {profile.custom_rules or 'none'}"
-    )
-
-
 def assessment_prompt(
     profile: CampaignProfile,
     company_name: str,
@@ -86,8 +61,11 @@ def assessment_prompt(
     signal_lines = (
         "\n".join(f"- {s.type} ({s.event_date}): {s.evidence}" for s in signals) or "none found"
     )
-    user = f"Campaign rules:\n{_rules(profile)}\n\nCompany: {company_name}\n" + wrap_untrusted(
-        f"Facts found on the company's website:\n{fact_lines}\n\nDated events:\n{signal_lines}",
-        "company_facts",
+    user = (
+        f"Campaign rules:\n{compile_rules(profile).text}\n\nCompany: {company_name}\n"
+        + wrap_untrusted(
+            f"Facts found on the company's website:\n{fact_lines}\n\nDated events:\n{signal_lines}",
+            "company_facts",
+        )
     )
     return PromptSpec(name="icp_fit", version=ASSESS_VERSION, system=system, user=user)

@@ -28,6 +28,7 @@ import { type OutreachMessage } from "./messagesApi";
 import { OutreachCard } from "./OutreachCard";
 import { type Contact } from "./peopleApi";
 import { PeopleCard } from "./PeopleCard";
+import { ResearchDataCard } from "./ResearchDataCard";
 import { ResearchHistoryCard } from "./ResearchHistoryCard";
 import { WorkflowCard } from "./WorkflowCard";
 
@@ -395,6 +396,11 @@ export function ResearchCardView({
               <ActivityCard items={activity} />
             </div>
             <div className="flex flex-col gap-5">
+              <ResearchDataCard
+                companyId={company.id}
+                onCollected={onActivity}
+              />
+
               <FeedbackCard companyId={company.id} onSent={onActivity} />
 
               <Card title="Not available yet">

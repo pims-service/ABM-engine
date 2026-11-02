@@ -1,0 +1,30 @@
+# HTTPS on a bare IP address: Caddy issues a certificate from its own local authority
+# ("tls internal"), so browsers show a one-time warning until the certificate is trusted.
+# With a domain name, replace {$PUBLIC_HOST} by it and delete "tls internal": Caddy then gets a
+# trusted Let's Encrypt certificate by itself. Plain http on port 80 is redirected to https.
+
+{
+	# Browsers and curl send no server name when the address is an IP, and inside Docker Caddy
+	# cannot tell which address was dialled, so name the certificate to use in that case.
+	default_sni {$PUBLIC_HOST}
+}
+
+{$PUBLIC_HOST} {
+	tls internal
+	encode zstd gzip
+
+	# Django: the API, the admin, the health checks and the admin's static files.
+	@django path /api/v1/* /admin/* /healthz /readyz
+	handle @django {
+		reverse_proxy api:8000
+	}
+	handle /static/* {
+		root * /srv
+		file_server
+	}
+
+	# Everything else is the Next.js app, including its own /api/auth/* login routes.
+	handle {
+		reverse_proxy web:3000
+	}
+}

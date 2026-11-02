@@ -1,0 +1,134 @@
+# Production stack for one small server: Caddy (HTTPS) in front of web (Next.js) and api (Django),
+# with the Django-Q2 worker and Postgres. Only Caddy publishes ports. Configuration comes from
+# the .env file next to this one (never committed). The images are built elsewhere and loaded:
+# set IMAGE_TAG in .env to the tag that was loaded.
+
+name: abm
+
+services:
+  # Runs once as root so the named volumes are writable by the app user, then exits.
+  init:
+    image: abm-api:${IMAGE_TAG}
+    user: root
+    command: sh -c "mkdir -p /app/var/import-uploads /app/staticfiles && chown -R app:app /app/var /app/staticfiles"
+    volumes:
+      - uploads:/app/var/import-uploads
+      - static:/app/staticfiles
+    restart: "no"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  api:
+    image: abm-api:${IMAGE_TAG}
+    # Migrate, collect the admin's static files, then serve. One worker with threads keeps the
+    # memory use low on a small machine.
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             exec gunicorn config.wsgi:application --bind 0.0.0.0:8000
+               --workers 1 --threads 4 --timeout 120"
+    environment: &backend_env
+      DJANGO_SETTINGS_MODULE: config.settings.prod
+      SECRET_KEY: ${SECRET_KEY}
+      INTEGRATION_ENCRYPTION_KEYS: ${INTEGRATION_ENCRYPTION_KEYS}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      ALLOWED_HOSTS: ${PUBLIC_HOST},api,localhost
+      CORS_ALLOWED_ORIGINS: https://${PUBLIC_HOST}
+      CSRF_TRUSTED_ORIGINS: https://${PUBLIC_HOST}
+      # The proxy already redirects http to https; the web server calls the api over the
+      # private network in plain http, which must not be redirected.
+      SECURE_SSL_REDIRECT: "false"
+      PROVIDER_FAKE_ENABLED: "false"
+      API_DOCS_ENABLED: "false"
+      LOG_LEVEL: INFO
+      Q_WORKERS: "1"
+      Q_TASK_TIMEOUT: "900"
+      Q_TASK_RETRY: "960"
+    volumes:
+      - uploads:/app/var/import-uploads
+      - static:/app/staticfiles
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  worker:
+    image: abm-api:${IMAGE_TAG}
+    command: python manage.py qcluster
+    environment: *backend_env
+    volumes:
+      - uploads:/app/var/import-uploads
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "worker_healthcheck"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy   # the api runs the migrations
+    restart: unless-stopped
+
+  web:
+    image: abm-web:${IMAGE_TAG}
+    environment:
+      # The browser reads NEXT_PUBLIC_API_BASE_URL (baked into the image at build time); the
+      # server-side login routes talk to the api over the private network.
+      API_INTERNAL_BASE_URL: http://api:8000/api
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  static:
+  caddy_data:
+  caddy_config:
